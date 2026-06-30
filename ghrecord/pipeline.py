@@ -77,6 +77,7 @@ def run(config: Config) -> RunResult:
             org_logins=org_logins(client, identity.primary_login),
             popularity_floor=config.min_stars,
             contributor_pages=config.contributor_pages,
+            auto_discover_roles=config.discover_roles and llm is not None,
         )
         records, reset_in = _attribute(config, candidates, ctx, progress)
         progress.done()

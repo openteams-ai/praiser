@@ -4,10 +4,18 @@ import argparse
 import sys
 
 from . import __version__
+from . import llm as _llm
 from .config import Config, resolve_token
 from .github_client import RateLimitError
 from .pipeline import _humanize, run
 from .render import render
+
+# Shown when an Anthropic API key is needed (LLM features).
+ANTHROPIC_HELP = (
+    "Get an API key at https://console.anthropic.com/settings/keys, then "
+    "`export ANTHROPIC_API_KEY=<key>` (and install the extra: "
+    "pip install 'gh-record[llm]')."
+)
 
 # Shown whenever a token would help. Public-data discovery needs no scopes; add
 # `repo` + `read:org` to reach private repos and resolve org/team membership.
@@ -58,6 +66,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="write observed popularity back to --registry")
     p.add_argument("--no-llm", action="store_true",
                    help="disable the Claude fallback for ambiguous prose")
+    p.add_argument("--discover-roles", action="store_true",
+                   help="for popular repos lacking curated role sources, use "
+                        "Claude + web search to find official team/governance "
+                        "pages (needs the llm extra + ANTHROPIC_API_KEY from "
+                        "https://console.anthropic.com/settings/keys)")
     p.add_argument("--include-private", action="store_true",
                    help="also scan private repos (default: skip them)")
     p.add_argument("--contributor-pages", type=int, default=2, metavar="N",
@@ -88,6 +101,16 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
 
+    if args.discover_roles:
+        if args.no_llm:
+            print("warning: --discover-roles needs the LLM, but --no-llm was "
+                  "given; role discovery is off.", file=sys.stderr)
+        else:
+            reason = _llm.availability()
+            if reason:
+                print(f"warning: --discover-roles is on but {reason}; role "
+                      f"discovery is off.\n{ANTHROPIC_HELP}", file=sys.stderr)
+
     config = Config(
         username=args.username,
         token=token,
@@ -102,6 +125,7 @@ def main(argv: list[str] | None = None) -> int:
         include_private=args.include_private,
         contributor_pages=args.contributor_pages,
         jobs=args.jobs,
+        discover_roles=args.discover_roles,
     )
 
     try:

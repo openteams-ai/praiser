@@ -27,6 +27,8 @@ class ExtractContext:
     canonical_stars: int = 1000  # at/above this a repo is plausibly the original
     canonical_forks: int = 100   # ...or widely forked enough to be the original
     contributor_pages: int = 2  # contributors API pages (100 each) to fetch
+    auto_discover_roles: bool = False  # find role pages via LLM + web search
+    role_discovery_floor: int = 1000   # only auto-discover for repos this popular
     # repo -> {login: commit_count} | None (None = could not fetch)
     _contrib_cache: dict[str, dict[str, int] | None] = field(default_factory=dict)
 

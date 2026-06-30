@@ -12,6 +12,17 @@ from .cache import Cache
 
 DEFAULT_MODEL = "claude-haiku-4-5-20251001"  # cheap tier is plenty for extraction
 
+
+def availability() -> str | None:
+    """Return None if the LLM is usable, else a short reason why not."""
+    try:
+        import anthropic  # noqa: F401
+    except ImportError:
+        return "the 'anthropic' package is not installed (pip install 'gh-record[llm]')"
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return "ANTHROPIC_API_KEY is not set"
+    return None
+
 _SYSTEM = (
     "You decide whether a specific person holds an elevated governance role "
     "(steering council, technical committee, or maintainer/lead) in a software "
@@ -79,6 +90,67 @@ class LLM:
             result = None
         self.cache.set(ck, result)
         return result
+
+    def discover_role_sources(
+        self, name_with_owner: str, project_name: str | None = None
+    ) -> list[dict]:
+        """Use Claude + web search to find authoritative role pages for a project.
+
+        Returns a list of {"url", "role", "label"}. Cached per project, and
+        degrades to [] if web search is unavailable or nothing is found.
+        """
+        ck = Cache.key("llm-rolesrc", self.model, name_with_owner)
+        cached = self.cache.get(ck, default=None)
+        if cached is not None:
+            return cached
+
+        desc = name_with_owner + (f" ({project_name})" if project_name else "")
+        prompt = (
+            f"Find the official web page(s) that list the people holding "
+            f"governance roles for the open-source project {desc}: maintainers / "
+            f"core team, and any steering council or technical committee. Prefer "
+            f"the project's OWN website (team / governance / people / about "
+            f"pages); avoid GitHub, blogs, and third-party sites. "
+            'Reply with ONLY a JSON array of objects '
+            '{"url": str, "role": "maintainer"|"steering_council", "label": str}. '
+            "Use steering_council for steering/technical committees, maintainer "
+            "otherwise. Return [] if you cannot find an authoritative page."
+        )
+        try:
+            resp = self._client.messages.create(
+                model=self.model,
+                max_tokens=1024,
+                tools=[{"type": "web_search_20250305", "name": "web_search",
+                        "max_uses": 5}],
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = "".join(
+                b.text for b in resp.content if getattr(b, "type", None) == "text"
+            )
+            result = self._parse_role_sources(raw)
+        except Exception:
+            result = []
+        self.cache.set(ck, result)
+        return result
+
+    @staticmethod
+    def _parse_role_sources(raw: str) -> list[dict]:
+        start, end = raw.find("["), raw.rfind("]")
+        if start == -1 or end == -1:
+            return []
+        try:
+            items = json.loads(raw[start : end + 1])
+        except json.JSONDecodeError:
+            return []
+        out: list[dict] = []
+        for it in items if isinstance(items, list) else []:
+            url = (it or {}).get("url", "")
+            if not isinstance(url, str) or not url.startswith("http"):
+                continue
+            role = str(it.get("role", "maintainer")).lower()
+            role = "steering_council" if "steer" in role or "council" in role else "maintainer"
+            out.append({"url": url, "role": role, "label": it.get("label") or "discovered role page"})
+        return out
 
     @staticmethod
     def _parse_json(raw: str) -> dict | None:

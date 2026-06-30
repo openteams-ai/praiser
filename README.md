@@ -36,7 +36,13 @@ Provide one via `--token`, the `GITHUB_TOKEN`/`GH_TOKEN` env var, or simply be
 logged into the [`gh` CLI](https://cli.github.com) (`gh auth login`) — the tool
 falls back to `gh auth token` automatically.
 
-Create a Personal Access Token at **https://github.com/settings/tokens**:
+For the optional LLM features (`--discover-roles`, and the governance prose
+fallback) set an Anthropic API key — create one at
+**https://console.anthropic.com/settings/keys**, then
+`export ANTHROPIC_API_KEY=...` and install the extra (`pip install
+'gh-record[llm]'`).
+
+Create a GitHub Personal Access Token at **https://github.com/settings/tokens**:
 
 * *classic* — no scopes are needed for public data; add `repo` (private repos)
   and `read:org` (resolve `@org/team` membership in CODEOWNERS) for full

@@ -72,3 +72,48 @@ class WebRolesExtractor(Extractor):
 
 
 register(WebRolesExtractor())
+
+
+class WebRolesAutoExtractor(Extractor):
+    """Like web_roles, but discovers the role pages via Claude + web search.
+
+    Runs only when enabled (--discover-roles), for popular candidates that have
+    no curated role_sources, and when an LLM is available. Discovered URLs are
+    cached, so re-runs cost nothing. Confidence is a notch below curated sources
+    since the page was found automatically rather than vetted by a human.
+    """
+
+    name = "web_roles_auto"
+
+    def applicable(self, candidate, ctx: ExtractContext) -> bool:
+        if not (ctx.auto_discover_roles and ctx.llm is not None):
+            return False
+        if candidate.stars < ctx.role_discovery_floor:
+            return False
+        known = ctx.known(candidate.name_with_owner)
+        return not (known and known.role_sources)  # curated sources win
+
+    def extract(self, candidate, ctx: ExtractContext) -> list[Evidence]:
+        try:
+            sources = ctx.llm.discover_role_sources(candidate.name_with_owner)
+        except Exception:
+            return []
+        out: list[Evidence] = []
+        for src in sources:
+            page = ctx.client.get_url(src["url"])
+            if not page:
+                continue
+            m = matches(page, ctx.identity.logins, ctx.identity.names)
+            if m is None:
+                continue
+            out.append(Evidence(
+                source=self.name, role=src["role"], url=src["url"],
+                confidence=0.85 if m else 0.6,
+                detail=("listed by GitHub handle" if m else "listed by name")
+                       + f" on {src.get('label', 'discovered role page')} "
+                         "(web-search discovered)",
+            ))
+        return out
+
+
+register(WebRolesAutoExtractor())
