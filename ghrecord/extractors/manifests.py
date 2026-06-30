@@ -67,6 +67,56 @@ def maintainers_from_package_json(text: str) -> list[Person]:
     return [p for p in _people(data.get("maintainers")) if p.name or p.email]
 
 
+def _people_from_name_email(name: str | None, email: str | None) -> list[Person]:
+    names = [n.strip() for n in re.split(r"[;,]", name)] if name else []
+    emails = [e.strip() for e in re.split(r"[;,]", email)] if email else []
+    out: list[Person] = []
+    if names:
+        for i, n in enumerate(names):
+            out.append(Person(name=n or None,
+                              email=emails[i] if i < len(emails) else None))
+    else:
+        out = [Person(email=e) for e in emails]
+    return [p for p in out if p.name or p.email]
+
+
+def _setup_kw(text: str, key: str) -> str | None:
+    """Value of a `key="..."` kwarg or assignment in setup.py (literal only)."""
+    m = re.search(rf"(?<![\w.]){key}\s*=\s*(['\"])(.*?)\1", text)
+    return m.group(2).strip() if m else None
+
+
+def authors_from_setup_py(text: str) -> list[Person]:
+    name = _setup_kw(text, "author") or _setup_kw(text, "__author__")
+    email = _setup_kw(text, "author_email") or _setup_kw(text, "__author_email__")
+    return _people_from_name_email(name, email)
+
+
+def maintainers_from_setup_py(text: str) -> list[Person]:
+    return _people_from_name_email(
+        _setup_kw(text, "maintainer"), _setup_kw(text, "maintainer_email"))
+
+
+def _cfg_metadata(text: str) -> dict[str, str]:
+    import configparser
+    cp = configparser.ConfigParser()
+    try:
+        cp.read_string(text)
+    except configparser.Error:
+        return {}
+    return dict(cp["metadata"]) if cp.has_section("metadata") else {}
+
+
+def authors_from_setup_cfg(text: str) -> list[Person]:
+    m = _cfg_metadata(text)
+    return _people_from_name_email(m.get("author"), m.get("author_email"))
+
+
+def maintainers_from_setup_cfg(text: str) -> list[Person]:
+    m = _cfg_metadata(text)
+    return _people_from_name_email(m.get("maintainer"), m.get("maintainer_email"))
+
+
 def authors_from_cargo(text: str) -> list[Person]:
     data = tomllib.loads(text)
     pkg = data.get("package", {})
@@ -81,6 +131,8 @@ def authors_from_composer(text: str) -> list[Person]:
 # (path, authors_parser, maintainers_parser | None)
 _MANIFESTS = [
     ("pyproject.toml", authors_from_pyproject, maintainers_from_pyproject),
+    ("setup.cfg", authors_from_setup_cfg, maintainers_from_setup_cfg),
+    ("setup.py", authors_from_setup_py, maintainers_from_setup_py),
     ("package.json", authors_from_package_json, maintainers_from_package_json),
     ("Cargo.toml", authors_from_cargo, None),
     ("composer.json", authors_from_composer, None),
