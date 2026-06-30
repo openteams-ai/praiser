@@ -110,6 +110,7 @@ praiser <username>
     [--registry FILE]      known-projects file (default: ~/.local/share/praiser/)
     [--no-save-registry]   don't persist popularity + discovered role sources
     [--no-discover-roles]  don't web-search for role pages (default: on w/ LLM)
+    [--no-package-registries] skip PyPI/npm/crates.io lookups (default: on)
     [--no-llm]             disable all Claude features
     [--add-repo OWNER/REPO] force-scan a repo discovery missed (repeatable)
     [--include-private]    also scan private repos (default: skip them)
@@ -135,8 +136,11 @@ carries an **evidence link** (file/page URL) and a **confidence** score.
 2. **Discovery (wide net)** — owned repos, org repos, contributed-to repos
    (over-collected on purpose), **commit search** (`author:`, catches old
    involvement the contribution graph has dropped), code search for the handle
-   in role files, **name search** in `AUTHORS`/`THANKS`/`CONTRIBUTORS`, and
-   curated registry seeds.
+   in role files, **name search** in `AUTHORS`/`THANKS`/`CONTRIBUTORS`,
+   **package registries** (packages the user maintains on npm/crates.io, whose
+   source repos are pulled in — catches projects where the role is "package
+   maintainer" rather than "top committer"; `--no-package-registries` to skip),
+   and curated registry seeds.
    Forks (which inherit upstream role files) and private repos are dropped
    here — a public "popular projects" record shouldn't surface or leak private
    repos. Use `--include-private` to scan them anyway. If the net still misses a
@@ -145,12 +149,18 @@ carries an **evidence link** (file/page URL) and a **confidence** score.
    force-included, with the role still detected automatically.
 3. **Role attribution** — a registry of pluggable [extractors](praiser/extractors)
    (`ownership`, `codeowners`, `maintainers`, `manifests`, `enhancement_proposals`,
-   `governance`, `contributors`, `subcomponents`, `authors`, `web_roles`). The
+   `governance`, `contributors`, `subcomponents`, `authors`, `web_roles`,
+   `packages`). The
    `contributors` signal measures size by commits **and** merged-PR count
    (robust to squash/ghstack one-commit-per-PR workflows and unlinked commit
    emails); `subcomponents` credits leading/authoring a *part* of a monorepo via
    commit-path analysis (e.g. f2py in NumPy, sparse tensors in PyTorch) — seeded
-   in the registry and extendable with `--add-repo owner/repo:path`.
+   in the registry and extendable with `--add-repo owner/repo:path`. `packages`
+   credits **maintainer** of an npm/crates.io package (keyed on the user's login)
+   and **author** of a PyPI distribution (matched on the author/maintainer name,
+   so a popular package isn't mis-credited to a mere contributor) — only when
+   the package itself names the repo as its source, which guards against
+   registry-handle collisions.
    (A LOC-diff size axis is intentionally deferred — noisy with generated/vendored
    code and costly to compute — until a need justifies the extra dimension.)
    A repo under the user's

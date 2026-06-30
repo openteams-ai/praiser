@@ -20,6 +20,7 @@ _BUILTIN_MODULES = [
     "subcomponents",
     "authors",
     "web_roles",
+    "packages",
 ]
 
 

@@ -65,6 +65,7 @@ class Config:
     contributor_pages: int = 2           # contributors API pages (100 each)
     jobs: int = 8                        # concurrent candidates during attribution
     discover_roles: bool = True          # find role pages via LLM + web search
+    use_package_registries: bool = True  # discover roles via PyPI/npm/crates.io
     extra_repos: list[str] = field(default_factory=list)  # user-supplied owner/repo
     # user-supplied subcomponents: owner/repo -> [paths]
     extra_subcomponents: dict[str, list[str]] = field(default_factory=dict)

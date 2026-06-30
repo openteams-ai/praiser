@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
 from ..github_client import GitHubClient
-from ..models import Evidence, Identity
+from ..models import Evidence, Identity, PackageRef
 from ..registry import KnownProject, KnownProjects
 
 
@@ -33,6 +33,8 @@ class ExtractContext:
     manual_repos: set[str] = field(default_factory=set)  # user-vouched repos
     # user-vouched subcomponents: repo -> [paths]
     manual_subcomponents: dict[str, list[str]] = field(default_factory=dict)
+    # owner/repo (lowercased) -> packages it ships (registry maintainer signal)
+    package_index: dict[str, list[PackageRef]] = field(default_factory=dict)
     # repo -> {login: commit_count} | None (None = could not fetch)
     _contrib_cache: dict[str, dict[str, int] | None] = field(default_factory=dict)
     # repo -> [role-source dicts] discovered this run (for --save-registry)
