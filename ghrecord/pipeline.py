@@ -63,7 +63,9 @@ def run(config: Config) -> RunResult:
 
         progress.phase("discovering candidate repositories…")
         candidates = discover(
-            client, identity, registry, include_private=config.include_private
+            client, identity, registry,
+            include_private=config.include_private,
+            extra_repos=config.extra_repos,
         )
         _log(config, f"discovered {len(candidates)} candidate repos")
         rate0 = client.rate_summary()
@@ -78,6 +80,7 @@ def run(config: Config) -> RunResult:
             popularity_floor=config.min_stars,
             contributor_pages=config.contributor_pages,
             auto_discover_roles=config.discover_roles and llm is not None,
+            manual_repos=set(config.extra_repos),
         )
         records, reset_in = _attribute(config, candidates, ctx, progress)
         progress.done()
@@ -90,7 +93,8 @@ def run(config: Config) -> RunResult:
             _log(config, f"rate limit during popularity enrichment: {exc}")
             reset_in = exc.reset_in if reset_in is None else reset_in
         records, secondary = filter_records(
-            records, min_stars=config.min_stars, registry=registry
+            records, min_stars=config.min_stars, registry=registry,
+            force_primary=set(config.extra_repos),
         )
         _log(config, f"{len(records)} primary + {len(secondary)} secondary repos")
         rate1 = client.rate_summary()

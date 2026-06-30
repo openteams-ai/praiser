@@ -83,6 +83,7 @@ gh-record <username>
     [--no-save-registry]   don't persist popularity + discovered role sources
     [--no-discover-roles]  don't web-search for role pages (default: on w/ LLM)
     [--no-llm]             disable all Claude features
+    [--add-repo OWNER/REPO] force-scan a repo discovery missed (repeatable)
     [--include-private]    also scan private repos (default: skip them)
     [--contributor-pages N] contributors API pages/repo, 100 each (default: 2)
     [-j N | --jobs N]     candidates scanned concurrently (default: 8)
@@ -110,7 +111,10 @@ carries an **evidence link** (file/page URL) and a **confidence** score.
    curated registry seeds.
    Forks (which inherit upstream role files) and private repos are dropped
    here — a public "popular projects" record shouldn't surface or leak private
-   repos. Use `--include-private` to scan them anyway.
+   repos. Use `--include-private` to scan them anyway. If the net still misses a
+   project (e.g. a private-dev repo, or one whose history GitHub doesn't
+   attribute), name it with `--add-repo OWNER/REPO` — it's force-scanned and
+   force-included, with the role still detected automatically.
 3. **Role attribution** — a registry of pluggable [extractors](ghrecord/extractors)
    (`ownership`, `codeowners`, `maintainers`, `manifests`, `enhancement_proposals`,
    `governance`, `contributors`, `authors`, `web_roles`). A repo under the user's

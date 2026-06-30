@@ -30,6 +30,7 @@ class ExtractContext:
     contributor_pages: int = 2  # contributors API pages (100 each) to fetch
     auto_discover_roles: bool = False  # find role pages via LLM + web search
     role_discovery_floor: int = 1000   # only auto-discover for repos this popular
+    manual_repos: set[str] = field(default_factory=set)  # user-vouched repos
     # repo -> {login: commit_count} | None (None = could not fetch)
     _contrib_cache: dict[str, dict[str, int] | None] = field(default_factory=dict)
     # repo -> [role-source dicts] discovered this run (for --save-registry)
@@ -75,6 +76,8 @@ class ExtractContext:
         a copy cannot fake is affiliation (the repo being under the user's own
         account or org) or being the popular, canonical project itself.
         """
+        if candidate.name_with_owner in self.manual_repos:
+            return True  # the user explicitly vouched for this repo
         if self.identity.matches_handle(candidate.owner):
             return True  # the repo is under the user's own account
         if candidate.owner.lower() in self.org_logins:

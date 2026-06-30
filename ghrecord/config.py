@@ -3,7 +3,7 @@
 import os
 import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -64,6 +64,7 @@ class Config:
     contributor_pages: int = 2           # contributors API pages (100 each)
     jobs: int = 8                        # concurrent candidates during attribution
     discover_roles: bool = True          # find role pages via LLM + web search
+    extra_repos: list[str] = field(default_factory=list)  # user-supplied owner/repo
 
     def __post_init__(self) -> None:
         if self.cache_dir is None:

@@ -78,6 +78,7 @@ def filter_records(
     *,
     min_stars: int,
     registry: KnownProjects,
+    force_primary: set[str] | None = None,
 ) -> tuple[list[ProjectRecord], list[ProjectRecord]]:
     """Split records into (primary, secondary).
 
@@ -89,6 +90,7 @@ def filter_records(
     is widely-used-and-maintained becomes a secondary record.
     """
     high_signal_floor = max(10, min_stars // 5)
+    force_primary = force_primary or set()
     primary: list[ProjectRecord] = []
     secondary: list[ProjectRecord] = []
     for rec in records:
@@ -101,7 +103,8 @@ def filter_records(
             and rec.confidence >= 0.7
             and rec.stars >= high_signal_floor
         )
-        if rec.stars >= min_stars or override or high_signal:
+        if (rec.name_with_owner in force_primary
+                or rec.stars >= min_stars or override or high_signal):
             primary.append(rec)
         elif is_widely_used_and_maintained(rec, min_stars) or is_notable_authored(rec):
             secondary.append(rec)

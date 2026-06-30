@@ -88,6 +88,8 @@ def keep_candidate(
     inherit upstream role files) and private repos are dropped by default (a
     public 'popular projects' record shouldn't surface, or leak, private repos).
     """
+    if "manual" in c.sources:
+        return True  # the user explicitly asked for this repo
     if c.name_with_owner in registry:
         return True
     if c.is_fork:
@@ -105,6 +107,7 @@ def discover(
     include_org_repos: bool = True,
     use_code_search: bool = True,
     include_private: bool = False,
+    extra_repos: list[str] | None = None,
 ) -> list[Candidate]:
     candidates: dict[str, Candidate] = {}
     # Names whose fork/star metadata is authoritative (came from a GraphQL node).
@@ -160,6 +163,11 @@ def discover(
     # Always check registry seeds (popularity filled in Phase 3).
     for seed in registry.seeds():
         add({"nameWithOwner": seed.name_with_owner}, "registry")
+
+    # User-supplied repos the tool didn't find on its own.
+    for repo in extra_repos or []:
+        if "/" in repo:
+            add({"nameWithOwner": repo}, "manual")
 
     # Resolve fork/star metadata for code-search & registry candidates so the
     # fork filter below is accurate. This matters a lot: forks inherit the

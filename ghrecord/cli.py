@@ -78,6 +78,10 @@ def build_parser() -> argparse.ArgumentParser:
                         "Claude + web search to find official team/governance "
                         "pages (default: on when LLM credentials are available; "
                         "needs the llm extra + an API key or Claude subscription)")
+    p.add_argument("--add-repo", action="append", default=[], metavar="OWNER/REPO",
+                   dest="extra_repos",
+                   help="also scan this repo even if discovery missed it "
+                        "(repeatable); the role is still detected automatically")
     p.add_argument("--include-private", action="store_true",
                    help="also scan private repos (default: skip them)")
     p.add_argument("--contributor-pages", type=int, default=2, metavar="N",
@@ -136,6 +140,7 @@ def main(argv: list[str] | None = None) -> int:
         contributor_pages=args.contributor_pages,
         jobs=args.jobs,
         discover_roles=args.discover_roles,
+        extra_repos=args.extra_repos,
     )
 
     try:

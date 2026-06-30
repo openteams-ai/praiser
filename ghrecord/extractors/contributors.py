@@ -34,8 +34,10 @@ class ContributorsExtractor(Extractor):
     def applicable(self, candidate, ctx: ExtractContext) -> bool:
         # Worthwhile for star-popular repos and for widely-forked (used) ones,
         # so we also catch core roles on less-popular-but-widely-used projects.
+        # A user-vouched (manual) repo is always checked, whatever its size.
         return (
-            candidate.stars >= max(1, ctx.popularity_floor)
+            candidate.name_with_owner in ctx.manual_repos
+            or candidate.stars >= max(1, ctx.popularity_floor)
             or candidate.forks >= WIDELY_USED_FORKS
         )
 
