@@ -6,6 +6,7 @@ package manifests, enhancement-proposal series, governance prose) to a list of
 pure function so it can be unit-tested offline with no network.
 """
 
+import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
@@ -31,9 +32,23 @@ class ExtractContext:
     role_discovery_floor: int = 1000   # only auto-discover for repos this popular
     # repo -> {login: commit_count} | None (None = could not fetch)
     _contrib_cache: dict[str, dict[str, int] | None] = field(default_factory=dict)
+    # repo -> [role-source dicts] discovered this run (for --save-registry)
+    _discovered: dict[str, list[dict]] = field(default_factory=dict)
+    _discovered_lock: object = field(default_factory=threading.Lock)
 
     def known(self, name_with_owner: str) -> KnownProject | None:
         return self.registry.get(name_with_owner)
+
+    def note_discovered(self, name_with_owner: str, sources: list[dict]) -> None:
+        """Record web-discovered role sources for a repo (thread-safe)."""
+        if not sources:
+            return
+        with self._discovered_lock:
+            self._discovered.setdefault(name_with_owner, list(sources))
+
+    def discovered_sources(self) -> dict[str, list[dict]]:
+        with self._discovered_lock:
+            return {k: list(v) for k, v in self._discovered.items()}
 
     def contributors(self, candidate) -> dict[str, int] | None:
         """Cached {login: commits} for a repo, or None if it couldn't be fetched."""

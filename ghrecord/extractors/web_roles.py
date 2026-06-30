@@ -14,9 +14,13 @@ project's own statement of who holds the role.
 import html
 import re
 
-from ..models import Evidence
+from ..models import STEERING_COUNCIL, Evidence
 from . import register
 from .base import Extractor, ExtractContext
+
+# High-authority roles must be backed by a GitHub-handle match, not just a name
+# (a name on an "about"/history page is too easily a founder/credit mention).
+HANDLE_REQUIRED_ROLES = frozenset({STEERING_COUNCIL})
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _GH_LINK_RE = re.compile(r"github\.com/([A-Za-z0-9-]+)", re.I)
@@ -61,6 +65,8 @@ class WebRolesExtractor(Extractor):
             m = matches(page, ctx.identity.logins, ctx.identity.names)
             if m is None:
                 continue
+            if not m and src.role in HANDLE_REQUIRED_ROLES:
+                continue  # name-only is too weak for e.g. steering council
             label = src.label or "project role page"
             out.append(Evidence(
                 source=self.name, role=src.role, url=src.url,
@@ -99,12 +105,16 @@ class WebRolesAutoExtractor(Extractor):
         except Exception:
             return []
         out: list[Evidence] = []
+        reachable: list[dict] = []
         for src in sources:
             page = ctx.client.get_url(src["url"])
             if not page:
                 continue
+            reachable.append(src)  # real, fetchable page -> worth saving
             m = matches(page, ctx.identity.logins, ctx.identity.names)
             if m is None:
+                continue
+            if not m and src["role"] in HANDLE_REQUIRED_ROLES:
                 continue
             out.append(Evidence(
                 source=self.name, role=src["role"], url=src["url"],
@@ -113,6 +123,8 @@ class WebRolesAutoExtractor(Extractor):
                        + f" on {src.get('label', 'discovered role page')} "
                          "(web-search discovered)",
             ))
+        # Record discovered, reachable sources so --save-registry can persist them.
+        ctx.note_discovered(candidate.name_with_owner, reachable)
         return out
 
 

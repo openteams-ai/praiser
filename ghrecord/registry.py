@@ -196,6 +196,25 @@ class KnownProjects:
         proj.popularity["stars"] = stars
         proj.popularity["forks"] = forks
 
+    def add_role_sources(
+        self, name_with_owner: str, sources: list[dict[str, Any]]
+    ) -> None:
+        """Merge web-discovered role sources into a project (dedup by URL)."""
+        proj = self.get(name_with_owner)
+        if proj is None:
+            proj = KnownProject(name_with_owner=name_with_owner)
+            self.projects[name_with_owner] = proj
+            self._reindex()
+        have = {s.url for s in proj.role_sources}
+        for s in sources:
+            url = s.get("url")
+            if not url or url in have:
+                continue
+            proj.role_sources.append(RoleSource(
+                url=url, role=s.get("role", "maintainer"), label=s.get("label")
+            ))
+            have.add(url)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "_schema": f"ghrecord known-projects registry v{SCHEMA_VERSION}",

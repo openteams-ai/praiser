@@ -156,7 +156,14 @@ popular/important projects together with:
 * **`importance`** — a human label (`critical`, `high`, ...).
 
 Point `--registry mine.json` at your own file to extend or override the seed;
-add `--save-registry` to have observed popularity written back.
+add `--save-registry` to have observed popularity **and any web-discovered role
+sources** (`--discover-roles`) written back — so a one-off discovery becomes
+reusable curated knowledge. Authoritative roles are conservative: high-authority
+roles like steering council require a GitHub-**handle** match on the page (not
+just a name, which is too easily a founder/credit mention).
+
+Discovery results are also cached (the web-search call and fetched pages), so
+re-runs don't re-search even without `--save-registry`.
 
 ### Enhancement-proposal generalization
 

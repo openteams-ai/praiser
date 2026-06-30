@@ -30,6 +30,24 @@ def test_role_sources_roundtrip(tmp_path):
     assert pt.role_sources[0].role == "maintainer"
 
 
+def test_add_role_sources_merges_and_dedupes_and_saves(tmp_path):
+    reg = KnownProjects(projects={})
+    reg.add_role_sources("acme/lib", [
+        {"url": "https://acme.org/team", "role": "maintainer", "label": "Team"},
+        {"url": "https://acme.org/team", "role": "maintainer"},  # dup url ignored
+        {"url": "https://acme.org/gov", "role": "steering_council"},
+    ])
+    proj = reg.get("acme/lib")
+    assert [s.url for s in proj.role_sources] == [
+        "https://acme.org/team", "https://acme.org/gov"]
+
+    out = tmp_path / "r.json"
+    reg.save(out)
+    reloaded = KnownProjects.load(extra_path=out)
+    rp = reloaded.get("acme/lib")
+    assert {s.role for s in rp.role_sources} == {"maintainer", "steering_council"}
+
+
 def test_case_insensitive_and_alias_lookup():
     reg = KnownProjects.load()
     assert "Python/PEPs" in reg

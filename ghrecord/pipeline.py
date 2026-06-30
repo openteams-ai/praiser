@@ -106,6 +106,13 @@ def run(config: Config) -> RunResult:
             registry.record_popularity(
                 rec.name_with_owner, stars=rec.stars, forks=rec.forks
             )
+        # Promote web-discovered role sources into the registry so a later
+        # --save-registry persists them as curated knowledge.
+        discovered = ctx.discovered_sources()
+        for name, sources in discovered.items():
+            registry.add_role_sources(name, sources)
+        if discovered:
+            _log(config, f"discovered role sources for {len(discovered)} repo(s)")
         if config.save_registry and config.registry_path:
             registry.save(config.registry_path)
             _log(config, f"saved registry to {config.registry_path}")
