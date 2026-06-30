@@ -25,6 +25,7 @@ class ExtractContext:
     org_logins: set[str] = field(default_factory=set)  # orgs the user belongs to
     popularity_floor: int = 0  # gate expensive per-repo checks on stars
     canonical_stars: int = 1000  # at/above this a repo is plausibly the original
+    contributor_pages: int = 2  # contributors API pages (100 each) to fetch
     # repo -> {login: commit_count} | None (None = could not fetch)
     _contrib_cache: dict[str, dict[str, int] | None] = field(default_factory=dict)
 
@@ -35,7 +36,9 @@ class ExtractContext:
         """Cached {login: commits} for a repo, or None if it couldn't be fetched."""
         key = candidate.name_with_owner
         if key not in self._contrib_cache:
-            raw = self.client.repo_contributors(candidate.owner, candidate.repo)
+            raw = self.client.repo_contributors(
+                candidate.owner, candidate.repo, max_pages=self.contributor_pages
+            )
             if raw is None:
                 self._contrib_cache[key] = None
             else:

@@ -1,5 +1,32 @@
 from ghrecord.extractors.authors import find_credit
+from ghrecord.extractors.base import ExtractContext
 from ghrecord.extractors.contributors import classify
+from ghrecord.models import Candidate, Identity
+from ghrecord.registry import KnownProjects
+
+
+class _RecordingClient:
+    def __init__(self):
+        self.calls = []
+
+    def repo_contributors(self, owner, repo, max_pages=2):
+        self.calls.append(max_pages)
+        return [{"login": "pearu", "contributions": 10}]
+
+
+def test_contributor_pages_cap_is_passed_through():
+    client = _RecordingClient()
+    ctx = ExtractContext(
+        identity=Identity(primary_login="pearu"),
+        client=client,
+        registry=KnownProjects(projects={}),
+        contributor_pages=2,
+    )
+    ctx.contributors(Candidate("a/b"))
+    assert client.calls == [2]
+    # cached: no second fetch
+    ctx.contributors(Candidate("a/b"))
+    assert client.calls == [2]
 
 THANKS = """\
 SciPy Developers

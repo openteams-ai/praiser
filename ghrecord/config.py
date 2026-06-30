@@ -54,6 +54,7 @@ class Config:
     verbose: bool = False
     quiet: bool = False                  # suppress the default progress display
     include_private: bool = False        # scan private repos too (default: skip)
+    contributor_pages: int = 2           # contributors API pages (100 each)
 
     def __post_init__(self) -> None:
         if self.cache_dir is None:

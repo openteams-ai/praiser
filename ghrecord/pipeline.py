@@ -75,6 +75,7 @@ def run(config: Config) -> RunResult:
             identity=identity, client=client, registry=registry, llm=llm,
             org_logins=org_logins(client, identity.primary_login),
             popularity_floor=config.min_stars,
+            contributor_pages=config.contributor_pages,
         )
         records, reset_in = _attribute(config, candidates, ctx, progress)
         progress.done()

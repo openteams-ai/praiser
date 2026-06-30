@@ -372,7 +372,7 @@ class GitHubClient:
         return []
 
     def repo_contributors(
-        self, owner: str, repo: str, max_pages: int = 5
+        self, owner: str, repo: str, max_pages: int = 2
     ) -> list[dict[str, Any]] | None:
         """Top contributors [{login, contributions}], sorted desc.
 
