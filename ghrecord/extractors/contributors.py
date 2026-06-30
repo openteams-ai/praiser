@@ -57,7 +57,12 @@ class ContributorsExtractor(Extractor):
         rank = 1 + sum(1 for v in contribs.values() if v > count)
         confidence = classify(count, rank)
         if confidence is None:
-            return []
+            # Below the elevated bar = a plain contributor, normally excluded.
+            # But if the user explicitly added this repo, record it anyway at
+            # honest low confidence — they vouched it matters.
+            if candidate.name_with_owner not in ctx.manual_repos:
+                return []
+            confidence = 0.4
         return [Evidence(
             source=self.name, role=CORE_CONTRIBUTOR,
             url=f"{candidate.url}/graphs/contributors",
