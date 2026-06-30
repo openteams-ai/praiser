@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 from .github_client import GitHubClient
 from .models import (
+    AUTHOR,
     MAINTAINER,
     STANDARDS_AUTHOR,
     STEERING_COUNCIL,
@@ -45,6 +46,16 @@ def is_widely_used_and_maintained(rec: ProjectRecord, min_stars: int) -> bool:
     """A below-threshold project that still looks worth recording."""
     used = rec.forks >= SECONDARY_MIN_FORKS or rec.stars >= max(5, min_stars // 5)
     return used and _is_maintained(rec.pushed_at)
+
+
+def is_notable_authored(rec: ProjectRecord) -> bool:
+    """Keep a project the user *authored* even if small/dormant.
+
+    Authorship is a lasting credential, so (unlike the generic secondary check)
+    it doesn't require recent maintenance — only some minimal traction, to skip
+    throwaway personal repos and personal sites.
+    """
+    return rec.role == AUTHOR and (rec.stars >= 5 or rec.forks >= 3)
 
 
 def enrich_stars(
@@ -92,6 +103,6 @@ def filter_records(
         )
         if rec.stars >= min_stars or override or high_signal:
             primary.append(rec)
-        elif is_widely_used_and_maintained(rec, min_stars):
+        elif is_widely_used_and_maintained(rec, min_stars) or is_notable_authored(rec):
             secondary.append(rec)
     return primary, secondary

@@ -10,7 +10,9 @@ Returns deduped ``Candidate`` objects; forks are dropped unless they are also a
 registry seed.
 """
 
+import datetime
 import json
+import re
 
 from .github_client import GitHubClient
 from .models import Candidate, Identity
@@ -43,6 +45,24 @@ query($org:String!) {
   }
 }
 """
+
+# Per-year commit contributions — catches repos the user contributed to long ago
+# (before the rolling ~1-year contribution graph), e.g. a former employer's repo.
+HISTORY_QUERY = """
+query($login:String!, $from:DateTime!, $to:DateTime!) {
+  user(login:$login) {
+    contributionsCollection(from:$from, to:$to) {
+      commitContributionsByRepository(maxRepositories:100) {
+        repository { nameWithOwner stargazerCount forkCount isFork isPrivate pushedAt }
+      }
+    }
+  }
+}
+"""
+
+_REPO_LINK_RE = re.compile(r"github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)")
+_NON_REPO_OWNERS = {"sponsors", "orgs", "users", "topics", "features", "about",
+                    "settings", "marketplace", "apps"}
 
 # Role-bearing files to look for the handle in via code search.
 SEARCH_FILES = ["CODEOWNERS", "MAINTAINERS", "OWNERS", "GOVERNANCE"]
@@ -130,6 +150,8 @@ def discover(
             for node in (org_node.get("repositories") or {}).get("nodes", []) or []:
                 add(node, "org-repo")
 
+    _historical_contributions(client, identity, add)
+    _profile_links(client, identity, add)
     if use_code_search:
         _code_search(client, identity, add)
         _name_search(client, identity, add)
@@ -209,6 +231,48 @@ def _name_search(client: GitHubClient, identity: Identity, add) -> None:
                 repo = (item.get("repository") or {}).get("full_name")
                 if repo:
                     add({"nameWithOwner": repo}, f"namesearch:{fname}")
+
+
+def _historical_contributions(client: GitHubClient, identity: Identity, add) -> None:
+    """Enumerate every repo the user committed to, year by year, since signup.
+
+    The rolling contribution graph only covers ~1 year, so a former employer's
+    repo (e.g. a major past role) is invisible to it. contributionsCollection
+    accepts a date range, so we walk one year at a time over the account's
+    lifetime to recover the full history.
+    """
+    login = identity.primary_login
+    prof = client.graphql("query($l:String!){user(login:$l){createdAt}}", {"l": login})
+    created = ((prof or {}).get("user") or {}).get("createdAt")
+    if not created:
+        return
+    start_year = int(created[:4])
+    end_year = datetime.datetime.now(datetime.timezone.utc).year
+    for year in range(start_year, end_year + 1):
+        variables = {
+            "login": login,
+            "from": f"{year}-01-01T00:00:00Z",
+            "to": f"{year}-12-31T23:59:59Z",
+        }
+        data = client.graphql(HISTORY_QUERY, variables)
+        coll = (((data or {}).get("user") or {}).get("contributionsCollection") or {})
+        for item in coll.get("commitContributionsByRepository", []) or []:
+            repo = item.get("repository") or {}
+            if repo.get("nameWithOwner"):
+                add(repo, "history")
+
+
+def _profile_links(client: GitHubClient, identity: Identity, add) -> None:
+    """Add owner/repo links from the user's profile README (self-reported work)."""
+    login = identity.primary_login
+    text = client.get_file(login, login, "README.md")
+    if not text:
+        return
+    for match in _REPO_LINK_RE.findall(text):
+        repo = match.rstrip("./")
+        owner = repo.split("/", 1)[0]
+        if repo.count("/") == 1 and owner.lower() not in _NON_REPO_OWNERS:
+            add({"nameWithOwner": repo}, "profile")
 
 
 def _commit_search(client: GitHubClient, identity: Identity, add) -> None:
