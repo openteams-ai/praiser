@@ -1,0 +1,65 @@
+{
+  "_schema": "ghrecord known-projects registry v1",
+  "_doc": "Curated popular/important projects with role-defining heuristics and popularity hints. 'role_conventions' tell extractors how each project records roles; 'popularity.min_stars_override' keeps high-signal-but-small standards projects past the popularity filter. The tool may append observed popularity to this structure with --save-registry.",
+  "projects": {
+    "python/peps": {
+      "importance": "critical",
+      "role_conventions": [
+        {
+          "extractor": "enhancement_proposals",
+          "role": "standards_author",
+          "path": "peps",
+          "header_format": "rst"
+        }
+      ],
+      "popularity": { "min_stars_override": true },
+      "notes": "Python Enhancement Proposals; RST files pep-NNNN.rst with ':Author:' headers."
+    },
+    "numpy/numpy": {
+      "importance": "critical",
+      "role_conventions": [
+        {
+          "extractor": "enhancement_proposals",
+          "role": "standards_author",
+          "path": "doc/neps",
+          "header_format": "rst"
+        },
+        { "extractor": "codeowners", "role": "code_owner" }
+      ],
+      "notes": "NumPy Enhancement Proposals live under doc/neps as RST."
+    },
+    "scientific-python/specs": {
+      "importance": "high",
+      "role_conventions": [
+        {
+          "extractor": "enhancement_proposals",
+          "role": "standards_author",
+          "path": ".",
+          "header_format": "yaml"
+        }
+      ],
+      "popularity": { "min_stars_override": true },
+      "notes": "Scientific Python SPECs; Markdown with YAML front-matter 'author:'."
+    },
+    "jupyter/enhancement-proposals": {
+      "importance": "high",
+      "role_conventions": [
+        {
+          "extractor": "enhancement_proposals",
+          "role": "standards_author",
+          "path": ".",
+          "header_format": "yaml"
+        }
+      ],
+      "popularity": { "min_stars_override": true },
+      "notes": "Jupyter Enhancement Proposals (JEPs); Markdown with YAML front-matter."
+    },
+    "kubernetes/kubernetes": {
+      "importance": "critical",
+      "role_conventions": [
+        { "extractor": "maintainers", "role": "maintainer", "path": "OWNERS" }
+      ],
+      "notes": "Uses Kubernetes OWNERS (YAML) files with approvers/reviewers."
+    }
+  }
+}

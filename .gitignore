@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual envs
+.venv/
+venv/
+
+# gh-record runtime artifacts
+.ghrecord-cache/
+*.ghrecord.json
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
