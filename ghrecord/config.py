@@ -54,6 +54,7 @@ class Config:
     token: str | None = None
     min_stars: int = 50
     fmt: str = "md"                 # "md" | "json"
+    highlights: int | None = None   # if set, print only the top-N highlights
     cache_dir: Path | None = None
     use_llm: bool = True
     registry_path: Path | None = None   # user known-projects file (defaults below)

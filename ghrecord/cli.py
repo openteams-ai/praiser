@@ -8,7 +8,7 @@ from . import llm as _llm
 from .config import Config, resolve_token
 from .github_client import RateLimitError
 from .pipeline import _humanize, run
-from .render import render
+from .render import render, render_highlights
 
 # Shown when Anthropic credentials are needed (LLM features).
 ANTHROPIC_HELP = (
@@ -58,6 +58,10 @@ def build_parser() -> argparse.ArgumentParser:
                         "and registry overrides survive regardless")
     p.add_argument("--format", choices=["md", "json"], default="md",
                    dest="fmt", help="output format (default: md)")
+    p.add_argument("--highlights", nargs="?", type=int, const=8, default=None,
+                   metavar="N",
+                   help="print only the top-N highlights, one line each "
+                        "(default 8); overrides --format")
     p.add_argument("--token", default=None,
                    help="GitHub token (or set GITHUB_TOKEN / GH_TOKEN)")
     p.add_argument("--cache-dir", default=None,
@@ -142,6 +146,7 @@ def main(argv: list[str] | None = None) -> int:
         token=token,
         min_stars=args.min_stars,
         fmt=args.fmt,
+        highlights=args.highlights,
         cache_dir=args.cache_dir,
         use_llm=not args.no_llm,
         registry_path=args.registry_path,
@@ -186,9 +191,14 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
 
-    output = render(
-        config.username, result.records, config.fmt, result.secondary
-    )
+    if config.highlights is not None:
+        output = render_highlights(
+            config.username, result.records, config.highlights
+        )
+    else:
+        output = render(
+            config.username, result.records, config.fmt, result.secondary
+        )
     if args.output:
         with open(args.output, "w", encoding="utf-8") as fh:
             fh.write(output + "\n")

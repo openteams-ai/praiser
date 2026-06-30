@@ -29,6 +29,18 @@ gh-record gvanrossum --format json -o gvanrossum.json
 gh-record someuser --no-discover-roles --no-llm   # skip the LLM/web features
 ```
 
+For a quick read, `gh-record <username> --highlights` prints just the top roles,
+one line each:
+
+```
+pearu — top 8 highlights:
+- pytorch/pytorch — Maintainer (101k★, conf 0.90)
+- numpy/numpy — Maintainer (32k★, conf 0.90)
+- scipy/scipy — Maintainer (15k★, conf 0.90)
+- heavyai/heavydb — Core contributor (3k★, conf 0.80)
+…and N more elevated-role project(s).
+```
+
 `gh-record <username>` is meant to be sufficient on its own: role auto-discovery
 and registry persistence are **on by default** (auto-discovery activates only
 when LLM credentials are present, and degrades silently otherwise).
@@ -77,6 +89,7 @@ cache preserves what already succeeded — so re-running finishes the job.
 gh-record <username>
     [--min-stars N]        popularity threshold (default 50)
     [--format md|json]     output format (default md)
+    [--highlights [N]]     print only the top-N highlights, one line each (default 8)
     [--token TOKEN]        or GITHUB_TOKEN / GH_TOKEN
     [--cache-dir DIR]      default ~/.cache/ghrecord
     [--registry FILE]      known-projects file (default: ~/.local/share/ghrecord/)

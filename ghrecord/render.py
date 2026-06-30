@@ -132,6 +132,30 @@ def render_markdown(
     return "\n".join(lines)
 
 
+def _human_stars(stars: int) -> str:
+    if stars >= 1000:
+        return f"{stars / 1000:.0f}k"
+    return str(stars)
+
+
+def render_highlights(username: str, records: list[ProjectRecord], n: int) -> str:
+    """A compact top-N summary — the most important roles, one line each."""
+    if not records:
+        return f"{username}: no elevated roles found."
+    top = records[:max(1, n)]
+    lines = [f"{username} — top {len(top)} highlights:"]
+    for rec in top:
+        role = ROLE_LABELS.get(rec.role or "", rec.role or "?")
+        lines.append(
+            f"- {rec.name_with_owner} — {role} "
+            f"({_human_stars(rec.stars)}★, conf {rec.confidence:.2f})"
+        )
+    extra = len(records) - len(top)
+    if extra > 0:
+        lines.append(f"…and {extra} more elevated-role project(s).")
+    return "\n".join(lines)
+
+
 def render(
     username: str,
     records: list[ProjectRecord],
