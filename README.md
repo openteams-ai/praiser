@@ -1,5 +1,7 @@
 # praiser
 
+[![CI](https://github.com/openteams-ai/praiser/actions/workflows/ci.yml/badge.svg)](https://github.com/openteams-ai/praiser/actions/workflows/ci.yml)
+
 Given a username, **praiser** records the popular open-source projects where
 that person holds an **elevated role** — author/creator, maintainer, code owner,
 steering-council member, standards (PEP/RFC) author, or core contributor — with
