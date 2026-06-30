@@ -84,6 +84,11 @@ def build_parser() -> argparse.ArgumentParser:
                         "Claude + web search to find official team/governance "
                         "pages (default: on when LLM credentials are available; "
                         "needs the llm extra + an API key or Claude subscription)")
+    p.add_argument("--package-registries", action=argparse.BooleanOptionalAction,
+                   default=True,
+                   help="also look up the user on PyPI, npm and crates.io to "
+                        "credit packages they maintain/author and surface the "
+                        "repos those ship from (default: on)")
     p.add_argument("--add-repo", action="append", default=[],
                    metavar="OWNER/REPO[:PATH]", dest="extra_repos",
                    help="also scan this repo even if discovery missed it "
@@ -164,6 +169,7 @@ def main(argv: list[str] | None = None) -> int:
         contributor_pages=args.contributor_pages,
         jobs=args.jobs,
         discover_roles=args.discover_roles,
+        use_package_registries=args.package_registries,
         extra_repos=extra_repos,
         extra_subcomponents=extra_subcomponents,
     )

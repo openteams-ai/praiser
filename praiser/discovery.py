@@ -15,7 +15,7 @@ import json
 import re
 
 from .github_client import GitHubClient
-from .models import Candidate, Identity
+from .models import Candidate, Identity, PackageRef
 from .registry import KnownProjects
 
 DISCOVERY_QUERY = """
@@ -108,6 +108,7 @@ def discover(
     use_code_search: bool = True,
     include_private: bool = False,
     extra_repos: list[str] | None = None,
+    package_refs: list[PackageRef] | None = None,
 ) -> list[Candidate]:
     candidates: dict[str, Candidate] = {}
     # Names whose fork/star metadata is authoritative (came from a GraphQL node).
@@ -163,6 +164,12 @@ def discover(
     # Always check registry seeds (popularity filled in Phase 3).
     for seed in registry.seeds():
         add({"nameWithOwner": seed.name_with_owner}, "registry")
+
+    # Repos the user ships packages from on PyPI/npm/crates — catches projects
+    # where their role is "package maintainer" rather than "top committer".
+    for ref in package_refs or []:
+        if ref.repo:
+            add({"nameWithOwner": ref.repo}, f"pkg:{ref.registry}")
 
     # User-supplied repos the tool didn't find on its own.
     for repo in extra_repos or []:

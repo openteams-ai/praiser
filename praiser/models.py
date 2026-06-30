@@ -102,6 +102,25 @@ class Candidate:
         return f"https://github.com/{self.name_with_owner}"
 
 
+# --- Package-registry signal (Phase 1) ------------------------------------
+@dataclass
+class PackageRef:
+    """A published package a user holds a role on, and the repo it ships from.
+
+    The ``repo`` link is what corroborates the role: a package is only credited
+    to a candidate when the package itself names that repo as its source, which
+    guards against registry-username collisions (a different person who happens
+    to share the handle won't have packages pointing at *this* user's repos).
+    """
+
+    registry: str               # "pypi" | "npm" | "crates"
+    name: str                   # package name
+    url: str                    # registry page URL (clickable evidence)
+    repo: str | None = None     # GitHub "owner/repo" if the source is on GitHub
+    repo_url: str | None = None  # raw source URL (any forge), for reference
+    author_match: bool = False  # registry author/email matched the identity
+
+
 # --- Evidence + final record (Phase 2/4) ----------------------------------
 @dataclass
 class Evidence:

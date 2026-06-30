@@ -336,20 +336,23 @@ class GitHubClient:
                 texts[p] = blob["text"]
         return texts, truncated
 
-    def get_url(self, url: str) -> str | None:
+    def get_url(
+        self, url: str, accept: str = "text/html,application/xhtml+xml"
+    ) -> str | None:
         """Fetch an arbitrary (non-GitHub-API) URL as text, cached.
 
         Sends NO Authorization header — these are external pages (project team /
-        governance sites), and the GitHub token must never leak to them.
+        governance sites), and the GitHub token must never leak to them. Pass
+        ``accept`` for JSON APIs (e.g. package registries); npm's CDN returns
+        406 to the default HTML Accept. Cache is keyed on (url, accept) so the
+        same URL fetched as HTML vs JSON doesn't collide.
         """
-        ck = Cache.key("url", url)
+        ck = Cache.key("url", url, accept)
         cached = self.cache.get(ck, default=None)
         if cached is not None:
             return None if cached == "__404__" else cached
         try:
-            status, _, data = self._request(
-                "GET", url, accept="text/html,application/xhtml+xml", auth=False
-            )
+            status, _, data = self._request("GET", url, accept=accept, auth=False)
         except GitHubError:
             return None
         if status >= 400:

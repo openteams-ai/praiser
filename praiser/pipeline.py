@@ -3,6 +3,7 @@
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from functools import partial
 
 from .cache import Cache
 from .config import Config
@@ -14,6 +15,7 @@ from .llm import LLM
 from .models import WEAK_ROLES, Evidence, ProjectRecord
 from .popularity import enrich_stars, filter_records
 from .progress import Progress
+from .registries import JSON_ACCEPT, discover_packages, index_by_repo
 from .registry import KnownProjects
 
 
@@ -61,11 +63,19 @@ def run(config: Config) -> RunResult:
         identity = resolve_identity(client, config.username)
         _log(config, f"identity: logins={identity.logins} names={identity.names}")
 
+        package_refs = []
+        if config.use_package_registries:
+            pkg_fetch = partial(client.get_url, accept=JSON_ACCEPT)
+            package_refs = discover_packages(pkg_fetch, identity)
+            _log(config, f"package registries: {len(package_refs)} package(s) "
+                         f"({sum(1 for r in package_refs if r.repo)} on GitHub)")
+
         progress.phase("discovering candidate repositories…")
         candidates = discover(
             client, identity, registry,
             include_private=config.include_private,
             extra_repos=config.extra_repos,
+            package_refs=package_refs,
         )
         _log(config, f"discovered {len(candidates)} candidate repos")
         rate0 = client.rate_summary()
@@ -82,6 +92,7 @@ def run(config: Config) -> RunResult:
             auto_discover_roles=config.discover_roles and llm is not None,
             manual_repos=set(config.extra_repos),
             manual_subcomponents=config.extra_subcomponents,
+            package_index=index_by_repo(package_refs),
         )
         records, reset_in = _attribute(config, candidates, ctx, progress)
         progress.done()
