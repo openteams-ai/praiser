@@ -6,7 +6,7 @@ from .cache import Cache
 from .config import Config
 from .discovery import discover
 from .extractors import ExtractContext, all_extractors
-from .github_client import GitHubClient
+from .github_client import GitHubClient, RateLimitError
 from .identity import resolve_identity
 from .llm import LLM
 from .models import WEAK_ROLES, Evidence, ProjectRecord
@@ -17,6 +17,18 @@ from .registry import KnownProjects
 def _log(config: Config, msg: str) -> None:
     if config.verbose:
         print(f"[ghrecord] {msg}", file=sys.stderr)
+
+
+def _humanize(seconds: int | None) -> str:
+    if not seconds or seconds < 0:
+        return "shortly"
+    if seconds < 90:
+        return f"~{seconds}s"
+    minutes = round(seconds / 60)
+    if minutes < 60:
+        return f"~{minutes} min"
+    hours, mins = divmod(minutes, 60)
+    return f"~{hours}h {mins}min" if mins else f"~{hours}h"
 
 
 def run(config: Config) -> list[ProjectRecord]:
@@ -36,14 +48,27 @@ def run(config: Config) -> list[ProjectRecord]:
         ctx = ExtractContext(
             identity=identity, client=client, registry=registry, llm=llm
         )
-        records = _attribute(config, candidates, ctx)
+        records, reset_in = _attribute(config, candidates, ctx)
         _log(config, f"{len(records)} repos with elevated-role evidence")
 
-        enrich_stars(client, records)
+        try:
+            enrich_stars(client, records)
+        except RateLimitError as exc:
+            _log(config, f"rate limit during popularity enrichment: {exc}")
+            reset_in = exc.reset_in if reset_in is None else reset_in
         records = filter_records(
             records, min_stars=config.min_stars, registry=registry
         )
         _log(config, f"{len(records)} repos after popularity filter")
+
+        if reset_in is not None:
+            print(
+                "warning: GitHub rate limit reached during the run — results are "
+                "PARTIAL (some repos were not fully scanned). Wait "
+                f"{_humanize(reset_in)} for the limit to reset, then re-run to "
+                "finish; the cache preserves what already succeeded.",
+                file=sys.stderr,
+            )
 
         for rec in records:
             registry.record_popularity(
@@ -59,17 +84,28 @@ def run(config: Config) -> list[ProjectRecord]:
         client.close()
 
 
-def _attribute(config, candidates, ctx) -> list[ProjectRecord]:
+def _attribute(config, candidates, ctx) -> tuple[list[ProjectRecord], int | None]:
+    """Returns (records, reset_in). ``reset_in`` is the seconds-until-reset when
+    a rate limit cut the scan short (None otherwise), so the caller can warn
+    that results are incomplete and say how long to wait."""
     extractors = all_extractors()
     records: list[ProjectRecord] = []
+    reset_in: int | None = None
     for cand in candidates:
         evidence: list[Evidence] = []
-        for ext in extractors:
-            try:
-                if ext.applicable(cand, ctx):
-                    evidence.extend(ext.extract(cand, ctx))
-            except Exception as exc:  # one extractor failing must not abort the run
-                _log(config, f"{ext.name} failed on {cand.name_with_owner}: {exc}")
+        try:
+            for ext in extractors:
+                try:
+                    if ext.applicable(cand, ctx):
+                        evidence.extend(ext.extract(cand, ctx))
+                except RateLimitError:
+                    raise  # stop the whole run, not just this extractor
+                except Exception as exc:  # one extractor failing is non-fatal
+                    _log(config, f"{ext.name} failed on {cand.name_with_owner}: {exc}")
+        except RateLimitError as exc:
+            _log(config, f"rate limit reached, stopping attribution early: {exc}")
+            reset_in = exc.reset_in if exc.reset_in is not None else 0
+            break
         # Keep the repo only if it has at least one non-weak role.
         if any(e.role not in WEAK_ROLES for e in evidence):
             records.append(ProjectRecord(
@@ -81,4 +117,4 @@ def _attribute(config, candidates, ctx) -> list[ProjectRecord]:
             ))
             _log(config, f"  + {cand.name_with_owner}: "
                          f"{[f'{e.source}:{e.role}' for e in evidence]}")
-    return records
+    return records, reset_in

@@ -27,6 +27,20 @@ class GitHubError(RuntimeError):
     pass
 
 
+class RateLimitError(GitHubError):
+    """Raised when the GitHub rate limit is exhausted and won't reset soon."""
+
+    def __init__(self, message: str, reset_in: int | None = None) -> None:
+        super().__init__(message)
+        self.reset_in = reset_in
+
+
+# Secondary/abuse limits reset in seconds; primary limits can be ~an hour away.
+# We wait out short windows but fail fast (so the caller can stop and report a
+# partial result) on anything longer.
+SHORT_RETRY_WINDOW = 30
+
+
 class GitHubClient:
     def __init__(
         self,
@@ -69,9 +83,9 @@ class GitHubClient:
                     resp = self._client.request(
                         method, url, headers=headers, content=body
                     )
-                    status, rheaders, data = (
+                    status, raw_headers, data = (
                         resp.status_code,
-                        dict(resp.headers),
+                        resp.headers,
                         resp.content,
                     )
                 else:
@@ -80,44 +94,56 @@ class GitHubClient:
                     )
                     try:
                         with urllib.request.urlopen(req) as r:
-                            status, rheaders, data = (
-                                r.status,
-                                dict(r.headers),
-                                r.read(),
-                            )
+                            status, raw_headers, data = r.status, r.headers, r.read()
                     except urllib.error.HTTPError as e:
-                        status, rheaders, data = e.code, dict(e.headers), e.read()
+                        status, raw_headers, data = e.code, e.headers, e.read()
             except Exception as exc:  # network blip
                 last_exc = exc
                 time.sleep(1.5 * (attempt + 1))
                 continue
 
-            if self._should_retry(status, rheaders):
-                self._sleep_for_ratelimit(rheaders, attempt)
+            # Normalise header keys to lowercase: httpx and urllib disagree on
+            # case, and GitHub's rate-limit headers must be read reliably.
+            h = {k.lower(): v for k, v in dict(raw_headers).items()}
+
+            if status in (502, 503, 504):
+                time.sleep(2.0 * (attempt + 1))
                 continue
-            return status, rheaders, data
+
+            reset_in = self._ratelimit_reset_in(status, h, data)
+            if reset_in is not None:
+                if reset_in <= SHORT_RETRY_WINDOW and attempt < self.max_retries - 1:
+                    time.sleep(reset_in + 1)
+                    continue
+                raise RateLimitError(
+                    f"GitHub API rate limit exhausted; resets in {reset_in}s. "
+                    "Provide a token with --token or GITHUB_TOKEN, or wait.",
+                    reset_in=reset_in,
+                )
+            return status, h, data
 
         raise GitHubError(f"request failed after retries: {url} ({last_exc})")
 
     @staticmethod
-    def _should_retry(status: int, headers: dict[str, str]) -> bool:
-        if status in (502, 503, 504):
-            return True
-        if status in (403, 429) and headers.get("X-RateLimit-Remaining") == "0":
-            return True
-        return False
-
-    @staticmethod
-    def _sleep_for_ratelimit(headers: dict[str, str], attempt: int) -> None:
-        reset = headers.get("X-RateLimit-Reset")
-        retry_after = headers.get("Retry-After")
+    def _ratelimit_reset_in(status: int, h: dict[str, str], data: bytes) -> int | None:
+        """Seconds until reset if this response is a rate-limit refusal, else None."""
+        if status not in (403, 429):
+            return None
+        body = (data or b"").lower()
+        limited = (
+            h.get("x-ratelimit-remaining") == "0"
+            or b"rate limit exceeded" in body
+            or b"secondary rate limit" in body
+        )
+        if not limited:
+            return None  # a 403 for another reason (e.g. forbidden path)
+        retry_after = h.get("retry-after")
         if retry_after and retry_after.isdigit():
-            time.sleep(min(60, int(retry_after)))
-        elif reset and reset.isdigit():
-            wait = max(0, int(reset) - int(time.time())) + 1
-            time.sleep(min(90, wait))
-        else:
-            time.sleep(2.0 * (attempt + 1))
+            return int(retry_after)
+        reset = h.get("x-ratelimit-reset")
+        if reset and reset.isdigit():
+            return max(0, int(reset) - int(time.time()))
+        return 60
 
     # -- GraphQL ------------------------------------------------------------
     def graphql(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:

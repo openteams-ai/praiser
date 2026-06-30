@@ -5,7 +5,8 @@ import sys
 
 from . import __version__
 from .config import Config, resolve_token
-from .pipeline import run
+from .github_client import RateLimitError
+from .pipeline import _humanize, run
 from .render import render
 
 
@@ -65,6 +66,14 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         records = run(config)
+    except RateLimitError as exc:
+        hint = "" if token else " Provide a token with --token or GITHUB_TOKEN."
+        print(
+            f"error: GitHub rate limit reached before discovery could run; "
+            f"wait {_humanize(exc.reset_in)} for it to reset.{hint}",
+            file=sys.stderr,
+        )
+        return 1
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

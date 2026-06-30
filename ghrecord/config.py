@@ -1,6 +1,8 @@
 """Runtime configuration: token, thresholds, paths."""
 
 import os
+import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,7 +19,22 @@ def resolve_token(explicit: str | None) -> str | None:
         val = os.environ.get(var)
         if val:
             return val
-    return None
+    return _gh_cli_token()
+
+
+def _gh_cli_token() -> str | None:
+    """Fall back to the GitHub CLI's token if `gh` is installed and logged in."""
+    if not shutil.which("gh"):
+        return None
+    try:
+        out = subprocess.run(
+            ["gh", "auth", "token"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except Exception:
+        return None
+    token = out.stdout.strip()
+    return token or None
 
 
 @dataclass
