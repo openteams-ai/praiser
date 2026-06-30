@@ -95,6 +95,12 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         result = run(config)
+    except KeyboardInterrupt:
+        # Cancelled by the user (Ctrl-C): exit quietly, no stack trace. The
+        # cache keeps whatever already succeeded, so a re-run resumes.
+        print("\ncancelled (partial work is cached; re-run to continue).",
+              file=sys.stderr)
+        return 130
     except RateLimitError as exc:
         print(
             "error: GitHub rate limit reached before discovery could run; "

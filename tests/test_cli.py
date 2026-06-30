@@ -1,6 +1,21 @@
+import ghrecord.cli as cli
 import ghrecord.config as config
 from ghrecord.cli import TOKEN_HELP, _token_hint
 from ghrecord.config import resolve_token
+
+
+def test_main_keyboardinterrupt_exits_cleanly(monkeypatch, capsys):
+    def boom(_config):
+        raise KeyboardInterrupt
+    monkeypatch.setattr(cli, "run", boom)
+    monkeypatch.setattr(cli, "resolve_token", lambda explicit: ("tok", "flag"))
+
+    rc = cli.main(["someuser"])
+
+    assert rc == 130  # conventional SIGINT exit code
+    err = capsys.readouterr().err
+    assert "cancelled" in err
+    assert "Traceback" not in err
 
 
 def test_resolve_token_explicit_flag():
