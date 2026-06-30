@@ -1,9 +1,9 @@
-from ghrecord.discovery import keep_candidate
-from ghrecord.extractors.base import ExtractContext
-from ghrecord.extractors.contributors import ContributorsExtractor
-from ghrecord.models import CODE_OWNER, Candidate, Evidence, Identity, ProjectRecord
-from ghrecord.popularity import filter_records
-from ghrecord.registry import KnownProjects
+from praiser.discovery import keep_candidate
+from praiser.extractors.base import ExtractContext
+from praiser.extractors.contributors import ContributorsExtractor
+from praiser.models import CODE_OWNER, Candidate, Evidence, Identity, ProjectRecord
+from praiser.popularity import filter_records
+from praiser.registry import KnownProjects
 
 EMPTY = KnownProjects(projects={})
 

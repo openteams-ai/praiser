@@ -1,8 +1,8 @@
-from ghrecord.extractors.authors import find_credit
-from ghrecord.extractors.base import ExtractContext
-from ghrecord.extractors.contributors import classify
-from ghrecord.models import Candidate, Identity
-from ghrecord.registry import KnownProjects
+from praiser.extractors.authors import find_credit
+from praiser.extractors.base import ExtractContext
+from praiser.extractors.contributors import classify
+from praiser.models import Candidate, Identity
+from praiser.registry import KnownProjects
 
 
 class _RecordingClient:
@@ -20,7 +20,7 @@ class _ContribClient:
 
 
 def _contrib_ctx():
-    from ghrecord.extractors.contributors import ContributorsExtractor  # noqa
+    from praiser.extractors.contributors import ContributorsExtractor  # noqa
     return ExtractContext(
         identity=Identity(primary_login="pearu"),
         client=_ContribClient(),
@@ -29,7 +29,7 @@ def _contrib_ctx():
 
 
 def test_contributor_signal_rejected_on_vendored_copy():
-    from ghrecord.extractors.contributors import ContributorsExtractor
+    from praiser.extractors.contributors import ContributorsExtractor
     ext = ContributorsExtractor()
     # EasyFHE: vendored pytorch history makes pearu a "contributor", but the
     # repo is small and unaffiliated -> not trustworthy -> no role.
@@ -38,7 +38,7 @@ def test_contributor_signal_rejected_on_vendored_copy():
 
 
 def test_contributor_signal_kept_on_canonical_repo():
-    from ghrecord.extractors.contributors import ContributorsExtractor
+    from praiser.extractors.contributors import ContributorsExtractor
     ev = ContributorsExtractor().extract(
         Candidate("numpy/numpy", stars=30000, forks=10000), _contrib_ctx())
     assert ev and ev[0].role == "core_contributor"
@@ -47,7 +47,7 @@ def test_contributor_signal_kept_on_canonical_repo():
 def test_merged_pr_rescue_elevates_undercounted_contributor():
     # Commit count says plain contributor (5, rank ~50), but the user has many
     # merged PRs (squash/ghstack, or unlinked email) -> elevated via PR count.
-    from ghrecord.extractors.contributors import ContributorsExtractor
+    from praiser.extractors.contributors import ContributorsExtractor
 
     class C:
         def repo_contributors(self, o, r, max_pages=2):

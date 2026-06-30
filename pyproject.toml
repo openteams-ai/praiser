@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "gh-record"
+name = "praiser"
 version = "0.1.0"
 description = "Generate a record of the popular projects a GitHub user maintains, steers, or authors standards for."
 readme = "README.md"
@@ -18,13 +18,13 @@ yaml = ["pyyaml>=6"]         # k8s OWNERS files and YAML front-matter proposals
 dev = ["pytest>=7"]
 
 [project.scripts]
-gh-record = "ghrecord.cli:main"
+praiser = "praiser.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["ghrecord*"]
+include = ["praiser*"]
 
 [tool.setuptools.package-data]
-ghrecord = ["data/*.json"]
+praiser = ["data/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

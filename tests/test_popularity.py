@@ -1,11 +1,11 @@
-from ghrecord.models import AUTHOR, CODE_OWNER, Evidence, ProjectRecord
-from ghrecord.popularity import (
+from praiser.models import AUTHOR, CODE_OWNER, Evidence, ProjectRecord
+from praiser.popularity import (
     _is_maintained,
     filter_records,
     is_notable_authored,
     is_widely_used_and_maintained,
 )
-from ghrecord.registry import KnownProjects
+from praiser.registry import KnownProjects
 
 EMPTY = KnownProjects(projects={})
 

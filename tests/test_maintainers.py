@@ -1,4 +1,4 @@
-from ghrecord.extractors.maintainers import parse_maintainers, parse_owners_yaml
+from praiser.extractors.maintainers import parse_maintainers, parse_owners_yaml
 
 MAINTAINERS_TXT = """\
 # Maintainers

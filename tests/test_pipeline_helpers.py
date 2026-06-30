@@ -1,4 +1,4 @@
-from ghrecord.pipeline import _humanize
+from praiser.pipeline import _humanize
 
 
 def test_humanize_seconds():

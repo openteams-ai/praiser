@@ -1,10 +1,10 @@
-import ghrecord.pipeline as pipeline
-from ghrecord.config import Config
-from ghrecord.extractors.base import ExtractContext
-from ghrecord.github_client import RateLimitError
-from ghrecord.models import MAINTAINER, Candidate, Evidence, Identity
-from ghrecord.progress import Progress
-from ghrecord.registry import KnownProjects
+import praiser.pipeline as pipeline
+from praiser.config import Config
+from praiser.extractors.base import ExtractContext
+from praiser.github_client import RateLimitError
+from praiser.models import MAINTAINER, Candidate, Evidence, Identity
+from praiser.progress import Progress
+from praiser.registry import KnownProjects
 
 
 class FakeExtractor:

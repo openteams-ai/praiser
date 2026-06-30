@@ -1,12 +1,12 @@
-from ghrecord.extractors.base import ExtractContext
-from ghrecord.extractors.web_roles import (
+from praiser.extractors.base import ExtractContext
+from praiser.extractors.web_roles import (
     WebRolesExtractor,
     handles_on_page,
     matches,
     page_text,
 )
-from ghrecord.models import Candidate, Identity
-from ghrecord.registry import KnownProject, KnownProjects, RoleSource
+from praiser.models import Candidate, Identity
+from praiser.registry import KnownProject, KnownProjects, RoleSource
 
 PAGE = """
 <html><body>

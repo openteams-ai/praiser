@@ -1,6 +1,6 @@
-from ghrecord.discovery import keep_candidate
-from ghrecord.models import Candidate
-from ghrecord.registry import KnownProjects
+from praiser.discovery import keep_candidate
+from praiser.models import Candidate
+from praiser.registry import KnownProjects
 
 EMPTY = KnownProjects(projects={})
 

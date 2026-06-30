@@ -1,4 +1,4 @@
-from ghrecord.extractors.manifests import (
+from praiser.extractors.manifests import (
     authors_from_cargo,
     authors_from_composer,
     authors_from_package_json,

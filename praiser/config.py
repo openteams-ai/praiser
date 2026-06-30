@@ -9,14 +9,14 @@ from pathlib import Path
 
 def default_cache_dir() -> Path:
     base = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
-    return Path(base) / "ghrecord"
+    return Path(base) / "praiser"
 
 
 def default_registry_path() -> Path:
     # The learned/curated registry lives in a data dir (not the cache, which is
     # safe to wipe) so discovered role sources and popularity persist.
     base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
-    return Path(base) / "ghrecord" / "known_projects.json"
+    return Path(base) / "praiser" / "known_projects.json"
 
 
 def resolve_token(explicit: str | None) -> tuple[str | None, str]:

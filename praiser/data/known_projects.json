@@ -1,5 +1,5 @@
 {
-  "_schema": "ghrecord known-projects registry v1",
+  "_schema": "praiser known-projects registry v1",
   "_doc": "Curated popular/important projects with role-defining heuristics and popularity hints. 'role_conventions' tell extractors how each project records roles; 'popularity.min_stars_override' keeps high-signal-but-small standards projects past the popularity filter. The tool may append observed popularity to this structure with --save-registry.",
   "projects": {
     "python/peps": {

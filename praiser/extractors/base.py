@@ -22,7 +22,7 @@ class ExtractContext:
     identity: Identity
     client: GitHubClient
     registry: KnownProjects
-    llm: object | None = None  # ghrecord.llm.LLM or None when disabled
+    llm: object | None = None  # praiser.llm.LLM or None when disabled
     org_logins: set[str] = field(default_factory=set)  # orgs the user belongs to
     popularity_floor: int = 0  # gate expensive per-repo checks on stars
     canonical_stars: int = 1000  # at/above this a repo is plausibly the original

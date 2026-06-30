@@ -14,7 +14,7 @@ project it stores:
 * **importance** — a human label ("critical"/"high"/...).
 * **aliases** — alternative ``owner/repo`` spellings (renames, mirrors).
 
-The shipped seed lives in ``ghrecord/data/known_projects.json``. A user file
+The shipped seed lives in ``praiser/data/known_projects.json``. A user file
 (``--registry``) is merged on top, and learned popularity can be written back
 with ``--save-registry``.
 """
@@ -188,7 +188,7 @@ class KnownProjects:
     @classmethod
     def load(cls, extra_path: Path | str | None = None) -> "KnownProjects":
         """Load the shipped seed, then merge an optional user file on top."""
-        text = resources.files("ghrecord.data").joinpath(
+        text = resources.files("praiser.data").joinpath(
             "known_projects.json"
         ).read_text(encoding="utf-8")
         projects = cls._parse(json.loads(text))
@@ -246,7 +246,7 @@ class KnownProjects:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "_schema": f"ghrecord known-projects registry v{SCHEMA_VERSION}",
+            "_schema": f"praiser known-projects registry v{SCHEMA_VERSION}",
             "projects": {
                 name: proj.to_dict() for name, proj in sorted(self.projects.items())
             },

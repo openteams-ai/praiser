@@ -32,7 +32,7 @@ def availability() -> str | None:
     try:
         import anthropic  # noqa: F401
     except ImportError:
-        return "the 'anthropic' package is not installed (pip install 'gh-record[llm]')"
+        return "the 'anthropic' package is not installed (pip install 'praiser[llm]')"
     api_key, auth_token = _env_credentials()
     if not (api_key or auth_token):
         return ("no Anthropic credentials (set ANTHROPIC_API_KEY, or "

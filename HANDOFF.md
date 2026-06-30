@@ -1,4 +1,4 @@
-# gh-record — Session Handoff
+# praiser — Session Handoff
 
 A complete spec + design to continue building in a fresh Claude Code session.
 Read this top-to-bottom; it contains every decision and the full scaffold design.
@@ -105,14 +105,14 @@ Known seeds to ship with: `python/peps` (PEP), `numpy/numpy` doc/neps (NEP),
 ## 6. Proposed layout
 
 ```
-gh_records/
+praiser/
 ├── README.md
 ├── pyproject.toml
 ├── .gitignore
-├── ghrecord/
+├── praiser/
 │   ├── __init__.py
-│   ├── __main__.py          # python -m ghrecord
-│   ├── cli.py               # argparse entry, gh-record console script
+│   ├── __main__.py          # python -m praiser
+│   ├── cli.py               # argparse entry, praiser console script
 │   ├── config.py            # token, thresholds, cache dir
 │   ├── models.py            # Identity, Candidate, Evidence, Role, ProjectRecord
 │   ├── github_client.py     # urllib GraphQL + REST client, cached
@@ -176,7 +176,7 @@ name-only prose match ≈ 0.4 (bump via LLM confirmation).
 ## 7. CLI shape
 
 ```
-gh-record <username> [--min-stars N] [--format md|json]
+praiser <username> [--min-stars N] [--format md|json]
                      [--token TOKEN] [--cache-dir DIR] [--no-llm]
 ```
 
@@ -188,7 +188,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "gh-record"
+name = "praiser"
 version = "0.1.0"
 description = "Generate a record of the popular projects a GitHub user maintains, steers, or authors standards for."
 readme = "README.md"
@@ -201,10 +201,10 @@ llm = ["anthropic>=0.40"]
 dev = ["pytest>=7"]
 
 [project.scripts]
-gh-record = "ghrecord.cli:main"
+praiser = "praiser.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["ghrecord*"]
+include = ["praiser*"]
 ```
 
 ## 9. Build order for the next session

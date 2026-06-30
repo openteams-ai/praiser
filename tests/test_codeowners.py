@@ -1,4 +1,4 @@
-from ghrecord.extractors.codeowners import (
+from praiser.extractors.codeowners import (
     all_owners,
     classify_owner,
     parse_codeowners,

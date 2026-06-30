@@ -13,9 +13,9 @@ dist/
 .venv/
 venv/
 
-# gh-record runtime artifacts
-.ghrecord-cache/
-*.ghrecord.json
+# praiser runtime artifacts
+.praiser-cache/
+*.praiser.json
 
 # Editors / OS
 .vscode/

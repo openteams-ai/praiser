@@ -1,6 +1,6 @@
-from ghrecord.extractors.base import ExtractContext
-from ghrecord.models import Candidate, Identity
-from ghrecord.registry import KnownProjects
+from praiser.extractors.base import ExtractContext
+from praiser.models import Candidate, Identity
+from praiser.registry import KnownProjects
 
 EMPTY = KnownProjects(projects={})
 

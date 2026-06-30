@@ -1,9 +1,9 @@
-import ghrecord.llm as llm_mod
-from ghrecord.extractors.base import ExtractContext
-from ghrecord.extractors.web_roles import WebRolesAutoExtractor
-from ghrecord.llm import LLM, availability
-from ghrecord.models import Candidate, Identity
-from ghrecord.registry import KnownProject, KnownProjects, RoleSource
+import praiser.llm as llm_mod
+from praiser.extractors.base import ExtractContext
+from praiser.extractors.web_roles import WebRolesAutoExtractor
+from praiser.llm import LLM, availability
+from praiser.models import Candidate, Identity
+from praiser.registry import KnownProject, KnownProjects, RoleSource
 
 parse = LLM._parse_role_sources
 

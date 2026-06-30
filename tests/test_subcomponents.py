@@ -1,7 +1,7 @@
-from ghrecord.extractors.base import ExtractContext
-from ghrecord.extractors.subcomponents import SubcomponentsExtractor, path_confidence
-from ghrecord.models import Candidate, Identity
-from ghrecord.registry import KnownProject, KnownProjects, Subcomponent
+from praiser.extractors.base import ExtractContext
+from praiser.extractors.subcomponents import SubcomponentsExtractor, path_confidence
+from praiser.models import Candidate, Identity
+from praiser.registry import KnownProject, KnownProjects, Subcomponent
 
 
 def test_path_confidence_tiers():

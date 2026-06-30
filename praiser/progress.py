@@ -21,14 +21,14 @@ class Progress:
         if not self.enabled:
             return
         self._clear()
-        self.stream.write(f"[ghrecord] {msg}\n")
+        self.stream.write(f"[praiser] {msg}\n")
         self.stream.flush()
 
     def status(self, msg: str) -> None:
         """A transient line, overwritten in place by the next status/phase."""
         if not self.enabled:
             return
-        line = f"[ghrecord] {msg}"
+        line = f"[praiser] {msg}"
         pad = max(0, self._pending - len(line))
         self.stream.write("\r" + line + " " * pad)
         self.stream.flush()

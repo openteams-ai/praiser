@@ -1,5 +1,5 @@
-from ghrecord.cache import Cache
-from ghrecord.github_client import GitHubClient
+from praiser.cache import Cache
+from praiser.github_client import GitHubClient
 
 
 def _client(tmp_path, token="tok"):

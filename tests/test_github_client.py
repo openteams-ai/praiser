@@ -1,6 +1,6 @@
 import time
 
-from ghrecord.github_client import GitHubClient
+from praiser.github_client import GitHubClient
 
 reset_in = GitHubClient._ratelimit_reset_in
 

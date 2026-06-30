@@ -20,7 +20,7 @@ except ImportError:  # pragma: no cover - exercised only without httpx
 
 GRAPHQL_URL = "https://api.github.com/graphql"
 REST_BASE = "https://api.github.com"
-USER_AGENT = "gh-record/0.1 (+https://github.com)"
+USER_AGENT = "praiser/0.1 (+https://github.com)"
 
 
 class GitHubError(RuntimeError):

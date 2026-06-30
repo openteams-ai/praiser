@@ -1,12 +1,12 @@
-import ghrecord.cli as cli
-import ghrecord.config as config
-from ghrecord.cli import TOKEN_HELP, _token_hint
-from ghrecord.config import resolve_token
+import praiser.cli as cli
+import praiser.config as config
+from praiser.cli import TOKEN_HELP, _token_hint
+from praiser.config import resolve_token
 
 
 def _stub_run_one_record(monkeypatch):
-    from ghrecord.models import CODE_OWNER, Evidence, ProjectRecord
-    from ghrecord.pipeline import RunResult
+    from praiser.models import CODE_OWNER, Evidence, ProjectRecord
+    from praiser.pipeline import RunResult
     rec = ProjectRecord("o/r", "https://github.com/o/r", stars=500,
                         evidence=[Evidence("x", CODE_OWNER, "u", 0.9, "")])
     monkeypatch.setattr(cli, "resolve_token", lambda explicit: ("tok", "flag"))

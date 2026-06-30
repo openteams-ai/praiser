@@ -1,7 +1,7 @@
 import json
 
-from ghrecord.models import CODE_OWNER, CORE_CONTRIBUTOR, Evidence, ProjectRecord
-from ghrecord.render import render_highlights, render_json, render_markdown
+from praiser.models import CODE_OWNER, CORE_CONTRIBUTOR, Evidence, ProjectRecord
+from praiser.render import render_highlights, render_json, render_markdown
 
 
 def _r(name, role, stars):

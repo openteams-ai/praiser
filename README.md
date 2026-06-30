@@ -1,4 +1,4 @@
-# gh-record
+# praiser
 
 Generate a record of the **popular projects where a GitHub user holds an
 elevated role** — maintainer, code owner, steering-council member, or standards
@@ -8,7 +8,7 @@ otherwise be enormous and low-signal).
 Projects record roles in many different ways — a `CODEOWNERS` file, a
 `MAINTAINERS` list, Kubernetes `OWNERS` YAML, a `GOVERNANCE.md` page, a
 package manifest's author field, or a numbered enhancement-proposal series with
-`Author:` headers. `gh-record` figures out **which convention each project uses**
+`Author:` headers. `praiser` figures out **which convention each project uses**
 rather than assuming one.
 
 ## Install
@@ -24,13 +24,13 @@ Requires Python 3.13+.
 
 ```bash
 export GITHUB_TOKEN=ghp_...        # a PAT; raises rate limits and enables search
-gh-record torvalds                 # default: the highlights summary (below)
-gh-record gvanrossum --format md   # the full report (Markdown)
-gh-record gvanrossum --format json -o gvanrossum.json   # full report as JSON
-gh-record someuser --no-discover-roles --no-llm         # skip the LLM/web features
+praiser torvalds                 # default: the highlights summary (below)
+praiser gvanrossum --format md   # the full report (Markdown)
+praiser gvanrossum --format json -o gvanrossum.json   # full report as JSON
+praiser someuser --no-discover-roles --no-llm         # skip the LLM/web features
 ```
 
-By default `gh-record <username>` prints a compact **highlights** summary — the
+By default `praiser <username>` prints a compact **highlights** summary — the
 top roles, one line each, plus breadth stats. Use `--format md|json` for the
 full per-project report with evidence links, or `--highlights N` to change the
 count.
@@ -50,7 +50,7 @@ The footer summarises breadth beyond the top roles: the smaller-but-widely-used
 projects where the user also holds a notable role, and the **community reach**
 (distinct organisations) — a proxy for the potential to introduce ideas widely.
 
-`gh-record <username>` is meant to be sufficient on its own: role auto-discovery
+`praiser <username>` is meant to be sufficient on its own: role auto-discovery
 and registry persistence are **on by default** (auto-discovery activates only
 when LLM credentials are present, and degrades silently otherwise).
 
@@ -65,7 +65,7 @@ For the optional LLM features (`--discover-roles`, and the governance prose
 fallback) set an Anthropic API key — create one at
 **https://console.anthropic.com/settings/keys**, then
 `export ANTHROPIC_API_KEY=...` and install the extra (`pip install
-'gh-record[llm]'`).
+'praiser[llm]'`).
 
 Create a GitHub Personal Access Token at **https://github.com/settings/tokens**:
 
@@ -95,13 +95,13 @@ If a run is rate-limited it stops early, tells you how long to wait, and the
 cache preserves what already succeeded — so re-running finishes the job.
 
 ```
-gh-record <username>
+praiser <username>
     [--min-stars N]        popularity threshold (default 50)
     [--highlights [N]]     top-N highlights summary (this is the DEFAULT view; N=8)
     [--format md|json]     full per-project report instead of the highlights
     [--token TOKEN]        or GITHUB_TOKEN / GH_TOKEN
-    [--cache-dir DIR]      default ~/.cache/ghrecord
-    [--registry FILE]      known-projects file (default: ~/.local/share/ghrecord/)
+    [--cache-dir DIR]      default ~/.cache/praiser
+    [--registry FILE]      known-projects file (default: ~/.local/share/praiser/)
     [--no-save-registry]   don't persist popularity + discovered role sources
     [--no-discover-roles]  don't web-search for role pages (default: on w/ LLM)
     [--no-llm]             disable all Claude features
@@ -137,7 +137,7 @@ carries an **evidence link** (file/page URL) and a **confidence** score.
    project (e.g. a private-dev repo, or one whose history GitHub doesn't
    attribute), name it with `--add-repo OWNER/REPO` — it's force-scanned and
    force-included, with the role still detected automatically.
-3. **Role attribution** — a registry of pluggable [extractors](ghrecord/extractors)
+3. **Role attribution** — a registry of pluggable [extractors](praiser/extractors)
    (`ownership`, `codeowners`, `maintainers`, `manifests`, `enhancement_proposals`,
    `governance`, `contributors`, `subcomponents`, `authors`, `web_roles`). The
    `contributors` signal measures size by commits **and** merged-PR count
@@ -167,7 +167,7 @@ carries an **evidence link** (file/page URL) and a **confidence** score.
 
 ## The known-projects registry
 
-[`ghrecord/data/known_projects.json`](ghrecord/data/known_projects.json) stores
+[`praiser/data/known_projects.json`](praiser/data/known_projects.json) stores
 popular/important projects together with:
 
 * **`role_conventions`** — how that project records roles *in the repo* (which

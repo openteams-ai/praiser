@@ -1,4 +1,4 @@
-"""Command-line entry point: ``gh-record <username> [...]``."""
+"""Command-line entry point: ``praiser <username> [...]``."""
 
 import argparse
 import sys
@@ -16,7 +16,7 @@ ANTHROPIC_HELP = (
     "`export ANTHROPIC_API_KEY=<key>` (pay-as-you-go) — OR your Claude "
     "subscription: run `claude setup-token` and "
     "`export CLAUDE_CODE_OAUTH_TOKEN=<token>`. Also install the extra: "
-    "pip install 'gh-record[llm]'."
+    "pip install 'praiser[llm]'."
 )
 
 # Shown whenever a token would help. Public-data discovery needs no scopes; add
@@ -48,7 +48,7 @@ def _token_hint(token_source: str) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="gh-record",
+        prog="praiser",
         description="Record the popular projects a GitHub user maintains, "
                     "steers, or authors standards for (contributors excluded).",
     )
@@ -67,10 +67,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--token", default=None,
                    help="GitHub token (or set GITHUB_TOKEN / GH_TOKEN)")
     p.add_argument("--cache-dir", default=None,
-                   help="cache directory (default: ~/.cache/ghrecord)")
+                   help="cache directory (default: ~/.cache/praiser)")
     p.add_argument("--registry", default=None, dest="registry_path",
                    help="known-projects JSON file, merged over the seed "
-                        "(default: ~/.local/share/ghrecord/known_projects.json)")
+                        "(default: ~/.local/share/praiser/known_projects.json)")
     p.add_argument("--save-registry", action=argparse.BooleanOptionalAction,
                    default=True,
                    help="persist observed popularity and web-discovered role "
@@ -104,7 +104,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-q", "--quiet", action="store_true",
                    help="suppress the live progress display")
     p.add_argument("--version", action="version",
-                   version=f"gh-record {__version__}")
+                   version=f"praiser {__version__}")
     return p
 
 

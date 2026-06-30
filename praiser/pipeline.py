@@ -28,7 +28,7 @@ class RunResult:
 
 def _log(config: Config, msg: str) -> None:
     if config.verbose:
-        print(f"[ghrecord] {msg}", file=sys.stderr)
+        print(f"[praiser] {msg}", file=sys.stderr)
 
 
 def _humanize(seconds: int | None) -> str:

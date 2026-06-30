@@ -1,5 +1,5 @@
-from ghrecord.extractors.governance import governance_match
-from ghrecord.models import MAINTAINER, STEERING_COUNCIL
+from praiser.extractors.governance import governance_match
+from praiser.models import MAINTAINER, STEERING_COUNCIL
 
 GOV = """\
 # Governance

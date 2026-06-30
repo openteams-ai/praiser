@@ -1,4 +1,4 @@
-from ghrecord.registry import KnownProjects
+from praiser.registry import KnownProjects
 
 
 def test_seed_loads_and_has_peps():

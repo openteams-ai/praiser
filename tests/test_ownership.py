@@ -1,7 +1,7 @@
-from ghrecord.extractors.base import ExtractContext
-from ghrecord.extractors.ownership import OwnershipExtractor
-from ghrecord.models import AUTHOR, Candidate, Identity
-from ghrecord.registry import KnownProjects
+from praiser.extractors.base import ExtractContext
+from praiser.extractors.ownership import OwnershipExtractor
+from praiser.models import AUTHOR, Candidate, Identity
+from praiser.registry import KnownProjects
 
 
 def _ctx():

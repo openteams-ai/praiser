@@ -1,4 +1,4 @@
-from ghrecord.extractors.enhancement_proposals import (
+from praiser.extractors.enhancement_proposals import (
     guess_format,
     looks_like_proposal_dir,
     parse_authors,
