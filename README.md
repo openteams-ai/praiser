@@ -18,7 +18,7 @@ pip install -e .            # core (stdlib only)
 pip install -e '.[http,llm,yaml,dev]'   # httpx + Claude fallback + YAML + tests
 ```
 
-Requires Python 3.13+.
+Requires Python 3.11+ (for the stdlib `tomllib`).
 
 ## Usage
 
@@ -225,3 +225,9 @@ pytest            # offline parser tests, no network
 Each extractor keeps its parsing logic in a pure function (e.g.
 `parse_codeowners`, `parse_proposal_header`, `parse_owners_yaml`) so tests run
 fully offline.
+
+## Author & license
+
+Created by **Pearu Peterson** (pearu.peterson@gmail.com), with assistance from
+**Claude** (Anthropic). Licensed under the **BSD 3-Clause** license — see
+[LICENSE](LICENSE).

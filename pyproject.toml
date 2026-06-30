@@ -5,10 +5,23 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "praiser"
 version = "0.1.0"
-description = "Generate a record of the popular projects a GitHub user maintains, steers, or authors standards for."
+description = "Record the popular open-source projects where a person holds an elevated role (author, maintainer, steering council, standards author, core contributor), with evidence."
 readme = "README.md"
-requires-python = ">=3.13"
-license = { text = "MIT" }
+requires-python = ">=3.11"   # needs stdlib tomllib (3.11+); no 3.12+ features used
+license = { text = "BSD-3-Clause" }
+authors = [
+    { name = "Pearu Peterson", email = "pearu.peterson@gmail.com" },
+]
+# Created by Pearu Peterson with assistance from Claude (Anthropic).
+keywords = ["open-source", "maintainer", "contributions", "github", "roles"]
+classifiers = [
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Environment :: Console",
+    "Topic :: Software Development",
+]
 dependencies = []   # core runs on the stdlib; tomllib is built in on 3.11+
 
 [project.optional-dependencies]
