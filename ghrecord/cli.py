@@ -19,6 +19,23 @@ TOKEN_HELP = (
 )
 
 
+def _token_hint(token_source: str) -> str:
+    """A leading-newline hint about tokens, tailored to where ours came from."""
+    if token_source == "none":
+        return (
+            "\nA token raises the limit from ~60 to 5,000 requests/hour. "
+            + TOKEN_HELP
+        )
+    if token_source == "gh":
+        return (
+            "\nYou're authenticated via the gh CLI (already 5,000 requests/hour), "
+            "so a different token won't raise the limit — just wait and re-run. "
+            "To use an explicit token instead, set GITHUB_TOKEN: " + TOKEN_HELP
+        )
+    # flag / env: the user already supplied a token; 5,000/hr is the ceiling.
+    return ""
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="gh-record",
@@ -53,7 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
-    token = resolve_token(args.token)
+    token, token_source = resolve_token(args.token)
     if not token:
         print(
             "warning: no GitHub token found; discovery and rate limits will be "
@@ -74,12 +91,12 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
-        records = run(config)
+        result = run(config)
     except RateLimitError as exc:
-        hint = "" if token else "\n" + TOKEN_HELP
         print(
-            f"error: GitHub rate limit reached before discovery could run; "
-            f"wait {_humanize(exc.reset_in)} for it to reset.{hint}",
+            "error: GitHub rate limit reached before discovery could run; "
+            f"wait {_humanize(exc.reset_in)} for it to reset."
+            + _token_hint(token_source),
             file=sys.stderr,
         )
         return 1
@@ -87,7 +104,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    output = render(config.username, records, config.fmt)
+    if result.partial_reset_in is not None:
+        print(
+            "warning: GitHub rate limit reached during the run — results are "
+            "PARTIAL (some repos were not fully scanned). Wait "
+            f"{_humanize(result.partial_reset_in)} for the limit to reset, then "
+            "re-run to finish; the cache preserves what already succeeded."
+            + _token_hint(token_source),
+            file=sys.stderr,
+        )
+
+    output = render(config.username, result.records, config.fmt)
     if args.output:
         with open(args.output, "w", encoding="utf-8") as fh:
             fh.write(output + "\n")

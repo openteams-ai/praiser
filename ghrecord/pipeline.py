@@ -1,6 +1,7 @@
 """Orchestrates the phases: identity -> discovery -> attribution -> popularity."""
 
 import sys
+from dataclasses import dataclass, field
 
 from .cache import Cache
 from .config import Config
@@ -12,6 +13,13 @@ from .llm import LLM
 from .models import WEAK_ROLES, Evidence, ProjectRecord
 from .popularity import enrich_stars, filter_records
 from .registry import KnownProjects
+
+
+@dataclass
+class RunResult:
+    records: list[ProjectRecord] = field(default_factory=list)
+    # Seconds until the rate limit resets if the run was cut short, else None.
+    partial_reset_in: int | None = None
 
 
 def _log(config: Config, msg: str) -> None:
@@ -31,7 +39,7 @@ def _humanize(seconds: int | None) -> str:
     return f"~{hours}h {mins}min" if mins else f"~{hours}h"
 
 
-def run(config: Config) -> list[ProjectRecord]:
+def run(config: Config) -> RunResult:
     cache = Cache(config.cache_dir)
     client = GitHubClient(config.token, cache, verbose=config.verbose)
     registry = KnownProjects.load(config.registry_path)
@@ -61,15 +69,6 @@ def run(config: Config) -> list[ProjectRecord]:
         )
         _log(config, f"{len(records)} repos after popularity filter")
 
-        if reset_in is not None:
-            print(
-                "warning: GitHub rate limit reached during the run — results are "
-                "PARTIAL (some repos were not fully scanned). Wait "
-                f"{_humanize(reset_in)} for the limit to reset, then re-run to "
-                "finish; the cache preserves what already succeeded.",
-                file=sys.stderr,
-            )
-
         for rec in records:
             registry.record_popularity(
                 rec.name_with_owner, stars=rec.stars, forks=rec.forks
@@ -79,7 +78,7 @@ def run(config: Config) -> list[ProjectRecord]:
             _log(config, f"saved registry to {config.registry_path}")
 
         records.sort(key=lambda r: r.score, reverse=True)
-        return records
+        return RunResult(records=records, partial_reset_in=reset_in)
     finally:
         client.close()
 

@@ -12,14 +12,18 @@ def default_cache_dir() -> Path:
     return Path(base) / "ghrecord"
 
 
-def resolve_token(explicit: str | None) -> str | None:
+def resolve_token(explicit: str | None) -> tuple[str | None, str]:
+    """Return (token, source). source is one of: flag, env, gh, none."""
     if explicit:
-        return explicit
+        return explicit, "flag"
     for var in ("GITHUB_TOKEN", "GH_TOKEN"):
         val = os.environ.get(var)
         if val:
-            return val
-    return _gh_cli_token()
+            return val, "env"
+    gh = _gh_cli_token()
+    if gh:
+        return gh, "gh"
+    return None, "none"
 
 
 def _gh_cli_token() -> str | None:
