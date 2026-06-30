@@ -61,7 +61,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-o", "--output", default=None,
                    help="write output to a file instead of stdout")
     p.add_argument("-v", "--verbose", action="store_true",
-                   help="log progress to stderr")
+                   help="detailed per-repo logging to stderr")
+    p.add_argument("-q", "--quiet", action="store_true",
+                   help="suppress the live progress display")
     p.add_argument("--version", action="version",
                    version=f"gh-record {__version__}")
     return p
@@ -88,6 +90,7 @@ def main(argv: list[str] | None = None) -> int:
         registry_path=args.registry_path,
         save_registry=args.save_registry,
         verbose=args.verbose,
+        quiet=args.quiet,
     )
 
     try:

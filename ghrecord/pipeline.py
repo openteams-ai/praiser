@@ -12,6 +12,7 @@ from .identity import resolve_identity
 from .llm import LLM
 from .models import WEAK_ROLES, Evidence, ProjectRecord
 from .popularity import enrich_stars, filter_records
+from .progress import Progress
 from .registry import KnownProjects
 
 
@@ -46,19 +47,30 @@ def run(config: Config) -> RunResult:
     llm = LLM.maybe(cache, enabled=config.use_llm)
     _log(config, f"LLM fallback {'enabled' if llm else 'disabled'}")
 
+    # Live progress only when interactive and not in verbose/quiet mode; verbose
+    # uses the detailed per-repo _log lines instead.
+    progress = Progress(
+        enabled=not config.verbose and not config.quiet and sys.stderr.isatty()
+    )
+
     try:
+        progress.phase(f"resolving identity for {config.username}…")
         identity = resolve_identity(client, config.username)
         _log(config, f"identity: logins={identity.logins} names={identity.names}")
 
+        progress.phase("discovering candidate repositories…")
         candidates = discover(client, identity, registry)
         _log(config, f"discovered {len(candidates)} candidate repos")
+        progress.phase(f"discovered {len(candidates)} candidate repos")
 
         ctx = ExtractContext(
             identity=identity, client=client, registry=registry, llm=llm
         )
-        records, reset_in = _attribute(config, candidates, ctx)
+        records, reset_in = _attribute(config, candidates, ctx, progress)
+        progress.done()
         _log(config, f"{len(records)} repos with elevated-role evidence")
 
+        progress.phase("checking popularity…")
         try:
             enrich_stars(client, records)
         except RateLimitError as exc:
@@ -68,6 +80,9 @@ def run(config: Config) -> RunResult:
             records, min_stars=config.min_stars, registry=registry
         )
         _log(config, f"{len(records)} repos after popularity filter")
+        progress.phase(
+            f"done — {len(records)} project(s) with an elevated role"
+        )
 
         for rec in records:
             registry.record_popularity(
@@ -83,14 +98,20 @@ def run(config: Config) -> RunResult:
         client.close()
 
 
-def _attribute(config, candidates, ctx) -> tuple[list[ProjectRecord], int | None]:
+def _attribute(
+    config, candidates, ctx, progress: Progress
+) -> tuple[list[ProjectRecord], int | None]:
     """Returns (records, reset_in). ``reset_in`` is the seconds-until-reset when
     a rate limit cut the scan short (None otherwise), so the caller can warn
     that results are incomplete and say how long to wait."""
     extractors = all_extractors()
     records: list[ProjectRecord] = []
     reset_in: int | None = None
-    for cand in candidates:
+    total = len(candidates)
+    for i, cand in enumerate(candidates, 1):
+        progress.status(
+            f"scanning repo {i}/{total} ({len(records)} found): {cand.name_with_owner}"
+        )
         evidence: list[Evidence] = []
         try:
             for ext in extractors:

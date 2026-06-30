@@ -52,6 +52,7 @@ class Config:
     registry_path: Path | None = None   # extra/user known-projects file
     save_registry: bool = False         # write learned popularity back
     verbose: bool = False
+    quiet: bool = False                  # suppress the default progress display
 
     def __post_init__(self) -> None:
         if self.cache_dir is None:

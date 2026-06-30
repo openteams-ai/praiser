@@ -72,8 +72,15 @@ gh-record <username>
     [--registry FILE]      extra known-projects file (merged over the seed)
     [--save-registry]      write observed popularity back to --registry
     [--no-llm]             disable the Claude fallback
-    [-o FILE] [-v]
+    [-o FILE]              write output to a file instead of stdout
+    [-v]                   detailed per-repo logging
+    [-q]                   suppress the live progress display
 ```
+
+On an interactive terminal the tool shows live progress on stderr
+(`scanning repo 42/107 …`) so you can see it working; output (JSON/Markdown)
+still goes to stdout. Progress is automatically suppressed when stderr is
+redirected, with `-q`, or in `-v` mode (which prints detailed logs instead).
 
 JSON is the source of truth; Markdown is a human-readable view. Every claim
 carries an **evidence link** (file/page URL) and a **confidence** score.
