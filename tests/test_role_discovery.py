@@ -8,14 +8,27 @@ from ghrecord.registry import KnownProject, KnownProjects, RoleSource
 parse = LLM._parse_role_sources
 
 
-def test_availability_reports_missing_key(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    # anthropic is installed in the dev env, so the only blocker is the key.
-    assert availability() == "ANTHROPIC_API_KEY is not set"
+def _clear_creds(monkeypatch):
+    for var in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
 
 
-def test_availability_ok_when_key_present(monkeypatch):
+def test_availability_reports_missing_credentials(monkeypatch):
+    _clear_creds(monkeypatch)
+    # anthropic is installed in the dev env, so the only blocker is credentials.
+    msg = availability()
+    assert msg and "ANTHROPIC_API_KEY" in msg and "CLAUDE_CODE_OAUTH_TOKEN" in msg
+
+
+def test_availability_ok_with_api_key(monkeypatch):
+    _clear_creds(monkeypatch)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    assert availability() is None
+
+
+def test_availability_ok_with_subscription_token(monkeypatch):
+    _clear_creds(monkeypatch)
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oauth-test")
     assert availability() is None
 
 

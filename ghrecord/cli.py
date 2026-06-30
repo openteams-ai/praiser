@@ -10,11 +10,13 @@ from .github_client import RateLimitError
 from .pipeline import _humanize, run
 from .render import render
 
-# Shown when an Anthropic API key is needed (LLM features).
+# Shown when Anthropic credentials are needed (LLM features).
 ANTHROPIC_HELP = (
-    "Get an API key at https://console.anthropic.com/settings/keys, then "
-    "`export ANTHROPIC_API_KEY=<key>` (and install the extra: "
-    "pip install 'gh-record[llm]')."
+    "Use EITHER an API key — https://console.anthropic.com/settings/keys, then "
+    "`export ANTHROPIC_API_KEY=<key>` (pay-as-you-go) — OR your Claude "
+    "subscription: run `claude setup-token` and "
+    "`export CLAUDE_CODE_OAUTH_TOKEN=<token>`. Also install the extra: "
+    "pip install 'gh-record[llm]'."
 )
 
 # Shown whenever a token would help. Public-data discovery needs no scopes; add
