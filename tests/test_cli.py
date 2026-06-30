@@ -4,6 +4,30 @@ from ghrecord.cli import TOKEN_HELP, _token_hint
 from ghrecord.config import resolve_token
 
 
+def _stub_run_one_record(monkeypatch):
+    from ghrecord.models import CODE_OWNER, Evidence, ProjectRecord
+    from ghrecord.pipeline import RunResult
+    rec = ProjectRecord("o/r", "https://github.com/o/r", stars=500,
+                        evidence=[Evidence("x", CODE_OWNER, "u", 0.9, "")])
+    monkeypatch.setattr(cli, "resolve_token", lambda explicit: ("tok", "flag"))
+    monkeypatch.setattr(cli, "run", lambda config: RunResult(records=[rec]))
+
+
+def test_default_output_is_highlights(monkeypatch, capsys):
+    _stub_run_one_record(monkeypatch)
+    assert cli.main(["someuser"]) == 0
+    out = capsys.readouterr().out
+    assert "highlights" in out
+    assert "# Elevated-role record" not in out
+
+
+def test_format_md_gives_full_report(monkeypatch, capsys):
+    _stub_run_one_record(monkeypatch)
+    assert cli.main(["someuser", "--format", "md"]) == 0
+    out = capsys.readouterr().out
+    assert "# Elevated-role record" in out
+
+
 def test_main_keyboardinterrupt_exits_cleanly(monkeypatch, capsys):
     def boom(_config):
         raise KeyboardInterrupt

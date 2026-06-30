@@ -56,12 +56,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--min-stars", type=int, default=50,
                    help="popularity threshold (default: 50); high-signal roles "
                         "and registry overrides survive regardless")
-    p.add_argument("--format", choices=["md", "json"], default="md",
-                   dest="fmt", help="output format (default: md)")
+    p.add_argument("--format", choices=["md", "json"], default=None,
+                   dest="fmt",
+                   help="emit the full report as md or json (default output is "
+                        "the highlights summary)")
     p.add_argument("--highlights", nargs="?", type=int, const=8, default=None,
                    metavar="N",
-                   help="print only the top-N highlights, one line each "
-                        "(default 8); overrides --format")
+                   help="top-N highlights, one line each (this is the default "
+                        "view; N defaults to 8)")
     p.add_argument("--token", default=None,
                    help="GitHub token (or set GITHUB_TOKEN / GH_TOKEN)")
     p.add_argument("--cache-dir", default=None,
@@ -141,12 +143,17 @@ def main(argv: list[str] | None = None) -> int:
         if sep and path:
             extra_subcomponents.setdefault(repo, []).append(path)
 
+    # Highlights is the default view; --format md|json switches to the full report.
+    highlights = args.highlights
+    if highlights is None and args.fmt is None:
+        highlights = 8
+
     config = Config(
         username=args.username,
         token=token,
         min_stars=args.min_stars,
-        fmt=args.fmt,
-        highlights=args.highlights,
+        fmt=args.fmt or "md",
+        highlights=highlights,
         cache_dir=args.cache_dir,
         use_llm=not args.no_llm,
         registry_path=args.registry_path,

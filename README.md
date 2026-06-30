@@ -24,13 +24,16 @@ Requires Python 3.13+.
 
 ```bash
 export GITHUB_TOKEN=ghp_...        # a PAT; raises rate limits and enables search
-gh-record torvalds                 # best-results defaults; just give a username
-gh-record gvanrossum --format json -o gvanrossum.json
-gh-record someuser --no-discover-roles --no-llm   # skip the LLM/web features
+gh-record torvalds                 # default: the highlights summary (below)
+gh-record gvanrossum --format md   # the full report (Markdown)
+gh-record gvanrossum --format json -o gvanrossum.json   # full report as JSON
+gh-record someuser --no-discover-roles --no-llm         # skip the LLM/web features
 ```
 
-For a quick read, `gh-record <username> --highlights` prints just the top roles,
-one line each:
+By default `gh-record <username>` prints a compact **highlights** summary — the
+top roles, one line each, plus breadth stats. Use `--format md|json` for the
+full per-project report with evidence links, or `--highlights N` to change the
+count.
 
 ```
 pearu — top 8 highlights:
@@ -94,8 +97,8 @@ cache preserves what already succeeded — so re-running finishes the job.
 ```
 gh-record <username>
     [--min-stars N]        popularity threshold (default 50)
-    [--format md|json]     output format (default md)
-    [--highlights [N]]     print only the top-N highlights, one line each (default 8)
+    [--highlights [N]]     top-N highlights summary (this is the DEFAULT view; N=8)
+    [--format md|json]     full per-project report instead of the highlights
     [--token TOKEN]        or GITHUB_TOKEN / GH_TOKEN
     [--cache-dir DIR]      default ~/.cache/ghrecord
     [--registry FILE]      known-projects file (default: ~/.local/share/ghrecord/)
