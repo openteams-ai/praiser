@@ -179,25 +179,24 @@ class EnhancementProposalsExtractor(Extractor):
 
         plans = []
         for path in AUTODETECT_PATHS:
-            entries = ctx.client.list_dir(candidate.owner, candidate.repo, path)
-            names = [e.get("name", "") for e in entries]
+            entries = ctx.forge.list_dir(candidate.owner, candidate.repo, path)
+            names = [e.name for e in entries]
             if names and looks_like_proposal_dir(names):
                 plans.append((path, guess_format(names)))
         return plans
 
     def _iter_docs(self, candidate, ctx, path) -> list[str]:
         """Doc paths within a series: numbered files, or index.md in numbered dirs."""
-        entries = ctx.client.list_dir(candidate.owner, candidate.repo, path)
+        entries = ctx.forge.list_dir(candidate.owner, candidate.repo, path)
         docs: list[str] = []
         prefix = "" if path in ("", ".") else f"{path}/"
         for e in entries:
-            name = e.get("name", "")
-            etype = e.get("type")
+            name = e.name
             full = f"{prefix}{name}"
-            if etype == "file" and name.lower().endswith((".rst", ".md")) \
+            if not e.is_dir and name.lower().endswith((".rst", ".md")) \
                     and _NUMBERED_RE.search(name):
                 docs.append(full)
-            elif etype == "dir" and _NUMBERED_RE.search(name):
+            elif e.is_dir and _NUMBERED_RE.search(name):
                 for inner in ("index.md", "README.md", "index.rst", "readme.md"):
                     docs.append(f"{full}/{inner}")  # tried; missing ones 404
         return docs[:MAX_DOCS]
@@ -210,7 +209,7 @@ class EnhancementProposalsExtractor(Extractor):
         """
         if not docs:
             return []
-        fetched = ctx.client.get_files(candidate.owner, candidate.repo, docs)
+        fetched = ctx.forge.get_files(candidate.owner, candidate.repo, docs)
         return [fetched.get(doc) for doc in docs]
 
     def _scan(self, candidate, ctx, path, fmt) -> list[Evidence]:

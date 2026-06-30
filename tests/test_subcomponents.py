@@ -22,7 +22,7 @@ class _Client:
 def _ctx(client, registry=None, manual_subs=None):
     return ExtractContext(
         identity=Identity(primary_login="pearu"),
-        client=client,
+        forge=client,
         registry=registry or KnownProjects(projects={}),
         manual_subcomponents=manual_subs or {},
     )

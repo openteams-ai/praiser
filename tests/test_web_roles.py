@@ -48,7 +48,7 @@ def _ctx(page, role="maintainer"):
         "a/b", role_sources=[RoleSource("http://x", role, "Team page")])})
     return ExtractContext(
         identity=Identity(primary_login="pearu", names={"Pearu Peterson"}),
-        client=_Client(page), registry=reg,
+        forge=_Client(page), registry=reg,
     )
 
 

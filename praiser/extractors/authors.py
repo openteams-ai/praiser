@@ -47,7 +47,7 @@ class AuthorsExtractor(Extractor):
     name = "authors"
 
     def extract(self, candidate, ctx: ExtractContext) -> list[Evidence]:
-        files = ctx.client.get_files(
+        files = ctx.forge.get_files(
             candidate.owner, candidate.repo, AUTHORS_PATHS
         )
         for path in AUTHORS_PATHS:

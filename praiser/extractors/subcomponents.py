@@ -45,7 +45,7 @@ class SubcomponentsExtractor(Extractor):
         evidence: list[Evidence] = []
         for path, role, label in self._targets(candidate, ctx):
             count = max(
-                (ctx.client.path_commit_count(
+                (ctx.forge.path_commit_count(
                     candidate.owner, candidate.repo, path, h)
                  for h in ctx.identity.logins),
                 default=0,

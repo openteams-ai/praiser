@@ -1,6 +1,7 @@
 from praiser.discovery import keep_candidate
 from praiser.extractors.base import ExtractContext
 from praiser.extractors.contributors import ContributorsExtractor
+from praiser.forge import ContributorCount
 from praiser.models import CODE_OWNER, Candidate, Evidence, Identity, ProjectRecord
 from praiser.popularity import filter_records
 from praiser.registry import KnownProjects
@@ -17,10 +18,10 @@ def test_manual_candidate_kept_even_if_fork_or_private():
 def test_manual_repo_is_trusted_and_contributor_checked():
     class C:
         def repo_contributors(self, o, r, max_pages=2):
-            return [{"login": "x", "contributions": 9}] * 3 + \
-                   [{"login": "pearu", "contributions": 50}]
+            return [ContributorCount("x", 9)] * 3 + \
+                   [ContributorCount("pearu", 50)]
     ctx = ExtractContext(
-        identity=Identity(primary_login="pearu"), client=C(), registry=EMPTY,
+        identity=Identity(primary_login="pearu"), forge=C(), registry=EMPTY,
         manual_repos={"heavyai/rbc"}, popularity_floor=50,
     )
     cand = Candidate("heavyai/rbc", stars=29, forks=11)  # below normal gates
@@ -35,12 +36,12 @@ def test_manual_repo_records_plain_contribution():
     # user vouched via --add-repo, so it's recorded at low confidence.
     class C:
         def repo_contributors(self, o, r, max_pages=2):
-            return [{"login": f"u{i}", "contributions": 100} for i in range(164)] + \
-                   [{"login": "pearu", "contributions": 8}]
+            return [ContributorCount(f"u{i}", 100) for i in range(164)] + \
+                   [ContributorCount("pearu", 8)]
         def merged_pr_count(self, o, r, login):
             return 8  # modest -> still below the bar
     ctx = ExtractContext(
-        identity=Identity(primary_login="pearu"), client=C(), registry=EMPTY,
+        identity=Identity(primary_login="pearu"), forge=C(), registry=EMPTY,
         manual_repos={"apache/arrow"}, popularity_floor=50,
     )
     ev = ContributorsExtractor().extract(Candidate("apache/arrow", stars=16000), ctx)
@@ -52,12 +53,12 @@ def test_manual_repo_records_plain_contribution():
 def test_non_manual_plain_contribution_excluded():
     class C:
         def repo_contributors(self, o, r, max_pages=2):
-            return [{"login": f"u{i}", "contributions": 100} for i in range(164)] + \
-                   [{"login": "pearu", "contributions": 8}]
+            return [ContributorCount(f"u{i}", 100) for i in range(164)] + \
+                   [ContributorCount("pearu", 8)]
         def merged_pr_count(self, o, r, login):
             return 8
     ctx = ExtractContext(
-        identity=Identity(primary_login="pearu"), client=C(), registry=EMPTY,
+        identity=Identity(primary_login="pearu"), forge=C(), registry=EMPTY,
         popularity_floor=50, canonical_stars=1000,
     )
     # popular repo, but pearu is a plain contributor -> excluded

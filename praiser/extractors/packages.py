@@ -32,12 +32,12 @@ class PackagesExtractor(Extractor):
     def applicable(self, candidate, ctx: ExtractContext) -> bool:
         # Index hit (npm/crates) or a PyPI reverse probe is worth a look. The
         # PyPI probe needs a known name to match an author against and a client.
-        return bool(ctx.package_index) or bool(ctx.identity.names and ctx.client)
+        return bool(ctx.package_index) or bool(ctx.identity.names and ctx.forge)
 
     def extract(self, candidate, ctx: ExtractContext) -> list[Evidence]:
         refs = list(ctx.package_index.get(candidate.name_with_owner.lower(), []))
-        if ctx.identity.names and ctx.client is not None:
-            fetch = partial(ctx.client.get_url, accept=JSON_ACCEPT)
+        if ctx.identity.names and ctx.forge is not None:
+            fetch = partial(ctx.forge.get_url, accept=JSON_ACCEPT)
             pypi = pypi_ref_for_repo(
                 fetch, candidate.name_with_owner, ctx.identity
             )

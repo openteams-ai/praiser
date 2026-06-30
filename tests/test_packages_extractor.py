@@ -17,10 +17,10 @@ class _Client:
         return val if val is None or isinstance(val, str) else json.dumps(val)
 
 
-def _ctx(index, client=None, names=()):
+def _ctx(index, forge=None, names=()):
     return ExtractContext(
         identity=Identity(primary_login="pearu", names=set(names)),
-        client=client,
+        forge=forge,
         registry=KnownProjects(projects={}),
         package_index=index,
     )
@@ -65,7 +65,7 @@ def test_pypi_reverse_probe_emits_author_evidence():
     client = _Client({"https://pypi.org/pypi/mypkg/json": {"info": {
         "name": "mypkg", "author": "Pearu Peterson",
         "project_urls": {"Source": "https://github.com/pearu/mypkg"}}}})
-    ctx = _ctx({}, client=client, names=["Pearu Peterson"])
+    ctx = _ctx({}, forge=client, names=["Pearu Peterson"])
     ev = PackagesExtractor().extract(Candidate("pearu/mypkg"), ctx)
     assert len(ev) == 1
     assert ev[0].source == "pypi" and ev[0].role == AUTHOR
@@ -74,5 +74,5 @@ def test_pypi_reverse_probe_emits_author_evidence():
 def test_pypi_probe_skipped_without_a_known_name():
     client = _Client({"https://pypi.org/pypi/mypkg/json": {"info": {
         "name": "mypkg", "author": "Pearu Peterson"}}})
-    ctx = _ctx({}, client=client, names=())  # no identity name -> no probe
+    ctx = _ctx({}, forge=client, names=())  # no identity name -> no probe
     assert PackagesExtractor().applicable(Candidate("pearu/mypkg"), ctx) is False

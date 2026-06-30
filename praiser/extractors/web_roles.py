@@ -59,7 +59,7 @@ class WebRolesExtractor(Extractor):
             return []
         out: list[Evidence] = []
         for src in known.role_sources:
-            page = ctx.client.get_url(src.url)
+            page = ctx.forge.get_url(src.url)
             if not page:
                 continue
             m = matches(page, ctx.identity.logins, ctx.identity.names)
@@ -107,7 +107,7 @@ class WebRolesAutoExtractor(Extractor):
         out: list[Evidence] = []
         reachable: list[dict] = []
         for src in sources:
-            page = ctx.client.get_url(src["url"])
+            page = ctx.forge.get_url(src["url"])
             if not page:
                 continue
             reachable.append(src)  # real, fetchable page -> worth saving

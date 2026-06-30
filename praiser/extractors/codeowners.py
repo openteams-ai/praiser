@@ -66,7 +66,7 @@ class CodeownersExtractor(Extractor):
     name = "codeowners"
 
     def extract(self, candidate, ctx: ExtractContext) -> list[Evidence]:
-        files = ctx.client.get_files(
+        files = ctx.forge.get_files(
             candidate.owner, candidate.repo, CODEOWNERS_PATHS
         )
         for path in CODEOWNERS_PATHS:  # honour GitHub's location priority
@@ -115,7 +115,7 @@ class CodeownersExtractor(Extractor):
 
     def _team_evidence(self, candidate, ctx, path, url, org, team) -> Evidence | None:
         try:
-            members = ctx.client.team_members(org, team)
+            members = ctx.forge.team_members(org, team)
         except Exception:
             members = []
         if members:

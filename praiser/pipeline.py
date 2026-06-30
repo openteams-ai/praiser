@@ -9,7 +9,8 @@ from .cache import Cache
 from .config import Config
 from .discovery import discover, org_logins
 from .extractors import ExtractContext, all_extractors
-from .github_client import GitHubClient, RateLimitError
+from .forge import GitHubForge
+from .github_client import RateLimitError
 from .identity import resolve_identity
 from .llm import LLM
 from .models import WEAK_ROLES, Evidence, ProjectRecord
@@ -47,7 +48,7 @@ def _humanize(seconds: int | None) -> str:
 
 def run(config: Config) -> RunResult:
     cache = Cache(config.cache_dir)
-    client = GitHubClient(config.token, cache, verbose=config.verbose)
+    forge = GitHubForge(config.token, cache, verbose=config.verbose)
     registry = KnownProjects.load(config.registry_path)
     llm = LLM.maybe(cache, enabled=config.use_llm)
     _log(config, f"LLM fallback {'enabled' if llm else 'disabled'}")
@@ -60,33 +61,33 @@ def run(config: Config) -> RunResult:
 
     try:
         progress.phase(f"resolving identity for {config.username}…")
-        identity = resolve_identity(client, config.username)
+        identity = resolve_identity(forge, config.username)
         _log(config, f"identity: logins={identity.logins} names={identity.names}")
 
         package_refs = []
         if config.use_package_registries:
-            pkg_fetch = partial(client.get_url, accept=JSON_ACCEPT)
+            pkg_fetch = partial(forge.get_url, accept=JSON_ACCEPT)
             package_refs = discover_packages(pkg_fetch, identity)
             _log(config, f"package registries: {len(package_refs)} package(s) "
                          f"({sum(1 for r in package_refs if r.repo)} on GitHub)")
 
         progress.phase("discovering candidate repositories…")
         candidates = discover(
-            client, identity, registry,
+            forge, identity, registry,
             include_private=config.include_private,
             extra_repos=config.extra_repos,
             package_refs=package_refs,
         )
         _log(config, f"discovered {len(candidates)} candidate repos")
-        rate0 = client.rate_summary()
+        rate0 = forge.rate_summary()
         progress.phase(
             f"discovered {len(candidates)} candidate repos"
             + (f" · rate: {rate0}" if rate0 else "")
         )
 
         ctx = ExtractContext(
-            identity=identity, client=client, registry=registry, llm=llm,
-            org_logins=org_logins(client, identity.primary_login),
+            identity=identity, forge=forge, registry=registry, llm=llm,
+            org_logins=org_logins(forge, identity.primary_login),
             popularity_floor=config.min_stars,
             contributor_pages=config.contributor_pages,
             auto_discover_roles=config.discover_roles and llm is not None,
@@ -100,7 +101,7 @@ def run(config: Config) -> RunResult:
 
         progress.phase("checking popularity…")
         try:
-            enrich_stars(client, records)
+            enrich_stars(forge, records)
         except RateLimitError as exc:
             _log(config, f"rate limit during popularity enrichment: {exc}")
             reset_in = exc.reset_in if reset_in is None else reset_in
@@ -109,7 +110,7 @@ def run(config: Config) -> RunResult:
             force_primary=set(config.extra_repos),
         )
         _log(config, f"{len(records)} primary + {len(secondary)} secondary repos")
-        rate1 = client.rate_summary()
+        rate1 = forge.rate_summary()
         progress.phase(
             f"done — {len(records)} primary project(s)"
             + (f", {len(secondary)} more widely-used" if secondary else "")
@@ -139,7 +140,7 @@ def run(config: Config) -> RunResult:
             records=records, secondary=secondary, partial_reset_in=reset_in
         )
     finally:
-        client.close()
+        forge.close()
 
 
 def _scan_one(extractors, cand, ctx, config) -> list[Evidence]:
@@ -184,7 +185,7 @@ def _attribute(
             for fut in as_completed(futures):
                 cand = futures[fut]
                 done += 1
-                rate = ctx.client.rate_summary()
+                rate = ctx.forge.rate_summary()
                 rate_str = f" | {rate}" if rate else ""
                 progress.status(
                     f"scanned {done}/{total} ({len(records)} found){rate_str}: "

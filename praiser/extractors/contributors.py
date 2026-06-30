@@ -66,7 +66,7 @@ class ContributorsExtractor(Extractor):
             # commit per PR, and unlinked commit emails aren't attributed. Fall
             # back to merged-PR count (workflow-agnostic) for notable repos.
             if candidate.stars >= PR_RESCUE_MIN_STARS or manual:
-                prs = max((ctx.client.merged_pr_count(
+                prs = max((ctx.forge.merged_pr_count(
                     candidate.owner, candidate.repo, h)
                     for h in ctx.identity.logins), default=0)
                 pr_conf = classify(prs, rank)

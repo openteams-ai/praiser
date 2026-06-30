@@ -12,7 +12,7 @@ splits the elevated-role records into:
 
 from datetime import datetime, timezone
 
-from .github_client import GitHubClient
+from .forge import Forge
 from .models import (
     AUTHOR,
     MAINTAINER,
@@ -58,19 +58,17 @@ def is_notable_authored(rec: ProjectRecord) -> bool:
     return rec.role == AUTHOR and (rec.stars >= 5 or rec.forks >= 3)
 
 
-def enrich_stars(
-    client: GitHubClient, records: list[ProjectRecord]
-) -> None:
-    """Fill stars/forks for records that don't have them yet (REST, cached)."""
+def enrich_stars(forge: Forge, records: list[ProjectRecord]) -> None:
+    """Fill stars/forks for records that don't have them yet (cached)."""
     for rec in records:
         if rec.stars > 0:
             continue
         owner, _, repo = rec.name_with_owner.partition("/")
-        data = client.rest_json(f"/repos/{owner}/{repo}")
-        if isinstance(data, dict):
-            rec.stars = data.get("stargazers_count", 0) or 0
-            rec.forks = data.get("forks_count", 0) or 0
-            rec.pushed_at = data.get("pushed_at") or rec.pushed_at
+        meta = forge.repository(owner, repo)
+        if meta is not None:
+            rec.stars = meta.stars
+            rec.forks = meta.forks
+            rec.pushed_at = meta.pushed_at or rec.pushed_at
 
 
 def filter_records(

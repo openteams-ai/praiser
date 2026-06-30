@@ -1,29 +1,30 @@
 from praiser.extractors.authors import find_credit
 from praiser.extractors.base import ExtractContext
 from praiser.extractors.contributors import classify
+from praiser.forge import ContributorCount
 from praiser.models import Candidate, Identity
 from praiser.registry import KnownProjects
 
 
-class _RecordingClient:
+class _RecordingForge:
     def __init__(self):
         self.calls = []
 
     def repo_contributors(self, owner, repo, max_pages=2):
         self.calls.append(max_pages)
-        return [{"login": "pearu", "contributions": 10}]
+        return [ContributorCount("pearu", 10)]
 
 
-class _ContribClient:
+class _ContribForge:
     def repo_contributors(self, owner, repo, max_pages=2):
-        return [{"login": "pearu", "contributions": 200}]
+        return [ContributorCount("pearu", 200)]
 
 
 def _contrib_ctx():
     from praiser.extractors.contributors import ContributorsExtractor  # noqa
     return ExtractContext(
         identity=Identity(primary_login="pearu"),
-        client=_ContribClient(),
+        forge=_ContribForge(),
         registry=KnownProjects(projects={}),
     )
 
@@ -51,12 +52,12 @@ def test_merged_pr_rescue_elevates_undercounted_contributor():
 
     class C:
         def repo_contributors(self, o, r, max_pages=2):
-            return [{"login": f"u{i}", "contributions": 9} for i in range(50)] + \
-                   [{"login": "pearu", "contributions": 5}]
+            return [ContributorCount(f"u{i}", 9) for i in range(50)] + \
+                   [ContributorCount("pearu", 5)]
         def merged_pr_count(self, o, r, login):
             return 150
     ctx = ExtractContext(
-        identity=Identity(primary_login="pearu"), client=C(),
+        identity=Identity(primary_login="pearu"), forge=C(),
         registry=KnownProjects(projects={}), popularity_floor=50,
     )
     ev = ContributorsExtractor().extract(Candidate("big/repo", stars=20000), ctx)
@@ -65,18 +66,18 @@ def test_merged_pr_rescue_elevates_undercounted_contributor():
 
 
 def test_contributor_pages_cap_is_passed_through():
-    client = _RecordingClient()
+    forge = _RecordingForge()
     ctx = ExtractContext(
         identity=Identity(primary_login="pearu"),
-        client=client,
+        forge=forge,
         registry=KnownProjects(projects={}),
         contributor_pages=2,
     )
     ctx.contributors(Candidate("a/b"))
-    assert client.calls == [2]
+    assert forge.calls == [2]
     # cached: no second fetch
     ctx.contributors(Candidate("a/b"))
-    assert client.calls == [2]
+    assert forge.calls == [2]
 
 THANKS = """\
 SciPy Developers

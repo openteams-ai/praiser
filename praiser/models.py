@@ -76,6 +76,21 @@ class Identity:
         return name.strip().lower() in self.names
 
 
+# Web host per forge, so a project's link reflects where it actually lives
+# rather than assuming GitHub. Discovery stamps each candidate's ``forge``.
+FORGE_WEB_HOSTS: dict[str, str] = {
+    "github": "https://github.com",
+    "gitlab": "https://gitlab.com",
+    "codeberg": "https://codeberg.org",
+}
+DEFAULT_FORGE = "github"
+
+
+def repo_web_url(forge: str, name_with_owner: str) -> str:
+    host = FORGE_WEB_HOSTS.get(forge, FORGE_WEB_HOSTS[DEFAULT_FORGE])
+    return f"{host}/{name_with_owner}"
+
+
 # --- Candidate project (Phase 1) ------------------------------------------
 @dataclass
 class Candidate:
@@ -88,6 +103,7 @@ class Candidate:
     is_private: bool = False
     pushed_at: str | None = None  # ISO-8601 of last push (maintenance signal)
     sources: set[str] = field(default_factory=set)  # discovery sources
+    forge: str = DEFAULT_FORGE    # which code host this repo lives on
 
     @property
     def owner(self) -> str:
@@ -99,7 +115,7 @@ class Candidate:
 
     @property
     def url(self) -> str:
-        return f"https://github.com/{self.name_with_owner}"
+        return repo_web_url(self.forge, self.name_with_owner)
 
 
 # --- Package-registry signal (Phase 1) ------------------------------------
