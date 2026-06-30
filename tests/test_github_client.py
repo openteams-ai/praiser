@@ -30,3 +30,29 @@ def test_body_message_triggers_detection_even_without_headers():
 def test_retry_after_takes_precedence():
     got = reset_in(429, {"retry-after": "7", "x-ratelimit-remaining": "0"}, b"")
     assert got == 7
+
+
+def _bare_client():
+    return GitHubClient.__new__(GitHubClient)  # no network/cache needed
+
+
+def test_track_rate_and_summary_per_bucket():
+    c = _bare_client()
+    c.rate = {}
+    c._track_rate({"x-ratelimit-resource": "core",
+                   "x-ratelimit-remaining": "4200", "x-ratelimit-limit": "5000",
+                   "x-ratelimit-reset": "0"})
+    c._track_rate({"x-ratelimit-resource": "graphql",
+                   "x-ratelimit-remaining": "4990", "x-ratelimit-limit": "5000",
+                   "x-ratelimit-reset": "0"})
+    assert c.rate["core"][0] == 4200
+    summary = c.rate_summary()
+    assert "REST 4200/5000" in summary
+    assert "GraphQL 4990/5000" in summary
+
+
+def test_track_rate_ignores_headerless_responses():
+    c = _bare_client()
+    c.rate = {}
+    c._track_rate({})  # no rate headers (e.g. a cached path or odd response)
+    assert c.rate_summary() == ""

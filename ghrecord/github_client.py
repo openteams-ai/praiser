@@ -61,6 +61,8 @@ class GitHubClient:
         self.max_retries = max_retries
         self.verbose = verbose
         self._client = httpx.Client(timeout=30.0) if httpx is not None else None
+        # Latest rate-limit state per bucket: resource -> (remaining, limit, reset).
+        self.rate: dict[str, tuple[int, int, int]] = {}
 
     # -- low-level HTTP -----------------------------------------------------
     def _headers(self, accept: str) -> dict[str, str]:
@@ -111,6 +113,7 @@ class GitHubClient:
             # Normalise header keys to lowercase: httpx and urllib disagree on
             # case, and GitHub's rate-limit headers must be read reliably.
             h = {k.lower(): v for k, v in dict(raw_headers).items()}
+            self._track_rate(h)
 
             if status in (502, 503, 504):
                 time.sleep(2.0 * (attempt + 1))
@@ -129,6 +132,29 @@ class GitHubClient:
             return status, h, data
 
         raise GitHubError(f"request failed after retries: {url} ({last_exc})")
+
+    def _track_rate(self, h: dict[str, str]) -> None:
+        """Record the latest rate-limit state for whichever bucket replied."""
+        resource = h.get("x-ratelimit-resource")
+        remaining = h.get("x-ratelimit-remaining")
+        if not resource or remaining is None or not remaining.isdigit():
+            return
+        limit = h.get("x-ratelimit-limit", "0")
+        reset = h.get("x-ratelimit-reset", "0")
+        self.rate[resource] = (
+            int(remaining),
+            int(limit) if limit.isdigit() else 0,
+            int(reset) if reset.isdigit() else 0,
+        )
+
+    def rate_summary(self) -> str:
+        """Short human string of remaining quota per bucket we've touched."""
+        labels = [("core", "REST"), ("graphql", "GraphQL"), ("search", "search")]
+        parts = [
+            f"{label} {self.rate[res][0]}/{self.rate[res][1]}"
+            for res, label in labels if res in self.rate
+        ]
+        return " · ".join(parts)
 
     @staticmethod
     def _ratelimit_reset_in(status: int, h: dict[str, str], data: bytes) -> int | None:
@@ -333,6 +359,42 @@ class GitHubClient:
         if isinstance(result, dict):
             return result.get("items", []) or []
         return []
+
+    def search_commits(self, query: str, per_page: int = 100) -> list[dict[str, Any]]:
+        """Commit search items (each has a .repository). Needs auth."""
+        result = self.rest_json(
+            "/search/commits",
+            params={"q": query, "per_page": per_page,
+                    "sort": "author-date", "order": "desc"},
+        )
+        if isinstance(result, dict):
+            return result.get("items", []) or []
+        return []
+
+    def repo_contributors(
+        self, owner: str, repo: str, max_pages: int = 5
+    ) -> list[dict[str, Any]] | None:
+        """Top contributors [{login, contributions}], sorted desc.
+
+        Paginates up to GitHub's ~500-contributor cap. Returns None if the data
+        could not be fetched (so callers can stay lenient rather than assume the
+        user is uninvolved).
+        """
+        out: list[dict[str, Any]] = []
+        for page in range(1, max_pages + 1):
+            try:
+                chunk = self.rest_json(
+                    f"/repos/{owner}/{repo}/contributors",
+                    params={"per_page": 100, "page": page, "anon": "false"},
+                )
+            except GitHubError:
+                return out or None
+            if not isinstance(chunk, list) or not chunk:
+                break
+            out.extend(chunk)
+            if len(chunk) < 100:
+                break
+        return out
 
     def close(self) -> None:
         if self._client is not None:

@@ -23,12 +23,12 @@ query($login:String!) {
     organizations(first:100){ nodes{ login } }
     repositories(first:100, ownerAffiliations:[OWNER],
         orderBy:{field:STARGAZERS, direction:DESC}){
-      nodes{ nameWithOwner stargazerCount forkCount isFork isPrivate }
+      nodes{ nameWithOwner stargazerCount forkCount isFork isPrivate pushedAt }
     }
     repositoriesContributedTo(first:100,
         contributionTypes:[COMMIT, PULL_REQUEST],
         orderBy:{field:STARGAZERS, direction:DESC}){
-      nodes{ nameWithOwner stargazerCount forkCount isFork isPrivate }
+      nodes{ nameWithOwner stargazerCount forkCount isFork isPrivate pushedAt }
     }
   }
 }
@@ -38,7 +38,7 @@ ORG_REPOS_QUERY = """
 query($org:String!) {
   organization(login:$org) {
     repositories(first:30, orderBy:{field:STARGAZERS, direction:DESC}){
-      nodes{ nameWithOwner stargazerCount forkCount isFork isPrivate }
+      nodes{ nameWithOwner stargazerCount forkCount isFork isPrivate pushedAt }
     }
   }
 }
@@ -46,6 +46,17 @@ query($org:String!) {
 
 # Role-bearing files to look for the handle in via code search.
 SEARCH_FILES = ["CODEOWNERS", "MAINTAINERS", "OWNERS", "GOVERNANCE"]
+# Credit files to look for the user's *name* in (catches founders/authors whose
+# only recorded involvement is an AUTHORS/THANKS credit, e.g. SciPy).
+SEARCH_AUTHOR_FILES = ["AUTHORS", "THANKS", "CONTRIBUTORS"]
+
+
+def org_logins(client: GitHubClient, login: str) -> set[str]:
+    """Lowercased org logins the user belongs to (reuses the cached query)."""
+    data = client.graphql(DISCOVERY_QUERY, {"login": login})
+    user = (data or {}).get("user") or {}
+    nodes = (user.get("organizations") or {}).get("nodes", []) or []
+    return {o["login"].lower() for o in nodes if o.get("login")}
 
 
 def keep_candidate(
@@ -93,6 +104,7 @@ def discover(
                 forks=node.get("forkCount", 0) or 0,
                 is_fork=bool(node.get("isFork")),
                 is_private=bool(node.get("isPrivate")),
+                pushed_at=node.get("pushedAt"),
             )
             candidates[nwo] = existing
         existing.sources.add(source)
@@ -100,6 +112,7 @@ def discover(
         if has_meta:
             has_meta_names.add(nwo)
             existing.is_private = bool(node.get("isPrivate"))
+            existing.pushed_at = node.get("pushedAt") or existing.pushed_at
 
     data = client.graphql(DISCOVERY_QUERY, {"login": identity.primary_login})
     user = (data or {}).get("user") or {}
@@ -119,6 +132,8 @@ def discover(
 
     if use_code_search:
         _code_search(client, identity, add)
+        _name_search(client, identity, add)
+        _commit_search(client, identity, add)
 
     # Always check registry seeds (popularity filled in Phase 3).
     for seed in registry.seeds():
@@ -148,7 +163,7 @@ def _enrich_metadata(client: GitHubClient, cands: list[Candidate]) -> None:
             parts.append(
                 f"r{j}: repository(owner:{json.dumps(c.owner)}, "
                 f"name:{json.dumps(c.repo)}) "
-                "{ isFork isPrivate stargazerCount forkCount }"
+                "{ isFork isPrivate stargazerCount forkCount pushedAt }"
             )
         query = "query{" + " ".join(parts) + "}"
         try:
@@ -164,6 +179,7 @@ def _enrich_metadata(client: GitHubClient, cands: list[Candidate]) -> None:
             c.is_private = bool(repo.get("isPrivate"))
             c.stars = max(c.stars, repo.get("stargazerCount", 0) or 0)
             c.forks = max(c.forks, repo.get("forkCount", 0) or 0)
+            c.pushed_at = repo.get("pushedAt") or c.pushed_at
 
 
 def _code_search(client: GitHubClient, identity: Identity, add) -> None:
@@ -177,3 +193,31 @@ def _code_search(client: GitHubClient, identity: Identity, add) -> None:
             repo = (item.get("repository") or {}).get("full_name")
             if repo:
                 add({"nameWithOwner": repo}, f"search:{fname}")
+
+
+def _name_search(client: GitHubClient, identity: Identity, add) -> None:
+    """Find repos crediting the user's name in AUTHORS/THANKS/CONTRIBUTORS."""
+    for name in identity.names:
+        if len(name) < 5:
+            continue
+        for fname in SEARCH_AUTHOR_FILES:
+            try:
+                items = client.search_code(f'"{name}" filename:{fname}')
+            except Exception:
+                items = []
+            for item in items:
+                repo = (item.get("repository") or {}).get("full_name")
+                if repo:
+                    add({"nameWithOwner": repo}, f"namesearch:{fname}")
+
+
+def _commit_search(client: GitHubClient, identity: Identity, add) -> None:
+    """Find repos the user has authored commits in (any age, recent first)."""
+    try:
+        items = client.search_commits(f"author:{identity.primary_login}")
+    except Exception:
+        items = []
+    for item in items:
+        repo = (item.get("repository") or {}).get("full_name")
+        if repo:
+            add({"nameWithOwner": repo}, "commit-search")

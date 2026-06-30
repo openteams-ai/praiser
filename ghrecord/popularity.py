@@ -1,9 +1,16 @@
 """Phase 3 — popularity filter.
 
 Enriches records that lack star counts (registry seeds, code-search hits), then
-keeps a project if it is popular enough OR carries a high-signal role that we
-don't want to lose on a small-but-notable standards project.
+splits the elevated-role records into:
+
+* **primary** — popular enough for the headline record, and
+* **secondary** — below the popularity bar but still *widely used and
+  maintained* (real fork engagement + recently pushed). These are summarised
+  (at minimum a count) so the report doesn't silently drop projects where the
+  user holds a real role on a smaller-but-active library.
 """
+
+from datetime import datetime, timezone
 
 from .github_client import GitHubClient
 from .models import (
@@ -16,6 +23,28 @@ from .registry import KnownProjects
 
 # Roles strong enough to survive the star threshold on their own.
 HIGH_SIGNAL_ROLES = frozenset({STEERING_COUNCIL, STANDARDS_AUTHOR, MAINTAINER})
+
+# A secondary project must show real use (forks) and recent maintenance.
+SECONDARY_MIN_FORKS = 5
+MAINTAINED_MONTHS = 24
+
+
+def _is_maintained(pushed_at: str | None) -> bool:
+    """True if pushed within MAINTAINED_MONTHS. Unknown dates are treated as True."""
+    if not pushed_at:
+        return True
+    try:
+        when = datetime.fromisoformat(pushed_at.replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    age_days = (datetime.now(timezone.utc) - when).days
+    return age_days <= MAINTAINED_MONTHS * 30
+
+
+def is_widely_used_and_maintained(rec: ProjectRecord, min_stars: int) -> bool:
+    """A below-threshold project that still looks worth recording."""
+    used = rec.forks >= SECONDARY_MIN_FORKS or rec.stars >= max(5, min_stars // 5)
+    return used and _is_maintained(rec.pushed_at)
 
 
 def enrich_stars(
@@ -30,6 +59,7 @@ def enrich_stars(
         if isinstance(data, dict):
             rec.stars = data.get("stargazers_count", 0) or 0
             rec.forks = data.get("forks_count", 0) or 0
+            rec.pushed_at = data.get("pushed_at") or rec.pushed_at
 
 
 def filter_records(
@@ -37,16 +67,23 @@ def filter_records(
     *,
     min_stars: int,
     registry: KnownProjects,
-) -> list[ProjectRecord]:
-    # A high-signal role lets a project survive at a *reduced* threshold (so a
-    # smaller-but-notable standards repo isn't lost) — but NOT at zero stars,
-    # which would admit forks/copies that inherit an upstream MAINTAINERS or
-    # CODEOWNERS file. Curated small-but-notable projects bypass entirely via
-    # the registry's ``min_stars_override``.
+) -> tuple[list[ProjectRecord], list[ProjectRecord]]:
+    """Split records into (primary, secondary).
+
+    A high-signal role lets a project survive at a *reduced* threshold (so a
+    smaller-but-notable standards repo isn't lost) — but NOT at zero stars,
+    which would admit forks/copies that inherit an upstream MAINTAINERS or
+    CODEOWNERS file. Curated small-but-notable projects bypass entirely via the
+    registry's ``min_stars_override``. Anything that misses the primary bar but
+    is widely-used-and-maintained becomes a secondary record.
+    """
     high_signal_floor = max(10, min_stars // 5)
-    kept: list[ProjectRecord] = []
+    primary: list[ProjectRecord] = []
+    secondary: list[ProjectRecord] = []
     for rec in records:
         known = registry.get(rec.name_with_owner)
+        if known and known.importance:
+            rec.importance = known.importance
         override = bool(known and known.min_stars_override)
         high_signal = (
             rec.role in HIGH_SIGNAL_ROLES
@@ -54,7 +91,7 @@ def filter_records(
             and rec.stars >= high_signal_floor
         )
         if rec.stars >= min_stars or override or high_signal:
-            if known and known.importance:
-                rec.importance = known.importance
-            kept.append(rec)
-    return kept
+            primary.append(rec)
+        elif is_widely_used_and_maintained(rec, min_stars):
+            secondary.append(rec)
+    return primary, secondary

@@ -14,6 +14,7 @@ MAINTAINER = "maintainer"
 CODE_OWNER = "code_owner"
 STEERING_COUNCIL = "steering_council"
 STANDARDS_AUTHOR = "standards_author"
+CORE_CONTRIBUTOR = "core_contributor"  # substantial committer to a popular repo
 ORG_OWNER = "org_owner"
 ORG_MEMBER = "org_member"
 CONTRIBUTOR = "contributor"  # discovered-only; never a headline role on its own
@@ -24,6 +25,7 @@ ROLE_WEIGHTS: dict[str, float] = {
     MAINTAINER: 0.85,
     STANDARDS_AUTHOR: 0.82,
     CODE_OWNER: 0.80,
+    CORE_CONTRIBUTOR: 0.70,
     ORG_MEMBER: 0.40,
     CONTRIBUTOR: 0.10,
 }
@@ -82,6 +84,7 @@ class Candidate:
     forks: int = 0
     is_fork: bool = False
     is_private: bool = False
+    pushed_at: str | None = None  # ISO-8601 of last push (maintenance signal)
     sources: set[str] = field(default_factory=set)  # discovery sources
 
     @property
@@ -119,6 +122,7 @@ class ProjectRecord:
     url: str
     stars: int = 0
     forks: int = 0
+    pushed_at: str | None = None
     evidence: list[Evidence] = field(default_factory=list)
     importance: str | None = None  # registry label, e.g. "critical"
 

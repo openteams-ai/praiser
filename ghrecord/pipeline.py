@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 from .cache import Cache
 from .config import Config
-from .discovery import discover
+from .discovery import discover, org_logins
 from .extractors import ExtractContext, all_extractors
 from .github_client import GitHubClient, RateLimitError
 from .identity import resolve_identity
@@ -19,6 +19,8 @@ from .registry import KnownProjects
 @dataclass
 class RunResult:
     records: list[ProjectRecord] = field(default_factory=list)
+    # Below-threshold but widely-used-and-maintained projects with a real role.
+    secondary: list[ProjectRecord] = field(default_factory=list)
     # Seconds until the rate limit resets if the run was cut short, else None.
     partial_reset_in: int | None = None
 
@@ -63,10 +65,16 @@ def run(config: Config) -> RunResult:
             client, identity, registry, include_private=config.include_private
         )
         _log(config, f"discovered {len(candidates)} candidate repos")
-        progress.phase(f"discovered {len(candidates)} candidate repos")
+        rate0 = client.rate_summary()
+        progress.phase(
+            f"discovered {len(candidates)} candidate repos"
+            + (f" · rate: {rate0}" if rate0 else "")
+        )
 
         ctx = ExtractContext(
-            identity=identity, client=client, registry=registry, llm=llm
+            identity=identity, client=client, registry=registry, llm=llm,
+            org_logins=org_logins(client, identity.primary_login),
+            popularity_floor=config.min_stars,
         )
         records, reset_in = _attribute(config, candidates, ctx, progress)
         progress.done()
@@ -78,15 +86,20 @@ def run(config: Config) -> RunResult:
         except RateLimitError as exc:
             _log(config, f"rate limit during popularity enrichment: {exc}")
             reset_in = exc.reset_in if reset_in is None else reset_in
-        records = filter_records(
+        records, secondary = filter_records(
             records, min_stars=config.min_stars, registry=registry
         )
-        _log(config, f"{len(records)} repos after popularity filter")
+        _log(config, f"{len(records)} primary + {len(secondary)} secondary repos")
+        rate1 = client.rate_summary()
         progress.phase(
-            f"done — {len(records)} project(s) with an elevated role"
+            f"done — {len(records)} primary project(s)"
+            + (f", {len(secondary)} more widely-used" if secondary else "")
+            + (f" · rate: {rate1}" if rate1 else "")
         )
+        if config.verbose and rate1:
+            _log(config, f"rate limit remaining: {rate1}")
 
-        for rec in records:
+        for rec in (*records, *secondary):
             registry.record_popularity(
                 rec.name_with_owner, stars=rec.stars, forks=rec.forks
             )
@@ -95,7 +108,10 @@ def run(config: Config) -> RunResult:
             _log(config, f"saved registry to {config.registry_path}")
 
         records.sort(key=lambda r: r.score, reverse=True)
-        return RunResult(records=records, partial_reset_in=reset_in)
+        secondary.sort(key=lambda r: r.score, reverse=True)
+        return RunResult(
+            records=records, secondary=secondary, partial_reset_in=reset_in
+        )
     finally:
         client.close()
 
@@ -111,9 +127,14 @@ def _attribute(
     reset_in: int | None = None
     total = len(candidates)
     for i, cand in enumerate(candidates, 1):
+        rate = ctx.client.rate_summary()
+        rate_str = f" | {rate}" if rate else ""
         progress.status(
-            f"scanning repo {i}/{total} ({len(records)} found): {cand.name_with_owner}"
+            f"scanning {i}/{total} ({len(records)} found){rate_str}: "
+            f"{cand.name_with_owner}"
         )
+        if config.verbose and i % 25 == 0 and rate:
+            _log(config, f"  …{i}/{total} scanned · rate: {rate}")
         evidence: list[Evidence] = []
         try:
             for ext in extractors:
@@ -135,6 +156,7 @@ def _attribute(
                 url=cand.url,
                 stars=cand.stars,
                 forks=cand.forks,
+                pushed_at=cand.pushed_at,
                 evidence=evidence,
             ))
             _log(config, f"  + {cand.name_with_owner}: "

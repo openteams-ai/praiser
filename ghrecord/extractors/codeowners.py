@@ -80,6 +80,10 @@ class CodeownersExtractor(Extractor):
         url = f"{candidate.url}/blob/HEAD/{path}"
         found: list[Evidence] = []
         seen_owners: set[str] = set()
+        # A CODEOWNERS entry only counts if it isn't an inherited/copied file
+        # (a fork or a downstream repo that vendored an upstream CODEOWNERS along
+        # with its git history) — see ExtractContext.trust_role_file.
+        trusted = None  # computed lazily on first match
 
         for owner in all_owners(rules):
             if owner in seen_owners:
@@ -88,15 +92,21 @@ class CodeownersExtractor(Extractor):
             kind, parts = classify_owner(owner)
 
             if kind == "user" and ctx.identity.matches_handle(parts[0]):
-                found.append(Evidence(
-                    source=self.name, role=CODE_OWNER, url=url, confidence=0.9,
-                    detail=f"listed as @{parts[0]} in {path}",
-                ))
+                if trusted is None:
+                    trusted = ctx.trust_role_file(candidate)
+                if trusted:
+                    found.append(Evidence(
+                        source=self.name, role=CODE_OWNER, url=url, confidence=0.9,
+                        detail=f"listed as @{parts[0]} in {path}",
+                    ))
             elif kind == "email" and ctx.identity.matches_email(parts[0]):
-                found.append(Evidence(
-                    source=self.name, role=CODE_OWNER, url=url, confidence=0.9,
-                    detail=f"listed by email in {path}",
-                ))
+                if trusted is None:
+                    trusted = ctx.trust_role_file(candidate)
+                if trusted:
+                    found.append(Evidence(
+                        source=self.name, role=CODE_OWNER, url=url, confidence=0.9,
+                        detail=f"listed by email in {path}",
+                    ))
             elif kind == "team":
                 ev = self._team_evidence(candidate, ctx, path, url, parts[0], parts[1])
                 if ev:

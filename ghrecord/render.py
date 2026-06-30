@@ -9,6 +9,7 @@ ROLE_LABELS = {
     "code_owner": "Code owner",
     "steering_council": "Steering council",
     "standards_author": "Standards author",
+    "core_contributor": "Core contributor",
     "org_owner": "Org owner",
     "org_member": "Org member",
     "contributor": "Contributor",
@@ -38,62 +39,104 @@ def _record_to_dict(rec: ProjectRecord) -> dict:
     }
 
 
-def render_json(username: str, records: list[ProjectRecord]) -> str:
+def render_json(
+    username: str,
+    records: list[ProjectRecord],
+    secondary: list[ProjectRecord] | None = None,
+) -> str:
+    secondary = secondary or []
     payload = {
         "user": username,
         "count": len(records),
         "projects": [_record_to_dict(r) for r in records],
+        "secondary_count": len(secondary),
+        "secondary": [_record_to_dict(r) for r in secondary],
     }
     return json.dumps(payload, indent=2)
 
 
-def render_markdown(username: str, records: list[ProjectRecord]) -> str:
+def render_markdown(
+    username: str,
+    records: list[ProjectRecord],
+    secondary: list[ProjectRecord] | None = None,
+) -> str:
+    secondary = secondary or []
     lines = [
         f"# Elevated-role record for `{username}`",
         "",
         f"{len(records)} project(s) where this user holds an elevated role "
-        "(maintainer / code owner / steering council / standards author).",
+        "(maintainer / code owner / steering council / standards author / "
+        "core contributor)"
+        + (
+            f", plus **{len(secondary)}** less-popular but widely-used and "
+            "maintained project(s) with an elevated role."
+            if secondary else "."
+        ),
         "",
     ]
-    if not records:
+    if not records and not secondary:
         lines.append("_No elevated roles found._")
         return "\n".join(lines)
 
-    lines += [
-        "| Project | Role | Stars | Confidence | Evidence |",
-        "|---|---|---:|---:|---|",
-    ]
-    for rec in records:
-        role = ROLE_LABELS.get(rec.role or "", rec.role or "?")
-        best = rec.best_evidence
-        ev_link = f"[{best.source}]({best.url})" if best else ""
-        imp = f" ·{rec.importance}" if rec.importance else ""
-        lines.append(
-            f"| [{rec.name_with_owner}]({rec.url}){imp} | {role} | "
-            f"{rec.stars} | {rec.confidence:.2f} | {ev_link} |"
-        )
-
-    lines += ["", "## Details", ""]
-    for rec in records:
-        role = ROLE_LABELS.get(rec.role or "", rec.role or "?")
-        lines.append(f"### [{rec.name_with_owner}]({rec.url}) — {role}")
-        lines.append(
-            f"Stars: {rec.stars} · Forks: {rec.forks} · "
-            f"Confidence: {rec.confidence:.2f}"
-            + (f" · Importance: {rec.importance}" if rec.importance else "")
-        )
-        lines.append("")
-        for e in sorted(rec.evidence, key=lambda e: (-e.weight, -e.confidence)):
+    if records:
+        lines += [
+            "| Project | Role | Stars | Confidence | Evidence |",
+            "|---|---|---:|---:|---|",
+        ]
+        for rec in records:
+            role = ROLE_LABELS.get(rec.role or "", rec.role or "?")
+            best = rec.best_evidence
+            ev_link = f"[{best.source}]({best.url})" if best else ""
+            imp = f" ·{rec.importance}" if rec.importance else ""
             lines.append(
-                f"- **{ROLE_LABELS.get(e.role, e.role)}** "
-                f"({e.confidence:.2f}, via `{e.source}`): {e.detail} — "
-                f"[evidence]({e.url})"
+                f"| [{rec.name_with_owner}]({rec.url}){imp} | {role} | "
+                f"{rec.stars} | {rec.confidence:.2f} | {ev_link} |"
+            )
+
+        lines += ["", "## Details", ""]
+        for rec in records:
+            role = ROLE_LABELS.get(rec.role or "", rec.role or "?")
+            lines.append(f"### [{rec.name_with_owner}]({rec.url}) — {role}")
+            lines.append(
+                f"Stars: {rec.stars} · Forks: {rec.forks} · "
+                f"Confidence: {rec.confidence:.2f}"
+                + (f" · Importance: {rec.importance}" if rec.importance else "")
+            )
+            lines.append("")
+            for e in sorted(rec.evidence, key=lambda e: (-e.weight, -e.confidence)):
+                lines.append(
+                    f"- **{ROLE_LABELS.get(e.role, e.role)}** "
+                    f"({e.confidence:.2f}, via `{e.source}`): {e.detail} — "
+                    f"[evidence]({e.url})"
+                )
+            lines.append("")
+
+    if secondary:
+        lines += [
+            f"## Less-popular but widely-used & maintained ({len(secondary)})",
+            "",
+            "Below the popularity threshold, but actively maintained with real "
+            "use (forks); the user holds an elevated role.",
+            "",
+            "| Project | Role | Stars | Forks | Confidence |",
+            "|---|---|---:|---:|---:|",
+        ]
+        for rec in secondary:
+            role = ROLE_LABELS.get(rec.role or "", rec.role or "?")
+            lines.append(
+                f"| [{rec.name_with_owner}]({rec.url}) | {role} | "
+                f"{rec.stars} | {rec.forks} | {rec.confidence:.2f} |"
             )
         lines.append("")
     return "\n".join(lines)
 
 
-def render(username: str, records: list[ProjectRecord], fmt: str) -> str:
+def render(
+    username: str,
+    records: list[ProjectRecord],
+    fmt: str,
+    secondary: list[ProjectRecord] | None = None,
+) -> str:
     if fmt == "json":
-        return render_json(username, records)
-    return render_markdown(username, records)
+        return render_json(username, records, secondary)
+    return render_markdown(username, records, secondary)

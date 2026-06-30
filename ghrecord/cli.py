@@ -126,7 +126,9 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
 
-    output = render(config.username, result.records, config.fmt)
+    output = render(
+        config.username, result.records, config.fmt, result.secondary
+    )
     if args.output:
         with open(args.output, "w", encoding="utf-8") as fh:
             fh.write(output + "\n")

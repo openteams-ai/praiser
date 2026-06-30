@@ -91,18 +91,29 @@ carries an **evidence link** (file/page URL) and a **confidence** score.
 1. **Identity resolution** — assemble `{logins, names, emails}` from the
    profile. Handle/email matches are high-confidence; name-only matches are weak.
 2. **Discovery (wide net)** — owned repos, org repos, contributed-to repos
-   (over-collected on purpose), code search for the handle in role files, and
+   (over-collected on purpose), **commit search** (`author:`, catches old
+   involvement the contribution graph has dropped), code search for the handle
+   in role files, **name search** in `AUTHORS`/`THANKS`/`CONTRIBUTORS`, and
    curated registry seeds.
    Forks (which inherit upstream role files) and private repos are dropped
    here — a public "popular projects" record shouldn't surface or leak private
    repos. Use `--include-private` to scan them anyway.
 3. **Role attribution** — a registry of pluggable [extractors](ghrecord/extractors)
    (`codeowners`, `maintainers`, `manifests`, `enhancement_proposals`,
-   `governance`). Structured files are parsed deterministically; ambiguous prose
-   falls back to Claude **only after** a keyword/regex pass.
+   `governance`, `contributors`, `authors`). Structured files are parsed
+   deterministically; ambiguous prose falls back to Claude **only after** a
+   keyword/regex pass. `contributors` records a **core-contributor** role for
+   substantial committers to popular/widely-used repos (catches historical
+   maintainers and authors of major components, e.g. f2py in NumPy). Role-file
+   matches (`CODEOWNERS`/`AUTHORS`) are corroborated with **copy-resistant**
+   signals — affiliation or being the canonical popular project — so a repo that
+   *vendored* an upstream's history and role files isn't a false positive.
 4. **Popularity filter** — `--min-stars`, with an override so high-signal roles
-   on smaller-but-notable standards projects survive.
-5. **Render** — ranked by popularity × role weight × confidence.
+   on smaller-but-notable standards projects survive. Elevated-role projects
+   that miss the bar but are **widely used and maintained** (real fork
+   engagement + recently pushed) are reported as a secondary group with a count.
+5. **Render** — ranked by popularity × role weight × confidence. Live
+   rate-limit dynamics (REST/GraphQL remaining) are shown during the scan.
 
 ## The known-projects registry
 

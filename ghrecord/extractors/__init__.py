@@ -15,6 +15,8 @@ _BUILTIN_MODULES = [
     "manifests",
     "enhancement_proposals",
     "governance",
+    "contributors",
+    "authors",
 ]
 
 
