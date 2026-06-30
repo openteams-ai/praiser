@@ -21,3 +21,6 @@ venv/
 .vscode/
 .idea/
 .DS_Store
+
+# Local session handoff note (not part of the project)
+HANDOFF.md
