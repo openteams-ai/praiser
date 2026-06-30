@@ -12,6 +12,13 @@ def default_cache_dir() -> Path:
     return Path(base) / "ghrecord"
 
 
+def default_registry_path() -> Path:
+    # The learned/curated registry lives in a data dir (not the cache, which is
+    # safe to wipe) so discovered role sources and popularity persist.
+    base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    return Path(base) / "ghrecord" / "known_projects.json"
+
+
 def resolve_token(explicit: str | None) -> tuple[str | None, str]:
     """Return (token, source). source is one of: flag, env, gh, none."""
     if explicit:
@@ -49,18 +56,20 @@ class Config:
     fmt: str = "md"                 # "md" | "json"
     cache_dir: Path | None = None
     use_llm: bool = True
-    registry_path: Path | None = None   # extra/user known-projects file
-    save_registry: bool = False         # write learned popularity back
+    registry_path: Path | None = None   # user known-projects file (defaults below)
+    save_registry: bool = True          # persist learned popularity + role sources
     verbose: bool = False
     quiet: bool = False                  # suppress the default progress display
     include_private: bool = False        # scan private repos too (default: skip)
     contributor_pages: int = 2           # contributors API pages (100 each)
     jobs: int = 8                        # concurrent candidates during attribution
-    discover_roles: bool = False         # find role pages via LLM + web search
+    discover_roles: bool = True          # find role pages via LLM + web search
 
     def __post_init__(self) -> None:
         if self.cache_dir is None:
             self.cache_dir = default_cache_dir()
         self.cache_dir = Path(self.cache_dir)
-        if self.registry_path is not None:
-            self.registry_path = Path(self.registry_path)
+        self.registry_path = (
+            default_registry_path() if self.registry_path is None
+            else Path(self.registry_path)
+        )

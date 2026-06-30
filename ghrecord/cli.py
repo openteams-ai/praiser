@@ -63,16 +63,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--cache-dir", default=None,
                    help="cache directory (default: ~/.cache/ghrecord)")
     p.add_argument("--registry", default=None, dest="registry_path",
-                   help="extra known-projects JSON file, merged over the seed")
-    p.add_argument("--save-registry", action="store_true",
-                   help="write observed popularity back to --registry")
+                   help="known-projects JSON file, merged over the seed "
+                        "(default: ~/.local/share/ghrecord/known_projects.json)")
+    p.add_argument("--save-registry", action=argparse.BooleanOptionalAction,
+                   default=True,
+                   help="persist observed popularity and web-discovered role "
+                        "sources to the registry (default: on)")
     p.add_argument("--no-llm", action="store_true",
-                   help="disable the Claude fallback for ambiguous prose")
-    p.add_argument("--discover-roles", action="store_true",
+                   help="disable all Claude features (prose fallback + role "
+                        "discovery)")
+    p.add_argument("--discover-roles", action=argparse.BooleanOptionalAction,
+                   default=True,
                    help="for popular repos lacking curated role sources, use "
                         "Claude + web search to find official team/governance "
-                        "pages (needs the llm extra + ANTHROPIC_API_KEY from "
-                        "https://console.anthropic.com/settings/keys)")
+                        "pages (default: on when LLM credentials are available; "
+                        "needs the llm extra + an API key or Claude subscription)")
     p.add_argument("--include-private", action="store_true",
                    help="also scan private repos (default: skip them)")
     p.add_argument("--contributor-pages", type=int, default=2, metavar="N",
@@ -103,7 +108,10 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
 
-    if args.discover_roles:
+    # Role discovery is on by default; only nag about missing creds/conflicts
+    # when the user EXPLICITLY asked for it (default-on degrades silently).
+    argv_tokens = argv if argv is not None else sys.argv[1:]
+    if args.discover_roles and "--discover-roles" in argv_tokens:
         if args.no_llm:
             print("warning: --discover-roles needs the LLM, but --no-llm was "
                   "given; role discovery is off.", file=sys.stderr)

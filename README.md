@@ -24,10 +24,14 @@ Requires Python 3.13+.
 
 ```bash
 export GITHUB_TOKEN=ghp_...        # a PAT; raises rate limits and enables search
-gh-record torvalds --min-stars 100
+gh-record torvalds                 # best-results defaults; just give a username
 gh-record gvanrossum --format json -o gvanrossum.json
-gh-record someuser --no-llm -v
+gh-record someuser --no-discover-roles --no-llm   # skip the LLM/web features
 ```
+
+`gh-record <username>` is meant to be sufficient on its own: role auto-discovery
+and registry persistence are **on by default** (auto-discovery activates only
+when LLM credentials are present, and degrades silently otherwise).
 
 ### GitHub token
 
@@ -75,9 +79,10 @@ gh-record <username>
     [--format md|json]     output format (default md)
     [--token TOKEN]        or GITHUB_TOKEN / GH_TOKEN
     [--cache-dir DIR]      default ~/.cache/ghrecord
-    [--registry FILE]      extra known-projects file (merged over the seed)
-    [--save-registry]      write observed popularity back to --registry
-    [--no-llm]             disable the Claude fallback
+    [--registry FILE]      known-projects file (default: ~/.local/share/ghrecord/)
+    [--no-save-registry]   don't persist popularity + discovered role sources
+    [--no-discover-roles]  don't web-search for role pages (default: on w/ LLM)
+    [--no-llm]             disable all Claude features
     [--include-private]    also scan private repos (default: skip them)
     [--contributor-pages N] contributors API pages/repo, 100 each (default: 2)
     [-j N | --jobs N]     candidates scanned concurrently (default: 8)
