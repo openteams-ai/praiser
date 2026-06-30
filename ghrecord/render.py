@@ -138,21 +138,53 @@ def _human_stars(stars: int) -> str:
     return str(stars)
 
 
-def render_highlights(username: str, records: list[ProjectRecord], n: int) -> str:
-    """A compact top-N summary — the most important roles, one line each."""
-    if not records:
+def render_highlights(
+    username: str,
+    records: list[ProjectRecord],
+    n: int,
+    secondary: list[ProjectRecord] | None = None,
+) -> str:
+    """A compact top-N summary plus reach stats.
+
+    The top-N are the most important roles. The footer summarises the rest: the
+    remaining elevated-role projects, the smaller-but-widely-used projects where
+    the user also holds a notable role, and the overall community reach (distinct
+    organisations) — a proxy for breadth / potential to seed ideas widely.
+    """
+    secondary = secondary or []
+    if not records and not secondary:
         return f"{username}: no elevated roles found."
-    top = records[:max(1, n)]
-    lines = [f"{username} — top {len(top)} highlights:"]
-    for rec in top:
-        role = ROLE_LABELS.get(rec.role or "", rec.role or "?")
-        lines.append(
-            f"- {rec.name_with_owner} — {role} "
-            f"({_human_stars(rec.stars)}★, conf {rec.confidence:.2f})"
-        )
+
+    lines: list[str] = []
+    top = records[:max(1, n)] if records else []
+    if top:
+        lines.append(f"{username} — top {len(top)} highlights:")
+        for rec in top:
+            role = ROLE_LABELS.get(rec.role or "", rec.role or "?")
+            lines.append(
+                f"- {rec.name_with_owner} — {role} "
+                f"({_human_stars(rec.stars)}★, conf {rec.confidence:.2f})"
+            )
+
+    # Footer stats.
+    bits = []
     extra = len(records) - len(top)
     if extra > 0:
-        lines.append(f"…and {extra} more elevated-role project(s).")
+        bits.append(f"{extra} more elevated-role project(s)")
+    if secondary:
+        bits.append(
+            f"{len(secondary)} smaller but widely-used project(s) "
+            "with a notable role")
+    if bits:
+        lines.append("…plus " + "; ".join(bits) + ".")
+
+    owners = {r.name_with_owner.split("/", 1)[0]
+              for r in (*records, *secondary)}
+    communities = {o for o in owners if o.lower() != username.lower()}
+    total = len(records) + len(secondary)
+    lines.append(
+        f"Reach: {total} project(s) across {len(communities)} "
+        "communities (distinct orgs).")
     return "\n".join(lines)
 
 

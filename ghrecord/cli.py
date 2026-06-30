@@ -193,7 +193,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if config.highlights is not None:
         output = render_highlights(
-            config.username, result.records, config.highlights
+            config.username, result.records, config.highlights, result.secondary
         )
     else:
         output = render(

@@ -38,8 +38,14 @@ pearu — top 8 highlights:
 - numpy/numpy — Maintainer (32k★, conf 0.90)
 - scipy/scipy — Maintainer (15k★, conf 0.90)
 - heavyai/heavydb — Core contributor (3k★, conf 0.80)
-…and N more elevated-role project(s).
+…
+…plus N more elevated-role project(s); M smaller but widely-used project(s) with a notable role.
+Reach: T project(s) across C communities (distinct orgs).
 ```
+
+The footer summarises breadth beyond the top roles: the smaller-but-widely-used
+projects where the user also holds a notable role, and the **community reach**
+(distinct organisations) — a proxy for the potential to introduce ideas widely.
 
 `gh-record <username>` is meant to be sufficient on its own: role auto-discovery
 and registry persistence are **on by default** (auto-discovery activates only

@@ -12,13 +12,23 @@ def _r(name, role, stars):
 
 
 def test_highlights_caps_lines_and_summarizes_rest():
-    recs = [_r(f"o/r{i}", CODE_OWNER, 1000 - i) for i in range(20)]
+    recs = [_r(f"o{i}/r{i}", CODE_OWNER, 1000 - i) for i in range(20)]
     out = render_highlights("alice", recs, 8)
     lines = out.splitlines()
     assert lines[0] == "alice — top 8 highlights:"
-    assert len(lines) == 1 + 8 + 1            # header + 8 + "and N more"
-    assert "12 more" in lines[-1]
-    assert "o/r0" in lines[1] and "1k★" in lines[1]
+    assert "12 more elevated-role" in out
+    assert "o0/r0" in lines[1] and "1k★" in lines[1]
+    assert "Reach: 20 project(s) across 20 communities" in out
+
+
+def test_highlights_includes_secondary_stats():
+    primary = [_r("numpy/numpy", CODE_OWNER, 30000)]
+    secondary = [_r("pearu/sympycore", CODE_OWNER, 11),
+                 _r("data-apis/array-api-extra", CORE_CONTRIBUTOR, 30)]
+    out = render_highlights("pearu", primary, 8, secondary)
+    assert "2 smaller but widely-used project(s) with a notable role" in out
+    # reach counts both buckets, excludes the user's own account (pearu)
+    assert "Reach: 3 project(s) across 2 communities" in out
 
 
 def test_highlights_no_records():
@@ -26,9 +36,9 @@ def test_highlights_no_records():
 
 
 def test_highlights_fewer_than_n():
-    out = render_highlights("alice", [_r("o/r", CODE_OWNER, 50)], 8)
+    out = render_highlights("alice", [_r("acme/r", CODE_OWNER, 50)], 8)
     assert out.splitlines()[0] == "alice — top 1 highlights:"
-    assert "more" not in out
+    assert "more elevated-role" not in out
 
 
 def _rec(name, role, stars=10, forks=20):
