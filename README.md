@@ -29,6 +29,24 @@ gh-record gvanrossum --format json -o gvanrossum.json
 gh-record someuser --no-llm -v
 ```
 
+### GitHub token
+
+Without a token GitHub allows only ~60 requests/hour, which is not enough.
+Provide one via `--token`, the `GITHUB_TOKEN`/`GH_TOKEN` env var, or simply be
+logged into the [`gh` CLI](https://cli.github.com) (`gh auth login`) — the tool
+falls back to `gh auth token` automatically.
+
+Create a Personal Access Token at **https://github.com/settings/tokens**:
+
+* *classic* — no scopes are needed for public data; add `repo` (private repos)
+  and `read:org` (resolve `@org/team` membership in CODEOWNERS) for full
+  coverage;
+* *fine-grained* — read-only **Contents** + **Members** permissions.
+
+```bash
+export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+```
+
 ```
 gh-record <username>
     [--min-stars N]        popularity threshold (default 50)

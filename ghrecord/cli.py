@@ -9,6 +9,15 @@ from .github_client import RateLimitError
 from .pipeline import _humanize, run
 from .render import render
 
+# Shown whenever a token would help. Public-data discovery needs no scopes; add
+# `repo` + `read:org` to reach private repos and resolve org/team membership.
+TOKEN_HELP = (
+    "Get a token at https://github.com/settings/tokens (classic: no scopes "
+    "needed for public data; add 'repo' and 'read:org' for private/org access; "
+    "fine-grained: read-only 'Contents' + 'Members'), then run "
+    "`export GITHUB_TOKEN=<token>` or pass --token. Or just `gh auth login`."
+)
+
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
@@ -47,8 +56,8 @@ def main(argv: list[str] | None = None) -> int:
     token = resolve_token(args.token)
     if not token:
         print(
-            "warning: no GitHub token (set --token or GITHUB_TOKEN); "
-            "discovery and rate limits will be severely restricted.",
+            "warning: no GitHub token found; discovery and rate limits will be "
+            "severely restricted (~60 requests/hour).\n" + TOKEN_HELP,
             file=sys.stderr,
         )
 
@@ -67,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         records = run(config)
     except RateLimitError as exc:
-        hint = "" if token else " Provide a token with --token or GITHUB_TOKEN."
+        hint = "" if token else "\n" + TOKEN_HELP
         print(
             f"error: GitHub rate limit reached before discovery could run; "
             f"wait {_humanize(exc.reset_in)} for it to reset.{hint}",
