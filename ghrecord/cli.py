@@ -64,6 +64,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="contributors API pages to fetch per repo, 100 each "
                         "(default: 2; lower = faster cold runs, may miss "
                         "deep-ranked contributors)")
+    p.add_argument("-j", "--jobs", type=int, default=8, metavar="N",
+                   help="candidates scanned concurrently (default: 8)")
     p.add_argument("-o", "--output", default=None,
                    help="write output to a file instead of stdout")
     p.add_argument("-v", "--verbose", action="store_true",
@@ -99,6 +101,7 @@ def main(argv: list[str] | None = None) -> int:
         quiet=args.quiet,
         include_private=args.include_private,
         contributor_pages=args.contributor_pages,
+        jobs=args.jobs,
     )
 
     try:

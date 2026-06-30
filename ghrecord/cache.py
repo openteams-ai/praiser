@@ -8,6 +8,8 @@ as ``None`` on hit, so callers distinguish hit-with-None from miss via
 
 import hashlib
 import json
+import os
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -47,7 +49,12 @@ class Cache:
 
     def set(self, key: str, value: Any) -> None:
         path = self._path(key)
-        tmp = path.with_suffix(".tmp")
-        with tmp.open("w", encoding="utf-8") as fh:
-            json.dump({"ts": time.time(), "value": value}, fh)
-        tmp.replace(path)
+        # Unique temp name per writer so concurrent writes (threads) to the same
+        # key don't clobber each other's temp file; the final replace is atomic.
+        tmp = path.with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")
+        try:
+            with tmp.open("w", encoding="utf-8") as fh:
+                json.dump({"ts": time.time(), "value": value}, fh)
+            tmp.replace(path)
+        finally:
+            tmp.unlink(missing_ok=True)

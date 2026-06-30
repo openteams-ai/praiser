@@ -1,6 +1,7 @@
 """Orchestrates the phases: identity -> discovery -> attribution -> popularity."""
 
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
 from .cache import Cache
@@ -117,49 +118,73 @@ def run(config: Config) -> RunResult:
         client.close()
 
 
+def _scan_one(extractors, cand, ctx, config) -> list[Evidence]:
+    """Run all extractors on one candidate (worker-thread body).
+
+    Network-bound only; touches no shared mutable progress/record state.
+    RateLimitError propagates so the orchestrator can stop and report partial.
+    """
+    evidence: list[Evidence] = []
+    for ext in extractors:
+        try:
+            if ext.applicable(cand, ctx):
+                evidence.extend(ext.extract(cand, ctx))
+        except RateLimitError:
+            raise  # stop the whole run, not just this extractor
+        except Exception as exc:  # one extractor failing is non-fatal
+            _log(config, f"{ext.name} failed on {cand.name_with_owner}: {exc}")
+    return evidence
+
+
 def _attribute(
     config, candidates, ctx, progress: Progress
 ) -> tuple[list[ProjectRecord], int | None]:
-    """Returns (records, reset_in). ``reset_in`` is the seconds-until-reset when
-    a rate limit cut the scan short (None otherwise), so the caller can warn
-    that results are incomplete and say how long to wait."""
+    """Attribute roles across candidates concurrently (I/O-bound network work).
+
+    Returns (records, reset_in). ``reset_in`` is the seconds-until-reset when a
+    rate limit cut the scan short (None otherwise). Workers only do network; the
+    progress display and record list are updated solely on this thread.
+    """
     extractors = all_extractors()
     records: list[ProjectRecord] = []
     reset_in: int | None = None
     total = len(candidates)
-    for i, cand in enumerate(candidates, 1):
-        rate = ctx.client.rate_summary()
-        rate_str = f" | {rate}" if rate else ""
-        progress.status(
-            f"scanning {i}/{total} ({len(records)} found){rate_str}: "
-            f"{cand.name_with_owner}"
-        )
-        if config.verbose and i % 25 == 0 and rate:
-            _log(config, f"  …{i}/{total} scanned · rate: {rate}")
-        evidence: list[Evidence] = []
+    done = 0
+
+    with ThreadPoolExecutor(max_workers=max(1, config.jobs)) as pool:
+        futures = {
+            pool.submit(_scan_one, extractors, cand, ctx, config): cand
+            for cand in candidates
+        }
         try:
-            for ext in extractors:
+            for fut in as_completed(futures):
+                cand = futures[fut]
+                done += 1
+                rate = ctx.client.rate_summary()
+                rate_str = f" | {rate}" if rate else ""
+                progress.status(
+                    f"scanned {done}/{total} ({len(records)} found){rate_str}: "
+                    f"{cand.name_with_owner}"
+                )
                 try:
-                    if ext.applicable(cand, ctx):
-                        evidence.extend(ext.extract(cand, ctx))
-                except RateLimitError:
-                    raise  # stop the whole run, not just this extractor
-                except Exception as exc:  # one extractor failing is non-fatal
-                    _log(config, f"{ext.name} failed on {cand.name_with_owner}: {exc}")
-        except RateLimitError as exc:
-            _log(config, f"rate limit reached, stopping attribution early: {exc}")
-            reset_in = exc.reset_in if exc.reset_in is not None else 0
-            break
-        # Keep the repo only if it has at least one non-weak role.
-        if any(e.role not in WEAK_ROLES for e in evidence):
-            records.append(ProjectRecord(
-                name_with_owner=cand.name_with_owner,
-                url=cand.url,
-                stars=cand.stars,
-                forks=cand.forks,
-                pushed_at=cand.pushed_at,
-                evidence=evidence,
-            ))
-            _log(config, f"  + {cand.name_with_owner}: "
-                         f"{[f'{e.source}:{e.role}' for e in evidence]}")
+                    evidence = fut.result()
+                except RateLimitError as exc:
+                    _log(config, f"rate limit reached, stopping early: {exc}")
+                    reset_in = exc.reset_in if exc.reset_in is not None else 0
+                    break
+                # Keep the repo only if it has at least one non-weak role.
+                if any(e.role not in WEAK_ROLES for e in evidence):
+                    records.append(ProjectRecord(
+                        name_with_owner=cand.name_with_owner,
+                        url=cand.url,
+                        stars=cand.stars,
+                        forks=cand.forks,
+                        pushed_at=cand.pushed_at,
+                        evidence=evidence,
+                    ))
+                    _log(config, f"  + {cand.name_with_owner}: "
+                                 f"{[f'{e.source}:{e.role}' for e in evidence]}")
+        finally:
+            for f in futures:  # don't start work we no longer need
+                f.cancel()
     return records, reset_in

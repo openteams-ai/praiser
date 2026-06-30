@@ -74,6 +74,7 @@ gh-record <username>
     [--no-llm]             disable the Claude fallback
     [--include-private]    also scan private repos (default: skip them)
     [--contributor-pages N] contributors API pages/repo, 100 each (default: 2)
+    [-j N | --jobs N]     candidates scanned concurrently (default: 8)
     [-o FILE]              write output to a file instead of stdout
     [-v]                   detailed per-repo logging
     [-q]                   suppress the live progress display
