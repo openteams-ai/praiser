@@ -86,9 +86,12 @@ class ManifestsExtractor(Extractor):
     name = "manifests"
 
     def extract(self, candidate, ctx: ExtractContext) -> list[Evidence]:
+        files = ctx.client.get_files(
+            candidate.owner, candidate.repo, [p for p, _ in _MANIFESTS]
+        )
         evidence: list[Evidence] = []
         for path, parser in _MANIFESTS:
-            text = ctx.client.get_file(candidate.owner, candidate.repo, path)
+            text = files.get(path)
             if text is None:
                 continue
             try:

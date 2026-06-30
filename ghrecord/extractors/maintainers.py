@@ -104,8 +104,11 @@ class MaintainersExtractor(Extractor):
         return evidence
 
     def _scan_maintainers(self, candidate, ctx) -> list[Evidence]:
+        files = ctx.client.get_files(
+            candidate.owner, candidate.repo, MAINTAINERS_PATHS
+        )
         for path in MAINTAINERS_PATHS:
-            text = ctx.client.get_file(candidate.owner, candidate.repo, path)
+            text = files.get(path)
             if text is None:
                 continue
             url = f"{candidate.url}/blob/HEAD/{path}"
@@ -131,8 +134,9 @@ class MaintainersExtractor(Extractor):
         known = ctx.known(candidate.name_with_owner)
         if known:
             paths = [c.path for c in known.conventions_for(self.name) if c.path] or paths
+        files = ctx.client.get_files(candidate.owner, candidate.repo, paths)
         for path in paths:
-            text = ctx.client.get_file(candidate.owner, candidate.repo, path)
+            text = files.get(path)
             if text is None:
                 continue
             owners = parse_owners_yaml(text)

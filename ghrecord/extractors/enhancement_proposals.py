@@ -12,7 +12,6 @@ Pure, offline-testable functions:
 """
 
 import re
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from ..models import STANDARDS_AUTHOR, Evidence
@@ -204,22 +203,15 @@ class EnhancementProposalsExtractor(Extractor):
         return docs[:MAX_DOCS]
 
     def _fetch_many(self, candidate, ctx, docs: list[str]) -> list[str | None]:
-        """Fetch proposal docs concurrently; a series can be hundreds of files.
+        """Batch-fetch proposal docs; a series can be hundreds of files.
 
-        The HTTP client pools connections and the cache writes are atomic, so
-        concurrent reads are safe. Order is preserved to align with ``docs``.
+        Uses the client's GraphQL batch path (separate rate bucket, many files
+        per request), preserving order to align with ``docs``.
         """
         if not docs:
             return []
-
-        def fetch(doc: str) -> str | None:
-            try:
-                return ctx.client.get_file(candidate.owner, candidate.repo, doc)
-            except Exception:
-                return None
-
-        with ThreadPoolExecutor(max_workers=min(16, len(docs))) as pool:
-            return list(pool.map(fetch, docs))
+        fetched = ctx.client.get_files(candidate.owner, candidate.repo, docs)
+        return [fetched.get(doc) for doc in docs]
 
     def _scan(self, candidate, ctx, path, fmt) -> list[Evidence]:
         docs = self._iter_docs(candidate, ctx, path)

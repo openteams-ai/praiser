@@ -47,6 +47,22 @@ Create a Personal Access Token at **https://github.com/settings/tokens**:
 export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
 ```
 
+### Rate limits & performance
+
+A token is capped at 5,000 REST requests/hour and that ceiling can't be raised
+for a PAT (only GitHub Apps / Enterprise Cloud go higher). To stay under it the
+tool:
+
+* **fetches file contents via GraphQL in batches** — GraphQL is a *separate*
+  5,000-points/hour bucket, so the bulk of the work (reading CODEOWNERS,
+  manifests, and possibly hundreds of proposal files) doesn't touch the REST
+  limit, and many files come back in one request;
+* **caches every request** so re-runs and resumed runs are nearly free;
+* **drops forks** and only deep-scans plausible candidates.
+
+If a run is rate-limited it stops early, tells you how long to wait, and the
+cache preserves what already succeeded — so re-running finishes the job.
+
 ```
 gh-record <username>
     [--min-stars N]        popularity threshold (default 50)

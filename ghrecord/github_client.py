@@ -40,6 +40,12 @@ class RateLimitError(GitHubError):
 # partial result) on anything longer.
 SHORT_RETRY_WINDOW = 30
 
+# How many file blobs to request per GraphQL query. GraphQL is a separate rate
+# bucket from REST and lets us fetch many files in one request.
+GQL_FILE_BATCH = 50
+
+_FILE_404 = "__404__"
+
 
 class GitHubClient:
     def __init__(
@@ -188,27 +194,120 @@ class GitHubClient:
         self.cache.set(ck, result)
         return result
 
+    # -- file contents ------------------------------------------------------
+    @staticmethod
+    def _file_key(owner: str, repo: str, path: str, ref: str | None) -> str:
+        # Unified key so REST and GraphQL fetches share one cache entry.
+        return Cache.key("file", owner, repo, path, ref or "HEAD")
+
+    def _file_cache_get(self, key: str) -> tuple[bool, str | None]:
+        """Return (hit, value). value is None for a cached 404."""
+        val = self.cache.get(key, default=None)
+        if val is None:
+            return False, None
+        return True, (None if val == _FILE_404 else val)
+
+    def _file_cache_set(self, key: str, value: str | None) -> None:
+        self.cache.set(key, _FILE_404 if value is None else value)
+
     def get_file(self, owner: str, repo: str, path: str, ref: str | None = None) -> str | None:
-        """Raw text of a file, or None if it does not exist."""
+        """Raw text of a file via REST, or None if it does not exist."""
+        key = self._file_key(owner, repo, path, ref)
+        hit, val = self._file_cache_get(key)
+        if hit:
+            return val
         api = f"/repos/{owner}/{repo}/contents/{urllib.parse.quote(path)}"
         if ref:
             api += "?" + urllib.parse.urlencode({"ref": ref})
-        url = f"{REST_BASE}{api}"
-        ck = Cache.key("rawfile", url)
-        cached = self.cache.get(ck, default=None)
-        if cached is not None:
-            return None if cached == "__404__" else cached
         status, _, data = self._request(
-            "GET", url, accept="application/vnd.github.raw"
+            "GET", f"{REST_BASE}{api}", accept="application/vnd.github.raw"
         )
         if status == 404:
-            self.cache.set(ck, "__404__")
+            self._file_cache_set(key, None)
             return None
         if status != 200:
             raise GitHubError(f"raw file HTTP {status} for {owner}/{repo}/{path}")
         text = data.decode("utf-8", errors="replace")
-        self.cache.set(ck, text)
+        self._file_cache_set(key, text)
         return text
+
+    def get_files(
+        self, owner: str, repo: str, paths: list[str], ref: str | None = None
+    ) -> dict[str, str | None]:
+        """Batch-fetch many files, mapping path -> text (None if missing).
+
+        Uses GraphQL (a separate rate bucket from REST, and one request for up
+        to ``GQL_FILE_BATCH`` files) when authenticated, falling back to REST
+        per file when there is no token or GraphQL is unavailable.
+        """
+        out: dict[str, str | None] = {}
+        todo: list[str] = []
+        for p in paths:
+            hit, val = self._file_cache_get(self._file_key(owner, repo, p, ref))
+            if hit:
+                out[p] = val
+            else:
+                todo.append(p)
+        if not todo:
+            return out
+
+        if not self.token:  # GraphQL requires authentication
+            for p in todo:
+                out[p] = self.get_file(owner, repo, p, ref)
+            return out
+
+        for i in range(0, len(todo), GQL_FILE_BATCH):
+            chunk = todo[i : i + GQL_FILE_BATCH]
+            try:
+                texts, truncated = self._graphql_blobs(owner, repo, chunk, ref)
+            except RateLimitError:
+                raise
+            except Exception:  # GraphQL hiccup: fall back to REST for this chunk
+                for p in chunk:
+                    out[p] = self.get_file(owner, repo, p, ref)
+                continue
+            for p in chunk:
+                if p in truncated:  # too large for GraphQL text; use raw REST
+                    out[p] = self.get_file(owner, repo, p, ref)
+                    continue
+                val = texts.get(p)
+                self._file_cache_set(self._file_key(owner, repo, p, ref), val)
+                out[p] = val
+        return out
+
+    def _graphql_blobs(
+        self, owner: str, repo: str, paths: list[str], ref: str | None
+    ) -> tuple[dict[str, str], set[str]]:
+        """Return (path->text for resolved blobs, set of truncated paths)."""
+        rev = ref or "HEAD"
+        aliases: dict[str, str] = {}
+        parts: list[str] = []
+        for i, p in enumerate(paths):
+            alias = f"f{i}"
+            aliases[alias] = p
+            expr = json.dumps(f"{rev}:{p}")
+            parts.append(
+                f"{alias}: object(expression:{expr}) "
+                "{ ... on Blob { text isTruncated } }"
+            )
+        query = (
+            "query($o:String!,$r:String!){ repository(owner:$o,name:$r){ "
+            + " ".join(parts)
+            + " } }"
+        )
+        data = self.graphql(query, {"o": owner, "r": repo})
+        repo_obj = (data or {}).get("repository") or {}
+        texts: dict[str, str] = {}
+        truncated: set[str] = set()
+        for alias, p in aliases.items():
+            blob = repo_obj.get(alias)
+            if not blob:
+                continue  # missing path (or not a blob) -> treated as None
+            if blob.get("isTruncated"):
+                truncated.add(p)
+            elif blob.get("text") is not None:
+                texts[p] = blob["text"]
+        return texts, truncated
 
     def list_dir(self, owner: str, repo: str, path: str) -> list[dict[str, Any]]:
         """Directory listing entries (name/type/path), or [] if missing."""

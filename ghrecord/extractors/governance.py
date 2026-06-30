@@ -86,8 +86,11 @@ class GovernanceExtractor(Extractor):
     name = "governance"
 
     def extract(self, candidate, ctx: ExtractContext) -> list[Evidence]:
+        files = ctx.client.get_files(
+            candidate.owner, candidate.repo, GOVERNANCE_PATHS
+        )
         for path in GOVERNANCE_PATHS:
-            text = ctx.client.get_file(candidate.owner, candidate.repo, path)
+            text = files.get(path)
             if text is None:
                 continue
             match = governance_match(text, ctx.identity.logins, ctx.identity.names)

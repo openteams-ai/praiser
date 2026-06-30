@@ -66,11 +66,13 @@ class CodeownersExtractor(Extractor):
     name = "codeowners"
 
     def extract(self, candidate, ctx: ExtractContext) -> list[Evidence]:
-        for path in CODEOWNERS_PATHS:
-            text = ctx.client.get_file(candidate.owner, candidate.repo, path)
-            if text is None:
-                continue
-            return self._evidence_from(candidate, ctx, path, text)
+        files = ctx.client.get_files(
+            candidate.owner, candidate.repo, CODEOWNERS_PATHS
+        )
+        for path in CODEOWNERS_PATHS:  # honour GitHub's location priority
+            text = files.get(path)
+            if text is not None:
+                return self._evidence_from(candidate, ctx, path, text)
         return []
 
     def _evidence_from(self, candidate, ctx, path, text) -> list[Evidence]:
