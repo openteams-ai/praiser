@@ -78,10 +78,11 @@ def build_parser() -> argparse.ArgumentParser:
                         "Claude + web search to find official team/governance "
                         "pages (default: on when LLM credentials are available; "
                         "needs the llm extra + an API key or Claude subscription)")
-    p.add_argument("--add-repo", action="append", default=[], metavar="OWNER/REPO",
-                   dest="extra_repos",
+    p.add_argument("--add-repo", action="append", default=[],
+                   metavar="OWNER/REPO[:PATH]", dest="extra_repos",
                    help="also scan this repo even if discovery missed it "
-                        "(repeatable); the role is still detected automatically")
+                        "(repeatable); append :PATH to credit a subcomponent "
+                        "(e.g. numpy/numpy:numpy/f2py). Role detected automatically")
     p.add_argument("--include-private", action="store_true",
                    help="also scan private repos (default: skip them)")
     p.add_argument("--contributor-pages", type=int, default=2, metavar="N",
@@ -125,6 +126,17 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"warning: --discover-roles is on but {reason}; role "
                       f"discovery is off.\n{ANTHROPIC_HELP}", file=sys.stderr)
 
+    # Split --add-repo values: "owner/repo" or "owner/repo:subpath".
+    extra_repos: list[str] = []
+    extra_subcomponents: dict[str, list[str]] = {}
+    for item in args.extra_repos:
+        repo, sep, path = item.partition(":")
+        if "/" not in repo:
+            continue
+        extra_repos.append(repo)
+        if sep and path:
+            extra_subcomponents.setdefault(repo, []).append(path)
+
     config = Config(
         username=args.username,
         token=token,
@@ -140,7 +152,8 @@ def main(argv: list[str] | None = None) -> int:
         contributor_pages=args.contributor_pages,
         jobs=args.jobs,
         discover_roles=args.discover_roles,
-        extra_repos=args.extra_repos,
+        extra_repos=extra_repos,
+        extra_subcomponents=extra_subcomponents,
     )
 
     try:

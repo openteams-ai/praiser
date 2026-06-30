@@ -37,6 +37,8 @@ def test_manual_repo_records_plain_contribution():
         def repo_contributors(self, o, r, max_pages=2):
             return [{"login": f"u{i}", "contributions": 100} for i in range(164)] + \
                    [{"login": "pearu", "contributions": 8}]
+        def merged_pr_count(self, o, r, login):
+            return 8  # modest -> still below the bar
     ctx = ExtractContext(
         identity=Identity(primary_login="pearu"), client=C(), registry=EMPTY,
         manual_repos={"apache/arrow"}, popularity_floor=50,
@@ -52,6 +54,8 @@ def test_non_manual_plain_contribution_excluded():
         def repo_contributors(self, o, r, max_pages=2):
             return [{"login": f"u{i}", "contributions": 100} for i in range(164)] + \
                    [{"login": "pearu", "contributions": 8}]
+        def merged_pr_count(self, o, r, login):
+            return 8
     ctx = ExtractContext(
         identity=Identity(primary_login="pearu"), client=C(), registry=EMPTY,
         popularity_floor=50, canonical_stars=1000,

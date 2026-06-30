@@ -81,6 +81,7 @@ def run(config: Config) -> RunResult:
             contributor_pages=config.contributor_pages,
             auto_discover_roles=config.discover_roles and llm is not None,
             manual_repos=set(config.extra_repos),
+            manual_subcomponents=config.extra_subcomponents,
         )
         records, reset_in = _attribute(config, candidates, ctx, progress)
         progress.done()

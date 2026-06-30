@@ -65,6 +65,8 @@ class Config:
     jobs: int = 8                        # concurrent candidates during attribution
     discover_roles: bool = True          # find role pages via LLM + web search
     extra_repos: list[str] = field(default_factory=list)  # user-supplied owner/repo
+    # user-supplied subcomponents: owner/repo -> [paths]
+    extra_subcomponents: dict[str, list[str]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.cache_dir is None:

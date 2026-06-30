@@ -31,6 +31,8 @@ class ExtractContext:
     auto_discover_roles: bool = False  # find role pages via LLM + web search
     role_discovery_floor: int = 1000   # only auto-discover for repos this popular
     manual_repos: set[str] = field(default_factory=set)  # user-vouched repos
+    # user-vouched subcomponents: repo -> [paths]
+    manual_subcomponents: dict[str, list[str]] = field(default_factory=dict)
     # repo -> {login: commit_count} | None (None = could not fetch)
     _contrib_cache: dict[str, dict[str, int] | None] = field(default_factory=dict)
     # repo -> [role-source dicts] discovered this run (for --save-registry)

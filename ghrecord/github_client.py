@@ -395,6 +395,40 @@ class GitHubClient:
             return result.get("items", []) or []
         return []
 
+    def merged_pr_count(self, owner: str, repo: str, login: str) -> int:
+        """Number of MERGED pull requests authored by the user in a repo.
+
+        A workflow-agnostic size metric: squash- and ghstack-based repos land one
+        commit per PR (so commit counts understate), and PR authorship is tied to
+        the GitHub account even when a commit's email isn't linked.
+        """
+        q = f"repo:{owner}/{repo} author:{login} is:pr is:merged"
+        result = self.rest_json("/search/issues", params={"q": q, "per_page": 1})
+        if isinstance(result, dict):
+            return int(result.get("total_count", 0) or 0)
+        return 0
+
+    def path_commit_count(
+        self, owner: str, repo: str, path: str, login: str, max_pages: int = 5
+    ) -> int:
+        """How many commits by ``login`` touch ``path`` (a subdirectory/file).
+
+        Used for subcomponent-level role detection — credit for owning/leading a
+        part of a monorepo (e.g. f2py in NumPy). Capped at ``max_pages``*100.
+        """
+        total = 0
+        for page in range(1, max_pages + 1):
+            result = self.rest_json(
+                f"/repos/{owner}/{repo}/commits",
+                params={"path": path, "author": login, "per_page": 100, "page": page},
+            )
+            if not isinstance(result, list) or not result:
+                break
+            total += len(result)
+            if len(result) < 100:
+                break
+        return total
+
     def repo_contributors(
         self, owner: str, repo: str, max_pages: int = 2
     ) -> list[dict[str, Any]] | None:

@@ -117,7 +117,12 @@ carries an **evidence link** (file/page URL) and a **confidence** score.
    force-included, with the role still detected automatically.
 3. **Role attribution** — a registry of pluggable [extractors](ghrecord/extractors)
    (`ownership`, `codeowners`, `maintainers`, `manifests`, `enhancement_proposals`,
-   `governance`, `contributors`, `authors`, `web_roles`). A repo under the user's
+   `governance`, `contributors`, `subcomponents`, `authors`, `web_roles`). The
+   `contributors` signal measures size by commits **and** merged-PR count
+   (robust to squash/ghstack one-commit-per-PR workflows and unlinked commit
+   emails); `subcomponents` credits leading/authoring a *part* of a monorepo via
+   commit-path analysis (e.g. f2py in NumPy, sparse tensors in PyTorch) — seeded
+   in the registry and extendable with `--add-repo owner/repo:path`. A repo under the user's
    own account is attributed as **author/creator**, and manifest `authors` vs
    `maintainers` fields map to the author vs maintainer roles — so a user's own
    projects read "Author", not merely "core contributor". Structured files are parsed

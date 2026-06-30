@@ -44,6 +44,26 @@ def test_contributor_signal_kept_on_canonical_repo():
     assert ev and ev[0].role == "core_contributor"
 
 
+def test_merged_pr_rescue_elevates_undercounted_contributor():
+    # Commit count says plain contributor (5, rank ~50), but the user has many
+    # merged PRs (squash/ghstack, or unlinked email) -> elevated via PR count.
+    from ghrecord.extractors.contributors import ContributorsExtractor
+
+    class C:
+        def repo_contributors(self, o, r, max_pages=2):
+            return [{"login": f"u{i}", "contributions": 9} for i in range(50)] + \
+                   [{"login": "pearu", "contributions": 5}]
+        def merged_pr_count(self, o, r, login):
+            return 150
+    ctx = ExtractContext(
+        identity=Identity(primary_login="pearu"), client=C(),
+        registry=KnownProjects(projects={}), popularity_floor=50,
+    )
+    ev = ContributorsExtractor().extract(Candidate("big/repo", stars=20000), ctx)
+    assert ev and ev[0].role == "core_contributor"
+    assert "merged PRs" in ev[0].detail
+
+
 def test_contributor_pages_cap_is_passed_through():
     client = _RecordingClient()
     ctx = ExtractContext(

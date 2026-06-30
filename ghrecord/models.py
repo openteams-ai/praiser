@@ -23,8 +23,8 @@ CONTRIBUTOR = "contributor"  # discovered-only; never a headline role on its own
 ROLE_WEIGHTS: dict[str, float] = {
     STEERING_COUNCIL: 1.00,
     ORG_OWNER: 0.90,
-    AUTHOR: 0.86,
     MAINTAINER: 0.85,
+    AUTHOR: 0.84,
     STANDARDS_AUTHOR: 0.82,
     CODE_OWNER: 0.80,
     CORE_CONTRIBUTOR: 0.70,

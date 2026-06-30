@@ -38,6 +38,9 @@
           "label": "NumPy Steering Council"
         }
       ],
+      "subcomponents": [
+        { "path": "numpy/f2py", "role": "author", "label": "f2py" }
+      ],
       "notes": "NEPs under doc/neps (RST); authoritative roles on numpy.org."
     },
     "pytorch/pytorch": {
@@ -48,6 +51,10 @@
           "role": "maintainer",
           "label": "PyTorch Persons of Interest"
         }
+      ],
+      "subcomponents": [
+        { "path": "aten/src/ATen/native/sparse", "role": "maintainer", "label": "sparse tensors" },
+        { "path": "torch/sparse", "role": "maintainer", "label": "sparse tensors" }
       ],
       "notes": "Module maintainers listed on the Persons of Interest page; the repo also has a CODEOWNERS."
     },

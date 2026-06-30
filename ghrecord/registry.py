@@ -83,12 +83,36 @@ class RoleSource:
 
 
 @dataclass
+class Subcomponent:
+    """A subdirectory/path of a repo that the user may lead or have authored.
+
+    The subcomponents extractor counts the user's commits touching ``path`` and,
+    if substantial, grants ``role`` (e.g. author of f2py inside numpy).
+    """
+
+    path: str
+    role: str
+    label: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "Subcomponent":
+        return cls(path=d["path"], role=d["role"], label=d.get("label"))
+
+    def to_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {"path": self.path, "role": self.role}
+        if self.label is not None:
+            out["label"] = self.label
+        return out
+
+
+@dataclass
 class KnownProject:
     name_with_owner: str
     importance: str | None = None
     aliases: list[str] = field(default_factory=list)
     role_conventions: list[RoleConvention] = field(default_factory=list)
     role_sources: list[RoleSource] = field(default_factory=list)
+    subcomponents: list[Subcomponent] = field(default_factory=list)
     popularity: dict[str, Any] = field(default_factory=dict)
     notes: str = ""
 
@@ -111,6 +135,9 @@ class KnownProject:
             role_sources=[
                 RoleSource.from_dict(s) for s in d.get("role_sources", [])
             ],
+            subcomponents=[
+                Subcomponent.from_dict(s) for s in d.get("subcomponents", [])
+            ],
             popularity=dict(d.get("popularity", {})),
             notes=d.get("notes", ""),
         )
@@ -125,6 +152,8 @@ class KnownProject:
             out["role_conventions"] = [c.to_dict() for c in self.role_conventions]
         if self.role_sources:
             out["role_sources"] = [s.to_dict() for s in self.role_sources]
+        if self.subcomponents:
+            out["subcomponents"] = [s.to_dict() for s in self.subcomponents]
         if self.popularity:
             out["popularity"] = self.popularity
         if self.notes:

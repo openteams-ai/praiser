@@ -17,6 +17,8 @@ from .base import Extractor, ExtractContext
 
 # Also scan repos that aren't star-popular but are widely forked/used.
 WIDELY_USED_FORKS = 25
+# Only spend a search-API call on the merged-PR rescue for notable repos.
+PR_RESCUE_MIN_STARS = 1000
 
 
 def classify(count: int, rank: int) -> float | None:
@@ -55,19 +57,32 @@ class ContributorsExtractor(Extractor):
         if count <= 0:
             return []
         rank = 1 + sum(1 for v in contribs.values() if v > count)
+        manual = candidate.name_with_owner in ctx.manual_repos
         confidence = classify(count, rank)
+        detail = f"{count} commits (~#{rank} contributor)"
+
         if confidence is None:
-            # Below the elevated bar = a plain contributor, normally excluded.
-            # But if the user explicitly added this repo, record it anyway at
-            # honest low confidence — they vouched it matters.
-            if candidate.name_with_owner not in ctx.manual_repos:
+            # Commit count can understate real impact: squash/ghstack land one
+            # commit per PR, and unlinked commit emails aren't attributed. Fall
+            # back to merged-PR count (workflow-agnostic) for notable repos.
+            if candidate.stars >= PR_RESCUE_MIN_STARS or manual:
+                prs = max((ctx.client.merged_pr_count(
+                    candidate.owner, candidate.repo, h)
+                    for h in ctx.identity.logins), default=0)
+                pr_conf = classify(prs, rank)
+                if pr_conf is not None:
+                    confidence = pr_conf
+                    detail = f"{prs} merged PRs ({count} commits, ~#{rank})"
+        if confidence is None:
+            # Still below the bar: a plain contributor, excluded — unless the
+            # user explicitly vouched for this repo via --add-repo.
+            if not manual:
                 return []
             confidence = 0.4
         return [Evidence(
             source=self.name, role=CORE_CONTRIBUTOR,
             url=f"{candidate.url}/graphs/contributors",
-            confidence=confidence,
-            detail=f"{count} commits (~#{rank} contributor)",
+            confidence=confidence, detail=detail,
         )]
 
 

@@ -17,6 +17,7 @@ _BUILTIN_MODULES = [
     "enhancement_proposals",
     "governance",
     "contributors",
+    "subcomponents",
     "authors",
     "web_roles",
 ]
