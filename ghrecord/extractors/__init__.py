@@ -10,6 +10,7 @@ from .base import Extractor, ExtractContext
 _REGISTRY: list[Extractor] = []
 
 _BUILTIN_MODULES = [
+    "ownership",
     "codeowners",
     "maintainers",
     "manifests",

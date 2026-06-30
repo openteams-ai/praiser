@@ -9,6 +9,7 @@ ROLE_LABELS = {
     "code_owner": "Code owner",
     "steering_council": "Steering council",
     "standards_author": "Standards author",
+    "author": "Author",
     "core_contributor": "Core contributor",
     "org_owner": "Org owner",
     "org_member": "Org member",

@@ -10,7 +10,7 @@ import json
 import re
 import tomllib
 
-from ..models import MAINTAINER, Evidence
+from ..models import AUTHOR, MAINTAINER, Evidence
 from . import register
 from .base import Extractor, ExtractContext
 from .maintainers import Person
@@ -38,29 +38,33 @@ def _person_from_obj(obj) -> Person:
     return Person()
 
 
+def _people(entries) -> list[Person]:
+    return [_person_from_obj(e) for e in (entries or [])]
+
+
 def authors_from_pyproject(text: str) -> list[Person]:
     data = tomllib.loads(text)
-    people: list[Person] = []
-    project = data.get("project", {})
-    for key in ("authors", "maintainers"):
-        for entry in project.get(key, []) or []:
-            people.append(_person_from_obj(entry))
-    poetry = data.get("tool", {}).get("poetry", {})
-    for key in ("authors", "maintainers"):
-        for entry in poetry.get(key, []) or []:
-            people.append(_person_from_obj(entry))
-    return [p for p in people if p.name or p.email]
+    out = _people(data.get("project", {}).get("authors"))
+    out += _people(data.get("tool", {}).get("poetry", {}).get("authors"))
+    return [p for p in out if p.name or p.email]
+
+
+def maintainers_from_pyproject(text: str) -> list[Person]:
+    data = tomllib.loads(text)
+    out = _people(data.get("project", {}).get("maintainers"))
+    out += _people(data.get("tool", {}).get("poetry", {}).get("maintainers"))
+    return [p for p in out if p.name or p.email]
 
 
 def authors_from_package_json(text: str) -> list[Person]:
     data = json.loads(text)
-    people: list[Person] = []
-    if "author" in data:
-        people.append(_person_from_obj(data["author"]))
-    for key in ("maintainers", "contributors"):
-        for entry in data.get(key, []) or []:
-            people.append(_person_from_obj(entry))
-    return [p for p in people if p.name or p.email]
+    out = [_person_from_obj(data["author"])] if "author" in data else []
+    return [p for p in out if p.name or p.email]
+
+
+def maintainers_from_package_json(text: str) -> list[Person]:
+    data = json.loads(text)
+    return [p for p in _people(data.get("maintainers")) if p.name or p.email]
 
 
 def authors_from_cargo(text: str) -> list[Person]:
@@ -74,11 +78,12 @@ def authors_from_composer(text: str) -> list[Person]:
     return [_person_from_obj(a) for a in data.get("authors", []) or []]
 
 
+# (path, authors_parser, maintainers_parser | None)
 _MANIFESTS = [
-    ("pyproject.toml", authors_from_pyproject),
-    ("package.json", authors_from_package_json),
-    ("Cargo.toml", authors_from_cargo),
-    ("composer.json", authors_from_composer),
+    ("pyproject.toml", authors_from_pyproject, maintainers_from_pyproject),
+    ("package.json", authors_from_package_json, maintainers_from_package_json),
+    ("Cargo.toml", authors_from_cargo, None),
+    ("composer.json", authors_from_composer, None),
 ]
 
 
@@ -87,35 +92,39 @@ class ManifestsExtractor(Extractor):
 
     def extract(self, candidate, ctx: ExtractContext) -> list[Evidence]:
         files = ctx.client.get_files(
-            candidate.owner, candidate.repo, [p for p, _ in _MANIFESTS]
+            candidate.owner, candidate.repo, [p for p, _, _ in _MANIFESTS]
         )
         evidence: list[Evidence] = []
-        for path, parser in _MANIFESTS:
+        for path, aparse, mparse in _MANIFESTS:
             text = files.get(path)
             if text is None:
                 continue
-            try:
-                people = parser(text)
-            except Exception:
-                continue
-            ev = self._match(candidate, ctx, path, people)
-            if ev:
-                evidence.append(ev)
+            for parser, role in ((aparse, AUTHOR), (mparse, MAINTAINER)):
+                if parser is None:
+                    continue
+                try:
+                    people = parser(text)
+                except Exception:
+                    continue
+                ev = self._match(candidate, ctx, path, people, role)
+                if ev:
+                    evidence.append(ev)
         return evidence
 
-    def _match(self, candidate, ctx, path, people) -> Evidence | None:
+    def _match(self, candidate, ctx, path, people, role) -> Evidence | None:
         url = f"{candidate.url}/blob/HEAD/{path}"
+        label = "author" if role == AUTHOR else "maintainer"
         for p in people:
             if ctx.identity.matches_email(p.email):
                 return Evidence(
-                    source=self.name, role=MAINTAINER, url=url, confidence=0.75,
-                    detail=f"author/maintainer email in {path}",
+                    source=self.name, role=role, url=url, confidence=0.75,
+                    detail=f"{label} email in {path}",
                 )
         for p in people:
             if ctx.identity.matches_name(p.name):
                 return Evidence(
-                    source=self.name, role=MAINTAINER, url=url, confidence=0.45,
-                    detail=f"author/maintainer name in {path}",
+                    source=self.name, role=role, url=url, confidence=0.45,
+                    detail=f"{label} name in {path}",
                 )
         return None
 

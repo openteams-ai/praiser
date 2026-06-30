@@ -3,6 +3,8 @@ from ghrecord.extractors.manifests import (
     authors_from_composer,
     authors_from_package_json,
     authors_from_pyproject,
+    maintainers_from_package_json,
+    maintainers_from_pyproject,
     parse_person_string,
 )
 
@@ -44,9 +46,11 @@ def test_parse_person_string():
     assert p.email == "alice@example.com"
 
 
-def test_pyproject_pep621():
-    people = authors_from_pyproject(PYPROJECT_621)
-    assert {p.email for p in people} == {"alice@example.com", "bob@example.com"}
+def test_pyproject_pep621_splits_authors_and_maintainers():
+    authors = authors_from_pyproject(PYPROJECT_621)
+    maints = maintainers_from_pyproject(PYPROJECT_621)
+    assert {p.email for p in authors} == {"alice@example.com"}
+    assert {p.email for p in maints} == {"bob@example.com"}
 
 
 def test_pyproject_poetry():
@@ -55,11 +59,11 @@ def test_pyproject_poetry():
     assert people[0].email == "alice@example.com"
 
 
-def test_package_json():
-    people = authors_from_package_json(PACKAGE_JSON)
-    emails = {p.email for p in people}
-    assert "alice@example.com" in emails
-    assert "bob@example.com" in emails
+def test_package_json_splits_author_and_maintainers():
+    authors = authors_from_package_json(PACKAGE_JSON)
+    maints = maintainers_from_package_json(PACKAGE_JSON)
+    assert {p.email for p in authors} == {"alice@example.com"}
+    assert {p.email for p in maints} == {"bob@example.com"}
 
 
 def test_cargo():

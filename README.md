@@ -112,8 +112,11 @@ carries an **evidence link** (file/page URL) and a **confidence** score.
    here — a public "popular projects" record shouldn't surface or leak private
    repos. Use `--include-private` to scan them anyway.
 3. **Role attribution** — a registry of pluggable [extractors](ghrecord/extractors)
-   (`codeowners`, `maintainers`, `manifests`, `enhancement_proposals`,
-   `governance`, `contributors`, `authors`, `web_roles`). Structured files are parsed
+   (`ownership`, `codeowners`, `maintainers`, `manifests`, `enhancement_proposals`,
+   `governance`, `contributors`, `authors`, `web_roles`). A repo under the user's
+   own account is attributed as **author/creator**, and manifest `authors` vs
+   `maintainers` fields map to the author vs maintainer roles — so a user's own
+   projects read "Author", not merely "core contributor". Structured files are parsed
    deterministically; ambiguous prose falls back to Claude **only after** a
    keyword/regex pass. `contributors` records a **core-contributor** role for
    substantial committers to popular/widely-used repos (catches historical

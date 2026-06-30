@@ -14,6 +14,7 @@ MAINTAINER = "maintainer"
 CODE_OWNER = "code_owner"
 STEERING_COUNCIL = "steering_council"
 STANDARDS_AUTHOR = "standards_author"
+AUTHOR = "author"  # created/authored the project (owns the repo, or named author)
 CORE_CONTRIBUTOR = "core_contributor"  # substantial committer to a popular repo
 ORG_OWNER = "org_owner"
 ORG_MEMBER = "org_member"
@@ -22,6 +23,7 @@ CONTRIBUTOR = "contributor"  # discovered-only; never a headline role on its own
 ROLE_WEIGHTS: dict[str, float] = {
     STEERING_COUNCIL: 1.00,
     ORG_OWNER: 0.90,
+    AUTHOR: 0.86,
     MAINTAINER: 0.85,
     STANDARDS_AUTHOR: 0.82,
     CODE_OWNER: 0.80,
