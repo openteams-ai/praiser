@@ -81,6 +81,7 @@ class Candidate:
     stars: int = 0
     forks: int = 0
     is_fork: bool = False
+    is_private: bool = False
     sources: set[str] = field(default_factory=set)  # discovery sources
 
     @property

@@ -58,6 +58,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="write observed popularity back to --registry")
     p.add_argument("--no-llm", action="store_true",
                    help="disable the Claude fallback for ambiguous prose")
+    p.add_argument("--include-private", action="store_true",
+                   help="also scan private repos (default: skip them)")
     p.add_argument("-o", "--output", default=None,
                    help="write output to a file instead of stdout")
     p.add_argument("-v", "--verbose", action="store_true",
@@ -91,6 +93,7 @@ def main(argv: list[str] | None = None) -> int:
         save_registry=args.save_registry,
         verbose=args.verbose,
         quiet=args.quiet,
+        include_private=args.include_private,
     )
 
     try:

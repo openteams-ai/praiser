@@ -53,6 +53,7 @@ class Config:
     save_registry: bool = False         # write learned popularity back
     verbose: bool = False
     quiet: bool = False                  # suppress the default progress display
+    include_private: bool = False        # scan private repos too (default: skip)
 
     def __post_init__(self) -> None:
         if self.cache_dir is None:

@@ -59,7 +59,9 @@ def run(config: Config) -> RunResult:
         _log(config, f"identity: logins={identity.logins} names={identity.names}")
 
         progress.phase("discovering candidate repositories…")
-        candidates = discover(client, identity, registry)
+        candidates = discover(
+            client, identity, registry, include_private=config.include_private
+        )
         _log(config, f"discovered {len(candidates)} candidate repos")
         progress.phase(f"discovered {len(candidates)} candidate repos")
 

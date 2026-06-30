@@ -23,12 +23,12 @@ query($login:String!) {
     organizations(first:100){ nodes{ login } }
     repositories(first:100, ownerAffiliations:[OWNER],
         orderBy:{field:STARGAZERS, direction:DESC}){
-      nodes{ nameWithOwner stargazerCount forkCount isFork }
+      nodes{ nameWithOwner stargazerCount forkCount isFork isPrivate }
     }
     repositoriesContributedTo(first:100,
         contributionTypes:[COMMIT, PULL_REQUEST],
         orderBy:{field:STARGAZERS, direction:DESC}){
-      nodes{ nameWithOwner stargazerCount forkCount isFork }
+      nodes{ nameWithOwner stargazerCount forkCount isFork isPrivate }
     }
   }
 }
@@ -38,7 +38,7 @@ ORG_REPOS_QUERY = """
 query($org:String!) {
   organization(login:$org) {
     repositories(first:30, orderBy:{field:STARGAZERS, direction:DESC}){
-      nodes{ nameWithOwner stargazerCount forkCount isFork }
+      nodes{ nameWithOwner stargazerCount forkCount isFork isPrivate }
     }
   }
 }
@@ -48,6 +48,24 @@ query($org:String!) {
 SEARCH_FILES = ["CODEOWNERS", "MAINTAINERS", "OWNERS", "GOVERNANCE"]
 
 
+def keep_candidate(
+    c: Candidate, registry: KnownProjects, *, include_private: bool
+) -> bool:
+    """Whether a discovered repo is worth scanning.
+
+    Registry/known projects are always kept. Otherwise forks are dropped (they
+    inherit upstream role files) and private repos are dropped by default (a
+    public 'popular projects' record shouldn't surface, or leak, private repos).
+    """
+    if c.name_with_owner in registry:
+        return True
+    if c.is_fork:
+        return False
+    if c.is_private and not include_private:
+        return False
+    return True
+
+
 def discover(
     client: GitHubClient,
     identity: Identity,
@@ -55,6 +73,7 @@ def discover(
     *,
     include_org_repos: bool = True,
     use_code_search: bool = True,
+    include_private: bool = False,
 ) -> list[Candidate]:
     candidates: dict[str, Candidate] = {}
     # Names whose fork/star metadata is authoritative (came from a GraphQL node).
@@ -73,12 +92,14 @@ def discover(
                 stars=node.get("stargazerCount", 0) or 0,
                 forks=node.get("forkCount", 0) or 0,
                 is_fork=bool(node.get("isFork")),
+                is_private=bool(node.get("isPrivate")),
             )
             candidates[nwo] = existing
         existing.sources.add(source)
         existing.stars = max(existing.stars, node.get("stargazerCount", 0) or 0)
         if has_meta:
             has_meta_names.add(nwo)
+            existing.is_private = bool(node.get("isPrivate"))
 
     data = client.graphql(DISCOVERY_QUERY, {"login": identity.primary_login})
     user = (data or {}).get("user") or {}
@@ -111,12 +132,11 @@ def discover(
     ]
     _enrich_metadata(client, unknown)
 
-    # Drop forks unless they are a known/registry project.
-    result = [
+    # Drop forks and (by default) private repos unless they are registry seeds.
+    return [
         c for c in candidates.values()
-        if not c.is_fork or c.name_with_owner in registry
+        if keep_candidate(c, registry, include_private=include_private)
     ]
-    return result
 
 
 def _enrich_metadata(client: GitHubClient, cands: list[Candidate]) -> None:
@@ -128,7 +148,7 @@ def _enrich_metadata(client: GitHubClient, cands: list[Candidate]) -> None:
             parts.append(
                 f"r{j}: repository(owner:{json.dumps(c.owner)}, "
                 f"name:{json.dumps(c.repo)}) "
-                "{ isFork stargazerCount forkCount }"
+                "{ isFork isPrivate stargazerCount forkCount }"
             )
         query = "query{" + " ".join(parts) + "}"
         try:
@@ -137,10 +157,11 @@ def _enrich_metadata(client: GitHubClient, cands: list[Candidate]) -> None:
             continue
         for j, c in enumerate(batch):
             repo = (data or {}).get(f"r{j}")
-            if not repo:  # deleted/private/renamed: treat as a fork to drop it
+            if not repo:  # deleted/inaccessible/renamed: treat as a fork to drop it
                 c.is_fork = True
                 continue
             c.is_fork = bool(repo.get("isFork"))
+            c.is_private = bool(repo.get("isPrivate"))
             c.stars = max(c.stars, repo.get("stargazerCount", 0) or 0)
             c.forks = max(c.forks, repo.get("forkCount", 0) or 0)
 

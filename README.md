@@ -72,6 +72,7 @@ gh-record <username>
     [--registry FILE]      extra known-projects file (merged over the seed)
     [--save-registry]      write observed popularity back to --registry
     [--no-llm]             disable the Claude fallback
+    [--include-private]    also scan private repos (default: skip them)
     [-o FILE]              write output to a file instead of stdout
     [-v]                   detailed per-repo logging
     [-q]                   suppress the live progress display
@@ -92,6 +93,9 @@ carries an **evidence link** (file/page URL) and a **confidence** score.
 2. **Discovery (wide net)** — owned repos, org repos, contributed-to repos
    (over-collected on purpose), code search for the handle in role files, and
    curated registry seeds.
+   Forks (which inherit upstream role files) and private repos are dropped
+   here — a public "popular projects" record shouldn't surface or leak private
+   repos. Use `--include-private` to scan them anyway.
 3. **Role attribution** — a registry of pluggable [extractors](ghrecord/extractors)
    (`codeowners`, `maintainers`, `manifests`, `enhancement_proposals`,
    `governance`). Structured files are parsed deterministically; ambiguous prose
