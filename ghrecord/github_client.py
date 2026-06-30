@@ -65,9 +65,9 @@ class GitHubClient:
         self.rate: dict[str, tuple[int, int, int]] = {}
 
     # -- low-level HTTP -----------------------------------------------------
-    def _headers(self, accept: str) -> dict[str, str]:
+    def _headers(self, accept: str, auth: bool = True) -> dict[str, str]:
         headers = {"Accept": accept, "User-Agent": USER_AGENT}
-        if self.token:
+        if auth and self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         return headers
 
@@ -78,9 +78,10 @@ class GitHubClient:
         *,
         accept: str,
         body: bytes | None = None,
+        auth: bool = True,
     ) -> tuple[int, dict[str, str], bytes]:
         """Return (status, headers, raw body). Retries transient failures."""
-        headers = self._headers(accept)
+        headers = self._headers(accept, auth=auth)
         if body is not None:
             headers["Content-Type"] = "application/json"
 
@@ -334,6 +335,29 @@ class GitHubClient:
             elif blob.get("text") is not None:
                 texts[p] = blob["text"]
         return texts, truncated
+
+    def get_url(self, url: str) -> str | None:
+        """Fetch an arbitrary (non-GitHub-API) URL as text, cached.
+
+        Sends NO Authorization header — these are external pages (project team /
+        governance sites), and the GitHub token must never leak to them.
+        """
+        ck = Cache.key("url", url)
+        cached = self.cache.get(ck, default=None)
+        if cached is not None:
+            return None if cached == "__404__" else cached
+        try:
+            status, _, data = self._request(
+                "GET", url, accept="text/html,application/xhtml+xml", auth=False
+            )
+        except GitHubError:
+            return None
+        if status >= 400:
+            self.cache.set(ck, "__404__")
+            return None
+        text = data.decode("utf-8", errors="replace")
+        self.cache.set(ck, text)
+        return text
 
     def list_dir(self, owner: str, repo: str, path: str) -> list[dict[str, Any]]:
         """Directory listing entries (name/type/path), or [] if missing."""

@@ -17,6 +17,7 @@ _BUILTIN_MODULES = [
     "governance",
     "contributors",
     "authors",
+    "web_roles",
 ]
 
 

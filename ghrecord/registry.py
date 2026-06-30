@@ -60,11 +60,35 @@ class RoleConvention:
 
 
 @dataclass
+class RoleSource:
+    """An authoritative web page that lists people holding a role.
+
+    e.g. a project's team / governance / maintainers page. The web_roles
+    extractor fetches the URL and matches the user by GitHub handle or name.
+    """
+
+    url: str
+    role: str                  # role granted to people listed on the page
+    label: str | None = None   # human label for the evidence, e.g. "NumPy team"
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "RoleSource":
+        return cls(url=d["url"], role=d["role"], label=d.get("label"))
+
+    def to_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {"url": self.url, "role": self.role}
+        if self.label is not None:
+            out["label"] = self.label
+        return out
+
+
+@dataclass
 class KnownProject:
     name_with_owner: str
     importance: str | None = None
     aliases: list[str] = field(default_factory=list)
     role_conventions: list[RoleConvention] = field(default_factory=list)
+    role_sources: list[RoleSource] = field(default_factory=list)
     popularity: dict[str, Any] = field(default_factory=dict)
     notes: str = ""
 
@@ -84,6 +108,9 @@ class KnownProject:
             role_conventions=[
                 RoleConvention.from_dict(c) for c in d.get("role_conventions", [])
             ],
+            role_sources=[
+                RoleSource.from_dict(s) for s in d.get("role_sources", [])
+            ],
             popularity=dict(d.get("popularity", {})),
             notes=d.get("notes", ""),
         )
@@ -96,6 +123,8 @@ class KnownProject:
             out["aliases"] = self.aliases
         if self.role_conventions:
             out["role_conventions"] = [c.to_dict() for c in self.role_conventions]
+        if self.role_sources:
+            out["role_sources"] = [s.to_dict() for s in self.role_sources]
         if self.popularity:
             out["popularity"] = self.popularity
         if self.notes:

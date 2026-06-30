@@ -40,6 +40,12 @@ class ContributorsExtractor(Extractor):
         )
 
     def extract(self, candidate, ctx: ExtractContext) -> list[Evidence]:
+        # Commit history is copy-vulnerable: a repo that vendored an upstream's
+        # history makes the user look like a heavy committer everywhere. Only
+        # trust the contributor signal on the user's own/org repos or the
+        # canonical (popular/widely-forked) project — never on a small copy.
+        if not ctx.trust_role_file(candidate):
+            return []
         contribs = ctx.contributors(candidate)
         if not contribs:
             return []

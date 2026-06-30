@@ -14,6 +14,36 @@ class _RecordingClient:
         return [{"login": "pearu", "contributions": 10}]
 
 
+class _ContribClient:
+    def repo_contributors(self, owner, repo, max_pages=2):
+        return [{"login": "pearu", "contributions": 200}]
+
+
+def _contrib_ctx():
+    from ghrecord.extractors.contributors import ContributorsExtractor  # noqa
+    return ExtractContext(
+        identity=Identity(primary_login="pearu"),
+        client=_ContribClient(),
+        registry=KnownProjects(projects={}),
+    )
+
+
+def test_contributor_signal_rejected_on_vendored_copy():
+    from ghrecord.extractors.contributors import ContributorsExtractor
+    ext = ContributorsExtractor()
+    # EasyFHE: vendored pytorch history makes pearu a "contributor", but the
+    # repo is small and unaffiliated -> not trustworthy -> no role.
+    ev = ext.extract(Candidate("jizhuoran/EasyFHE", stars=53, forks=1), _contrib_ctx())
+    assert ev == []
+
+
+def test_contributor_signal_kept_on_canonical_repo():
+    from ghrecord.extractors.contributors import ContributorsExtractor
+    ev = ContributorsExtractor().extract(
+        Candidate("numpy/numpy", stars=30000, forks=10000), _contrib_ctx())
+    assert ev and ev[0].role == "core_contributor"
+
+
 def test_contributor_pages_cap_is_passed_through():
     client = _RecordingClient()
     ctx = ExtractContext(

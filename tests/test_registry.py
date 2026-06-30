@@ -11,6 +11,25 @@ def test_seed_loads_and_has_peps():
     assert peps.min_stars_override is True
 
 
+def test_seed_has_web_role_sources():
+    reg = KnownProjects.load()
+    numpy = reg.get("numpy/numpy")
+    assert numpy is not None
+    urls = [s.url for s in numpy.role_sources]
+    assert any("numpy.org" in u for u in urls)
+    assert all(s.role for s in numpy.role_sources)
+
+
+def test_role_sources_roundtrip(tmp_path):
+    reg = KnownProjects.load()
+    out = tmp_path / "r.json"
+    reg.save(out)
+    reloaded = KnownProjects.load(extra_path=out)
+    pt = reloaded.get("pytorch/pytorch")
+    assert pt is not None
+    assert pt.role_sources[0].role == "maintainer"
+
+
 def test_case_insensitive_and_alias_lookup():
     reg = KnownProjects.load()
     assert "Python/PEPs" in reg

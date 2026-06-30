@@ -26,7 +26,30 @@
         },
         { "extractor": "codeowners", "role": "code_owner" }
       ],
-      "notes": "NumPy Enhancement Proposals live under doc/neps as RST."
+      "role_sources": [
+        {
+          "url": "https://numpy.org/teams/",
+          "role": "maintainer",
+          "label": "NumPy team page"
+        },
+        {
+          "url": "https://numpy.org/about/",
+          "role": "steering_council",
+          "label": "NumPy Steering Council"
+        }
+      ],
+      "notes": "NEPs under doc/neps (RST); authoritative roles on numpy.org."
+    },
+    "pytorch/pytorch": {
+      "importance": "critical",
+      "role_sources": [
+        {
+          "url": "https://docs.pytorch.org/docs/main/community/persons_of_interest.html",
+          "role": "maintainer",
+          "label": "PyTorch Persons of Interest"
+        }
+      ],
+      "notes": "Module maintainers listed on the Persons of Interest page; the repo also has a CODEOWNERS."
     },
     "scientific-python/specs": {
       "importance": "high",

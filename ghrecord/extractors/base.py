@@ -25,6 +25,7 @@ class ExtractContext:
     org_logins: set[str] = field(default_factory=set)  # orgs the user belongs to
     popularity_floor: int = 0  # gate expensive per-repo checks on stars
     canonical_stars: int = 1000  # at/above this a repo is plausibly the original
+    canonical_forks: int = 100   # ...or widely forked enough to be the original
     contributor_pages: int = 2  # contributors API pages (100 each) to fetch
     # repo -> {login: commit_count} | None (None = could not fetch)
     _contrib_cache: dict[str, dict[str, int] | None] = field(default_factory=dict)
@@ -61,7 +62,11 @@ class ExtractContext:
             return True  # the repo is under the user's own account
         if candidate.owner.lower() in self.org_logins:
             return True  # belongs to an org the user is in
-        return candidate.stars >= self.canonical_stars
+        # The canonical project is far more popular than any vendored copy.
+        return (
+            candidate.stars >= self.canonical_stars
+            or candidate.forks >= self.canonical_forks
+        )
 
 
 class Extractor(ABC):

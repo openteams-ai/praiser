@@ -102,7 +102,7 @@ carries an **evidence link** (file/page URL) and a **confidence** score.
    repos. Use `--include-private` to scan them anyway.
 3. **Role attribution** — a registry of pluggable [extractors](ghrecord/extractors)
    (`codeowners`, `maintainers`, `manifests`, `enhancement_proposals`,
-   `governance`, `contributors`, `authors`). Structured files are parsed
+   `governance`, `contributors`, `authors`, `web_roles`). Structured files are parsed
    deterministically; ambiguous prose falls back to Claude **only after** a
    keyword/regex pass. `contributors` records a **core-contributor** role for
    substantial committers to popular/widely-used repos (catches historical
@@ -122,9 +122,29 @@ carries an **evidence link** (file/page URL) and a **confidence** score.
 [`ghrecord/data/known_projects.json`](ghrecord/data/known_projects.json) stores
 popular/important projects together with:
 
-* **`role_conventions`** — how that project records roles (which extractor +
-  path + header format), so extractors can parse directly instead of
+* **`role_conventions`** — how that project records roles *in the repo* (which
+  extractor + path + header format), so extractors can parse directly instead of
   re-detecting, and curated knowledge is reusable;
+* **`role_sources`** — **authoritative web pages** that list role holders, with
+  the role each confers. Many projects record maintainers/steering councils on a
+  site, not in a repo file, and the format varies wildly — so you point at the
+  exact URL rather than have the tool guess. The `web_roles` extractor fetches
+  each page and matches the user by GitHub handle (a `github.com/<handle>` link)
+  or full name. Example:
+  ```json
+  "numpy/numpy": {
+    "role_sources": [
+      {"url": "https://numpy.org/teams/", "role": "maintainer", "label": "NumPy team"},
+      {"url": "https://numpy.org/about/", "role": "steering_council", "label": "Steering Council"}
+    ]
+  }
+  ```
+  This is more authoritative than commit-count heuristics — it reflects the
+  project's own statement of who holds the role — and it's why a vendored *copy*
+  of a project (which carries the upstream's commit history, making the user look
+  like a heavy committer) is not mistaken for a real role: role-file and
+  contributor signals are trusted only on the user's own/org repos or the
+  canonical popular project, never on a small unaffiliated copy.
 * **`popularity`** — cached/curated stars/forks plus `min_stars_override` for
   high-signal-but-small standards projects;
 * **`importance`** — a human label (`critical`, `high`, ...).
