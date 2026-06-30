@@ -1,15 +1,19 @@
 # praiser
 
-Generate a record of the **popular projects where a GitHub user holds an
-elevated role** — maintainer, code owner, steering-council member, or standards
-author. Plain contributors are intentionally excluded (the record would
-otherwise be enormous and low-signal).
+Given a username, **praiser** records the popular open-source projects where
+that person holds an **elevated role** — author/creator, maintainer, code owner,
+steering-council member, standards (PEP/RFC) author, or core contributor — with
+a clickable **evidence link** and a **confidence** score for every claim. Plain
+drive-by contributors are intentionally excluded (the record would otherwise be
+enormous and low-signal). By default it prints a compact **highlights** summary;
+`--format md|json` gives the full per-project report.
 
 Projects record roles in many different ways — a `CODEOWNERS` file, a
-`MAINTAINERS` list, Kubernetes `OWNERS` YAML, a `GOVERNANCE.md` page, a
-package manifest's author field, or a numbered enhancement-proposal series with
-`Author:` headers. `praiser` figures out **which convention each project uses**
-rather than assuming one.
+`MAINTAINERS` list, Kubernetes `OWNERS` YAML, a `GOVERNANCE.md` page, a package
+manifest's author field, a numbered enhancement-proposal series with `Author:`
+headers, a team page on the project's website, or just the commit history.
+`praiser` figures out **which convention each project uses** rather than assuming
+one, and corroborates signals that a fork or vendored copy could fake.
 
 ## Install
 
