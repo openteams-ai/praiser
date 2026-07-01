@@ -185,12 +185,13 @@ class Forge(ABC):
         """Commits by ``login`` touching ``path`` (subcomponent ownership). Default: 0."""
         return 0
 
-    @abstractmethod
     def repo_contributors(
         self, owner: str, repo: str, max_pages: int = 2
     ) -> list[ContributorCount] | None:
         """Top contributors with counts (descending), or None if it can't be
-        fetched (callers stay lenient on None — absence isn't evidence)."""
+        fetched (callers stay lenient on None — absence isn't evidence). Default
+        None: not every forge exposes aggregate contributor counts cheaply."""
+        return None
 
     # -- generic HTTP + housekeeping ----------------------------------------
     @abstractmethod

@@ -9,8 +9,11 @@ from .cache import Cache
 from .config import Config
 from .discovery import discover, org_logins
 from .extractors import ExtractContext, all_extractors
-from .forge import GitHubForge
+from .forge import GiteaForge, GitHubForge
 from .github_client import RateLimitError
+
+# Selectable code hosts. Each value builds a Forge from (token, cache, verbose).
+FORGES = {"github": GitHubForge, "codeberg": GiteaForge}
 from .identity import resolve_identity
 from .llm import LLM
 from .models import WEAK_ROLES, Evidence, ProjectRecord
@@ -48,7 +51,8 @@ def _humanize(seconds: int | None) -> str:
 
 def run(config: Config) -> RunResult:
     cache = Cache(config.cache_dir)
-    forge = GitHubForge(config.token, cache, verbose=config.verbose)
+    forge_cls = FORGES.get(config.forge, GitHubForge)
+    forge = forge_cls(config.token, cache, verbose=config.verbose)
     registry = KnownProjects.load(config.registry_path)
     llm = LLM.maybe(cache, enabled=config.use_llm)
     _log(config, f"LLM fallback {'enabled' if llm else 'disabled'}")

@@ -51,6 +51,7 @@ def _gh_cli_token() -> str | None:
 @dataclass
 class Config:
     username: str
+    forge: str = "github"           # "github" | "codeberg"
     token: str | None = None
     min_stars: int = 50
     fmt: str = "md"                 # "md" | "json"
