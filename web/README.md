@@ -36,6 +36,9 @@ A web frontend for [praiser](../). Layered so the frontend is swappable:
    # Redis from https://upstash.com — create a DB, copy its REST URL + token.
    UPSTASH_REDIS_REST_URL = "https://….upstash.io"
    UPSTASH_REDIS_REST_TOKEN = "…"
+   # PRAISER_RESULT_TTL = "2592000"   # optional; result cache TTL in seconds
+   #                                  # (default 30 days). A result persists in
+   #                                  # Redis across app reboots until it expires.
    ```
 
    Without the Upstash secrets it falls back to a local cache (works, but

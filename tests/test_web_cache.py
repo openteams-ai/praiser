@@ -93,3 +93,13 @@ def test_result_cache_uses_redis_when_secrets_present(monkeypatch):
     c = make_result_cache(ttl=5)
     assert isinstance(c, RedisCache)
     c.close()
+
+
+def test_result_cache_ttl_defaults_to_30_days_and_is_env_tunable(monkeypatch, tmp_path):
+    monkeypatch.delenv("UPSTASH_REDIS_REST_URL", raising=False)
+    monkeypatch.delenv("UPSTASH_REDIS_REST_TOKEN", raising=False)
+    monkeypatch.setenv("PRAISER_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("PRAISER_RESULT_TTL", raising=False)
+    assert make_result_cache().ttl == 30 * 86_400          # default: 30 days
+    monkeypatch.setenv("PRAISER_RESULT_TTL", "604800")
+    assert make_result_cache().ttl == 604800               # env override (7 days)
