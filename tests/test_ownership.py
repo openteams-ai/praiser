@@ -7,7 +7,7 @@ from praiser.registry import KnownProjects
 def _ctx():
     return ExtractContext(
         identity=Identity(primary_login="pearu"),
-        client=None,
+        forge=None,
         registry=KnownProjects(projects={}),
     )
 

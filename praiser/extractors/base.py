@@ -10,7 +10,7 @@ import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
-from ..github_client import GitHubClient
+from ..forge import Forge
 from ..models import Evidence, Identity, PackageRef
 from ..registry import KnownProject, KnownProjects
 
@@ -20,7 +20,7 @@ class ExtractContext:
     """Everything an extractor needs at run time."""
 
     identity: Identity
-    client: GitHubClient
+    forge: Forge  # the code host to read from (GitHub, GitLab, …)
     registry: KnownProjects
     llm: object | None = None  # praiser.llm.LLM or None when disabled
     org_logins: set[str] = field(default_factory=set)  # orgs the user belongs to
@@ -59,15 +59,14 @@ class ExtractContext:
         """Cached {login: commits} for a repo, or None if it couldn't be fetched."""
         key = candidate.name_with_owner
         if key not in self._contrib_cache:
-            raw = self.client.repo_contributors(
+            raw = self.forge.repo_contributors(
                 candidate.owner, candidate.repo, max_pages=self.contributor_pages
             )
             if raw is None:
                 self._contrib_cache[key] = None
             else:
                 self._contrib_cache[key] = {
-                    c["login"].lower(): c.get("contributions", 0)
-                    for c in raw if c.get("login")
+                    c.login.lower(): c.contributions for c in raw if c.login
                 }
         return self._contrib_cache[key]
 

@@ -143,7 +143,7 @@ class ManifestsExtractor(Extractor):
     name = "manifests"
 
     def extract(self, candidate, ctx: ExtractContext) -> list[Evidence]:
-        files = ctx.client.get_files(
+        files = ctx.forge.get_files(
             candidate.owner, candidate.repo, [p for p, _, _ in _MANIFESTS]
         )
         evidence: list[Evidence] = []

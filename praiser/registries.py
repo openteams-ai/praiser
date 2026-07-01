@@ -21,7 +21,7 @@ package the user authored — recorded as AUTHOR. This refuses to mis-credit a
 popular package (e.g. numpy, author "Travis Oliphant et al.") to a contributor.
 
 All network access goes through an injected ``fetch(url) -> str | None`` (the
-production caller passes ``GitHubClient.get_url``, which caches and sends a
+production caller passes ``Forge.get_url``, which caches and sends a
 User-Agent — crates.io rejects requests without one). Parsing is split into
 pure helpers so the whole module is unit-testable offline.
 """
@@ -36,7 +36,7 @@ from .models import Identity, PackageRef
 Fetch = Callable[[str], "str | None"]
 
 # Accept header for registry JSON APIs. npm's CDN returns 406 to an HTML-only
-# Accept, so callers must wrap ``GitHubClient.get_url`` with this.
+# Accept, so callers must wrap ``Forge.get_url`` with this.
 JSON_ACCEPT = "application/json, */*;q=0.8"
 
 # Paths under github.com that are not repositories.

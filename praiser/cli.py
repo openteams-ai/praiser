@@ -1,6 +1,7 @@
 """Command-line entry point: ``praiser <username> [...]``."""
 
 import argparse
+import os
 import sys
 
 from . import __version__
@@ -49,10 +50,15 @@ def _token_hint(token_source: str) -> str:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="praiser",
-        description="Record the popular projects a GitHub user maintains, "
-                    "steers, or authors standards for (contributors excluded).",
+        description="Record the popular projects a user maintains, steers, or "
+                    "authors standards for (contributors excluded). Scans GitHub "
+                    "by default, or Codeberg / GitLab via --forge.",
     )
-    p.add_argument("username", help="GitHub login to investigate")
+    p.add_argument("username", help="login to investigate (on the chosen --forge)")
+    p.add_argument("--forge", choices=["github", "codeberg", "gitlab"],
+                   default="github",
+                   help="code host to scan (default: github); 'codeberg' uses "
+                        "the Gitea/Forgejo API, 'gitlab' the GitLab API")
     p.add_argument("--min-stars", type=int, default=50,
                    help="popularity threshold (default: 50); high-signal roles "
                         "and registry overrides survive regardless")
@@ -116,13 +122,22 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
-    token, token_source = resolve_token(args.token)
-    if not token:
-        print(
-            "warning: no GitHub token found; discovery and rate limits will be "
-            "severely restricted (~60 requests/hour).\n" + TOKEN_HELP,
-            file=sys.stderr,
-        )
+    if args.forge == "github":
+        token, token_source = resolve_token(args.token)
+        if not token:
+            print(
+                "warning: no GitHub token found; discovery and rate limits will be "
+                "severely restricted (~60 requests/hour).\n" + TOKEN_HELP,
+                file=sys.stderr,
+            )
+    else:  # codeberg / gitlab — public data works unauthenticated
+        token_envs = {
+            "codeberg": ("CODEBERG_TOKEN", "FORGEJO_TOKEN"),
+            "gitlab": ("GITLAB_TOKEN",),
+        }.get(args.forge, ())
+        env_token = next((v for e in token_envs if (v := os.environ.get(e))), None)
+        token = args.token or env_token
+        token_source = "flag" if args.token else ("env" if token else "none")
 
     # Role discovery is on by default; only nag about missing creds/conflicts
     # when the user EXPLICITLY asked for it (default-on degrades silently).
@@ -155,6 +170,7 @@ def main(argv: list[str] | None = None) -> int:
 
     config = Config(
         username=args.username,
+        forge=args.forge,
         token=token,
         min_stars=args.min_stars,
         fmt=args.fmt or "md",

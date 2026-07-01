@@ -66,7 +66,7 @@ class _Client:
 def _ctx(**kw):
     defaults = dict(
         identity=Identity(primary_login="pearu"),
-        client=_Client(),
+        forge=_Client(),
         registry=KnownProjects(projects={}),
         llm=_LLM(),
         auto_discover_roles=True,

@@ -1,5 +1,5 @@
 from praiser.discovery import keep_candidate
-from praiser.models import Candidate
+from praiser.models import Candidate, repo_web_url
 from praiser.registry import KnownProjects
 
 EMPTY = KnownProjects(projects={})
@@ -25,3 +25,11 @@ def test_registry_seed_kept_even_if_fork_or_private():
     reg = KnownProjects.load()  # ships python/peps etc.
     c = Candidate("python/peps", is_fork=True, is_private=True)
     assert keep_candidate(c, reg, include_private=False)
+
+
+def test_candidate_url_follows_its_forge():
+    assert Candidate("a/b").url == "https://github.com/a/b"  # default
+    assert Candidate("a/b", forge="gitlab").url == "https://gitlab.com/a/b"
+    assert Candidate("a/b", forge="codeberg").url == "https://codeberg.org/a/b"
+    # unknown forge falls back to the GitHub host rather than crashing
+    assert repo_web_url("mystery", "a/b") == "https://github.com/a/b"

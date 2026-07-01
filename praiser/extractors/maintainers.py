@@ -104,7 +104,7 @@ class MaintainersExtractor(Extractor):
         return evidence
 
     def _scan_maintainers(self, candidate, ctx) -> list[Evidence]:
-        files = ctx.client.get_files(
+        files = ctx.forge.get_files(
             candidate.owner, candidate.repo, MAINTAINERS_PATHS
         )
         for path in MAINTAINERS_PATHS:
@@ -134,7 +134,7 @@ class MaintainersExtractor(Extractor):
         known = ctx.known(candidate.name_with_owner)
         if known:
             paths = [c.path for c in known.conventions_for(self.name) if c.path] or paths
-        files = ctx.client.get_files(candidate.owner, candidate.repo, paths)
+        files = ctx.forge.get_files(candidate.owner, candidate.repo, paths)
         for path in paths:
             text = files.get(path)
             if text is None:

@@ -20,7 +20,7 @@ class FakeExtractor:
         return self._fn(cand)
 
 
-class _StubClient:
+class _StubForge:
     def rate_summary(self):
         return ""
 
@@ -28,7 +28,7 @@ class _StubClient:
 def _ctx():
     return ExtractContext(
         identity=Identity(primary_login="u"),
-        client=_StubClient(),
+        forge=_StubForge(),
         registry=KnownProjects(projects={}),
     )
 

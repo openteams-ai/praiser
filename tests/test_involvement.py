@@ -8,7 +8,7 @@ EMPTY = KnownProjects(projects={})
 def _ctx(org_logins=(), canonical_stars=1000):
     return ExtractContext(
         identity=Identity(primary_login="pearu"),
-        client=None,
+        forge=None,
         registry=EMPTY,
         org_logins=set(org_logins),
         canonical_stars=canonical_stars,

@@ -86,7 +86,7 @@ class GovernanceExtractor(Extractor):
     name = "governance"
 
     def extract(self, candidate, ctx: ExtractContext) -> list[Evidence]:
-        files = ctx.client.get_files(
+        files = ctx.forge.get_files(
             candidate.owner, candidate.repo, GOVERNANCE_PATHS
         )
         for path in GOVERNANCE_PATHS:
