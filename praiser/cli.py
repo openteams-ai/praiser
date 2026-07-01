@@ -55,10 +55,13 @@ def build_parser() -> argparse.ArgumentParser:
                     "by default, or Codeberg / GitLab via --forge.",
     )
     p.add_argument("username", help="login to investigate (on the chosen --forge)")
-    p.add_argument("--forge", choices=["github", "codeberg", "gitlab"],
+    p.add_argument("--forge",
+                   choices=["github", "codeberg", "gitlab", "gitee", "cgit"],
                    default="github",
                    help="code host to scan (default: github); 'codeberg' uses "
-                        "the Gitea/Forgejo API, 'gitlab' the GitLab API")
+                        "the Gitea/Forgejo API, 'gitlab' the GitLab API, 'gitee' "
+                        "the Gitee API, 'cgit' an API-less cgit host (e.g. "
+                        "kernel.org, Savannah) via --forge-url + --add-repo")
     p.add_argument("--forge-url", default=None, metavar="URL",
                    help="base URL of a self-hosted instance for --forge "
                         "gitlab|codeberg (e.g. https://gitlab.gnome.org or a "
@@ -141,6 +144,7 @@ def main(argv: list[str] | None = None) -> int:
         token_envs = {
             "codeberg": ("CODEBERG_TOKEN", "FORGEJO_TOKEN"),
             "gitlab": ("GITLAB_TOKEN",),
+            "gitee": ("GITEE_TOKEN",),
         }.get(args.forge, ())
         env_token = next((v for e in token_envs if (v := os.environ.get(e))), None)
         token = args.token or env_token

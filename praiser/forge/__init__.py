@@ -12,7 +12,9 @@ from .base import (
     RepoMeta,
     UserRef,
 )
+from .cgit import CgitForge
 from .gitea import GiteaForge
+from .gitee import GiteeForge
 from .github import GitHubForge
 from .gitlab import GitLabForge
 
@@ -20,7 +22,9 @@ __all__ = [
     "Forge",
     "GitHubForge",
     "GiteaForge",
+    "GiteeForge",
     "GitLabForge",
+    "CgitForge",
     "RepoMeta",
     "UserRef",
     "DirEntry",
