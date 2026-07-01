@@ -9,7 +9,14 @@ from .cache import Cache
 from .config import Config
 from .discovery import discover, org_logins
 from .extractors import ExtractContext, all_extractors
-from .forge import CgitForge, GiteaForge, GiteeForge, GitHubForge, GitLabForge
+from .forge import (
+    BitbucketForge,
+    CgitForge,
+    GiteaForge,
+    GiteeForge,
+    GitHubForge,
+    GitLabForge,
+)
 from .github_client import RateLimitError
 
 # Selectable code hosts. Each value builds a Forge from (token, cache, verbose).
@@ -19,6 +26,7 @@ FORGES = {
     "gitlab": GitLabForge,
     "gitee": GiteeForge,
     "cgit": CgitForge,
+    "bitbucket": BitbucketForge,
 }
 # Forges that take a self-hosted instance URL (--forge-url).
 INSTANCE_FORGES = {"gitlab", "codeberg", "cgit"}
