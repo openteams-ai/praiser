@@ -23,8 +23,13 @@ NOT_FOUND = "__404__"
 
 
 def make_session():
-    """An httpx client if available, else None (urllib fallback)."""
-    return httpx.Client(timeout=30.0) if httpx is not None else None
+    """An httpx client if available, else None (urllib fallback).
+
+    ``follow_redirects=True`` so httpx matches urllib's default and both follow
+    3xx (cgit ``plain/`` and some raw endpoints redirect); otherwise the 301
+    body would be returned as if it were the file.
+    """
+    return httpx.Client(timeout=30.0, follow_redirects=True) if httpx is not None else None
 
 
 def fetch_text(

@@ -9,11 +9,19 @@ from .cache import Cache
 from .config import Config
 from .discovery import discover, org_logins
 from .extractors import ExtractContext, all_extractors
-from .forge import GiteaForge, GitHubForge, GitLabForge
+from .forge import CgitForge, GiteaForge, GiteeForge, GitHubForge, GitLabForge
 from .github_client import RateLimitError
 
 # Selectable code hosts. Each value builds a Forge from (token, cache, verbose).
-FORGES = {"github": GitHubForge, "codeberg": GiteaForge, "gitlab": GitLabForge}
+FORGES = {
+    "github": GitHubForge,
+    "codeberg": GiteaForge,
+    "gitlab": GitLabForge,
+    "gitee": GiteeForge,
+    "cgit": CgitForge,
+}
+# Forges that take a self-hosted instance URL (--forge-url).
+INSTANCE_FORGES = {"gitlab", "codeberg", "cgit"}
 from .identity import resolve_identity
 from .llm import LLM
 from .models import WEAK_ROLES, Evidence, ProjectRecord
@@ -53,8 +61,8 @@ def run(config: Config) -> RunResult:
     cache = Cache(config.cache_dir)
     forge_cls = FORGES.get(config.forge, GitHubForge)
     forge_kwargs = {"verbose": config.verbose}
-    # Self-hosted instances: gitlab/codeberg forges accept base_url + name.
-    if config.forge_url and config.forge in ("gitlab", "codeberg"):
+    # Instance forges (gitlab/codeberg/cgit) accept a base_url + name.
+    if config.forge_url and config.forge in INSTANCE_FORGES:
         forge_kwargs["base_url"] = config.forge_url
         if config.forge_name:
             forge_kwargs["name"] = config.forge_name
