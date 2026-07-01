@@ -167,7 +167,9 @@ def collect(
         cache=http_cache if http_cache is not None else local_cache(),
         progress_cb=progress,
     )
-    if rcache is not None:
+    # Only cache COMPLETE scans — a partial result (rate limit hit mid-scan)
+    # must not be frozen for the cache TTL; let a later retry get the full data.
+    if rcache is not None and result.partial_reset_in is None:
         rcache.set(rkey, _dumps(result))
         _record_recent(rcache, forge, username)
     return result

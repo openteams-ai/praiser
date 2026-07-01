@@ -18,6 +18,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import streamlit as st  # noqa: E402
 
+from praiser.github_client import RateLimitError  # noqa: E402
+from praiser.pipeline import humanize_wait  # noqa: E402
 from web.core import service  # noqa: E402
 from web.core.resultcache import SizeBoundedLRU  # noqa: E402
 
@@ -95,6 +97,18 @@ highlights = d2.slider("Highlights (top N)", 3, 20, 8)
 min_stars = d3.slider("Min stars", 0, 1000, 50, step=10)
 
 
+def _show(result, uname):
+    """Render a RunResult with the current display controls (view/N/min-stars)."""
+    out = service.render_result(result, uname, view=view,
+                                highlights=highlights, min_stars=min_stars)
+    if view == "json":
+        st.json(json.loads(out))
+    elif view == "markdown":
+        st.markdown(out)
+    else:
+        st.text(out)
+
+
 def _run_scan(username, data_opts):
     """Scan in a worker thread while the main thread shows a live progress bar.
     Returns (RunResult, elapsed_seconds). The worker never touches st.*."""
@@ -104,6 +118,8 @@ def _run_scan(username, data_opts):
         try:
             state["result"] = service.collect(
                 username, progress=lambda m: state.update(msg=m), **data_opts)
+        except RateLimitError as exc:  # rate limit before/at discovery
+            state["rate_limited"] = humanize_wait(exc.reset_in)
         except Exception as exc:  # surface a message, never a traceback
             state["error"] = str(exc)
         finally:
@@ -121,6 +137,12 @@ def _run_scan(username, data_opts):
     worker.join()
     bar.empty()
     status.empty()
+    if state.get("rate_limited"):
+        st.warning(
+            f"⏳ The forge's API rate limit was reached (shared across all users "
+            f"of this demo). Please try again in {state['rate_limited']}."
+        )
+        st.stop()
     if state["error"]:
         st.error(f"Failed: {state['error']}")
         st.stop()
@@ -159,6 +181,16 @@ if submitted:
             "or LLM discovery on). Changing the view, top-N or min-stars is instant."
         )
         result, elapsed = _run_scan(uname, data_opts)
+        if result.partial_reset_in is not None:
+            # Rate limit hit mid-scan → results are incomplete. Don't cache them
+            # (so a retry re-scans); show them with a clear warning + wait time.
+            st.warning(
+                "⚠️ Partial results — the forge's API rate limit was reached "
+                "mid-scan, so some projects may be missing. Re-scan in "
+                f"{humanize_wait(result.partial_reset_in)} for the full record."
+            )
+            _show(result, uname)
+            st.stop()
         cache.put(key, result)
         st.success(f"✅ Scan finished in {elapsed:.1f} seconds.")
         # Reflect this scan in the recent-picker immediately (shared index is
@@ -176,11 +208,4 @@ if active is not None:
     if result is None:  # evicted from the LRU — ask for a re-scan
         st.info("Previous results expired — click Praise to scan again.")
     else:
-        out = service.render_result(result, uname, view=view,
-                                    highlights=highlights, min_stars=min_stars)
-        if view == "json":
-            st.json(json.loads(out))
-        elif view == "markdown":
-            st.markdown(out)
-        else:
-            st.text(out)
+        _show(result, uname)
