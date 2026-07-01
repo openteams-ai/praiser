@@ -7,17 +7,35 @@ non-TTY runs stay silent (so piped stderr stays clean).
 """
 
 import sys
+from collections.abc import Callable
 from typing import TextIO
 
 
 class Progress:
-    def __init__(self, enabled: bool, stream: TextIO | None = None) -> None:
+    def __init__(
+        self,
+        enabled: bool,
+        stream: TextIO | None = None,
+        callback: "Callable[[str], None] | None" = None,
+    ) -> None:
         self.enabled = enabled
         self.stream = stream if stream is not None else sys.stderr
         self._pending = 0  # length of the current in-place line, if any
+        # Optional sink for progress messages (e.g. a web UI). Fires on every
+        # phase/status regardless of terminal ``enabled``; never breaks the scan.
+        self.callback = callback
+
+    def _emit(self, msg: str) -> None:
+        if self.callback is None:
+            return
+        try:
+            self.callback(msg)
+        except Exception:
+            pass
 
     def phase(self, msg: str) -> None:
         """A milestone line that stays on screen."""
+        self._emit(msg)
         if not self.enabled:
             return
         self._clear()
@@ -26,6 +44,7 @@ class Progress:
 
     def status(self, msg: str) -> None:
         """A transient line, overwritten in place by the next status/phase."""
+        self._emit(msg)
         if not self.enabled:
             return
         line = f"[praiser] {msg}"

@@ -38,3 +38,19 @@ def test_phase_clears_pending_status_line():
     # The clear sequence blanks the previous line before the phase line.
     assert "\r" in buf.getvalue()
     assert buf.getvalue().endswith("[praiser] done\n")
+
+
+def test_callback_fires_on_phase_and_status_even_when_display_disabled():
+    # The web UI passes a callback with enabled=False (no terminal output).
+    seen = []
+    p = Progress(enabled=False, callback=seen.append)
+    p.phase("discovering candidate repositories…")
+    p.status("scanned 3/10 (1 found): numpy/numpy")
+    assert seen == ["discovering candidate repositories…",
+                    "scanned 3/10 (1 found): numpy/numpy"]
+
+
+def test_callback_exception_never_breaks_progress():
+    p = Progress(enabled=False, callback=lambda _m: 1 / 0)
+    p.phase("safe")   # must not raise
+    p.status("safe")  # must not raise

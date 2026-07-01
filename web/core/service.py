@@ -48,12 +48,13 @@ def praise(
     view: str = "highlights",
     highlights: int = 8,
     cache=None,
+    progress=None,
 ) -> str:
     """Run praiser for ``username`` and return the rendered output for ``view``.
 
     ``cache`` defaults to the shared/local backend from :func:`make_cache` — so
     the expensive, option-independent data collection is reused across requests
-    and hosts.
+    and hosts. ``progress(msg)`` receives live phase/status lines (for a UI).
     """
     cache = cache if cache is not None else make_cache()
     config = Config(
@@ -72,7 +73,7 @@ def praise(
         highlights=highlights if view == "highlights" else None,
         fmt="json" if view == "json" else "md",
     )
-    result = run(config, cache=cache)
+    result = run(config, cache=cache, progress_cb=progress)
     if view == "highlights":
         return render_highlights(
             username, result.records, highlights, result.secondary
