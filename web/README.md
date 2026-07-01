@@ -19,9 +19,17 @@ A web frontend for [praiser](../). Layered so the frontend is swappable:
    is imported from the repo.
 3. In the app's **Settings → Secrets**, add what you need (TOML):
 
+   > ⚠️ **Use a _dedicated_ token, not your personal one.** GitHub's API rate
+   > limit (5,000 req/hr) is **per user account**, not per token — so all
+   > visitors share the token owner's quota, and heavy demo traffic would eat
+   > your *own* `gh`/API quota (git push/pull is unaffected). Create a separate
+   > bot/machine account and use *its* token here to isolate the demo from your
+   > personal account. See the issue on a `praiser-bot` account / GitHub App.
+
    ```toml
    # Forge tokens (only the ones you'll query; public data works without, but
    # rate limits are low — GitHub 60/hr and Bitbucket 60/hr unauthenticated).
+   # Prefer a dedicated bot account's token (see warning above), not your own.
    GITHUB_TOKEN = "ghp_…"
    GITLAB_TOKEN = "glpat-…"
    CODEBERG_TOKEN = "…"      # or FORGEJO_TOKEN

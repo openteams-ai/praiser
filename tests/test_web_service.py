@@ -56,6 +56,23 @@ def test_collect_serves_from_result_cache_without_scanning(monkeypatch, tmp_path
     assert r1.records[0].name_with_owner == r2.records[0].name_with_owner
 
 
+def test_partial_results_are_not_cached(monkeypatch, tmp_path):
+    # A rate-limited (partial) scan must NOT be cached — a retry should re-scan
+    # for the full record, not keep serving the incomplete one.
+    runs = {"n": 0}
+
+    def _partial_run(config, cache=None, progress_cb=None):
+        runs["n"] += 1
+        return RunResult(records=[_rec("a/b", 100)], secondary=[],
+                         partial_reset_in=1800)  # rate-limited mid-scan
+
+    monkeypatch.setattr(service, "run", _partial_run)
+    rc, hc = Cache(tmp_path), Cache(tmp_path / "h")
+    service.collect("alice", forge="github", result_cache=rc, http_cache=hc)
+    service.collect("alice", forge="github", result_cache=rc, http_cache=hc)
+    assert runs["n"] == 2   # partial not cached -> second call re-scans
+
+
 def test_result_cache_key_ignores_display_options():
     # DATA_OPTIONS (the result-cache key inputs) must exclude display options.
     for display_only in ("view", "highlights", "min_stars"):

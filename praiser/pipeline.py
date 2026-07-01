@@ -54,7 +54,8 @@ def _log(config: Config, msg: str) -> None:
         print(f"[praiser] {msg}", file=sys.stderr)
 
 
-def _humanize(seconds: int | None) -> str:
+def humanize_wait(seconds: int | None) -> str:
+    """A rate-limit reset delay as a short human string, e.g. "~5 min"."""
     if not seconds or seconds < 0:
         return "shortly"
     if seconds < 90:
@@ -64,6 +65,9 @@ def _humanize(seconds: int | None) -> str:
         return f"~{minutes} min"
     hours, mins = divmod(minutes, 60)
     return f"~{hours}h {mins}min" if mins else f"~{hours}h"
+
+
+_humanize = humanize_wait  # back-compat alias (CLI, tests)
 
 
 def _build_forge(forge_name: str, config: Config, cache: Cache, *, is_anchor: bool):
