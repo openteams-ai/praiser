@@ -106,10 +106,11 @@ def build_parser() -> argparse.ArgumentParser:
                         "discovery)")
     p.add_argument("--discover-roles", action=argparse.BooleanOptionalAction,
                    default=True,
-                   help="for popular repos lacking curated role sources, use "
-                        "Claude + web search to find official team/governance "
-                        "pages (default: on when LLM credentials are available; "
-                        "needs the llm extra + an API key or Claude subscription)")
+                   help="for popular repos, use Claude + web search to find "
+                        "official team/governance pages AND to identify the "
+                        "project's founder(s)/creator(s) (default: on when LLM "
+                        "credentials are available; needs the llm extra + an API "
+                        "key or Claude subscription)")
     p.add_argument("--wikidata", action=argparse.BooleanOptionalAction,
                    default=True,
                    help="derive creator/founder/developer roles for popular "

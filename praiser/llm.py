@@ -155,6 +155,67 @@ class LLM:
         self.cache.set(ck, result)
         return result
 
+    def discover_founders(
+        self, name_with_owner: str, project_name: str | None = None
+    ) -> list[dict]:
+        """Use Claude + web search to name a project's founder(s)/creator(s).
+
+        Returns ``[{"name", "handle", "url"}]`` — the original author(s), their
+        GitHub username if known, and a citation. Cached; degrades to [].
+        """
+        ck = Cache.key("llm-founders", self.model, name_with_owner)
+        cached = self.cache.get(ck, default=None)
+        if cached is not None:
+            return cached
+
+        desc = name_with_owner + (f" ({project_name})" if project_name else "")
+        prompt = (
+            f"Who originally created or founded the open-source project {desc}? "
+            "Name ONLY the original author(s) / creator(s) / co-founder(s) — NOT "
+            "later maintainers, leads, or contributors. For each, give their "
+            "GitHub username if you know it, and a citation URL (the project's "
+            "history/about page, Wikipedia, or the founding paper). "
+            'Reply with ONLY a JSON array of {"name": str, "handle": str|null, '
+            '"url": str}. Return [] if you are not sure.'
+        )
+        try:
+            resp = self._client.messages.create(
+                model=self.model,
+                max_tokens=1024,
+                tools=[{"type": "web_search_20250305", "name": "web_search",
+                        "max_uses": 5}],
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = "".join(
+                b.text for b in resp.content if getattr(b, "type", None) == "text"
+            )
+            result = self._parse_founders(raw)
+        except Exception:
+            result = []
+        self.cache.set(ck, result)
+        return result
+
+    @staticmethod
+    def _parse_founders(raw: str) -> list[dict]:
+        start, end = raw.find("["), raw.rfind("]")
+        if start == -1 or end == -1:
+            return []
+        try:
+            items = json.loads(raw[start : end + 1])
+        except json.JSONDecodeError:
+            return []
+        out: list[dict] = []
+        for it in items if isinstance(items, list) else []:
+            if not isinstance(it, dict):
+                continue
+            handle = it.get("handle")
+            handle = handle.lstrip("@") if isinstance(handle, str) and handle else None
+            url = it.get("url") if isinstance(it.get("url"), str) else None
+            name = it.get("name") if isinstance(it.get("name"), str) else None
+            if handle or name:
+                out.append({"name": name, "handle": handle, "url": url})
+        return out
+
     @staticmethod
     def _parse_role_sources(raw: str) -> list[dict]:
         start, end = raw.find("["), raw.rfind("]")
