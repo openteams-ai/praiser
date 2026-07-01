@@ -60,31 +60,15 @@ with st.form("q"):
                                  value=False)
     submitted = st.form_submit_button("Praise")
 
-if submitted:
-    if not username.strip():
-        st.warning("Enter a username.")
-        st.stop()
-
-    st.info(
-        "⏳ A first-time scan can take ~30 seconds to a few minutes — praiser "
-        "queries the forge across many repositories (longer with cross-forge or "
-        "LLM discovery on). Repeat scans are fast thanks to caching."
-    )
-
-    # Run the scan in a worker thread and poll its progress on the main thread,
-    # so the UI can show a live bar (Streamlit blocks on a synchronous call).
-    # The worker never touches st.* — it only writes to `state`.
+def _run_scan(username, data_opts):
+    """Scan in a worker thread while the main thread shows a live progress bar.
+    Returns (RunResult, elapsed_seconds). The worker never touches st.*."""
     state = {"msg": "starting…", "result": None, "error": None, "done": False}
 
     def _work():
         try:
-            state["result"] = service.praise(
-                username.strip(), forge=forge, forge_url=forge_url.strip(),
-                min_stars=min_stars, discover_roles=discover_roles,
-                wikidata=wikidata, package_registries=package_registries,
-                cross_forge=cross_forge, view=view, highlights=highlights,
-                progress=lambda m: state.update(msg=m),
-            )
+            state["result"] = service.collect(
+                username, progress=lambda m: state.update(msg=m), **data_opts)
         except Exception as exc:  # surface a message, never a traceback
             state["error"] = str(exc)
         finally:
@@ -93,26 +77,53 @@ if submitted:
     started = time.time()
     worker = threading.Thread(target=_work, daemon=True)
     worker.start()
-
-    bar = st.empty()
-    status = st.empty()
+    bar, status = st.empty(), st.empty()
     while not state["done"]:
-        msg = state["msg"]
-        m = _SCANNED_RE.search(msg)
+        m = _SCANNED_RE.search(state["msg"])
         bar.progress(min(1.0, int(m.group(1)) / max(1, int(m.group(2)))) if m else 0.0)
-        status.caption(f"⏳ {msg}")
+        status.caption(f"⏳ {state['msg']}")
         time.sleep(0.2)
     worker.join()
     bar.empty()
     status.empty()
-    elapsed = time.time() - started
-
     if state["error"]:
         st.error(f"Failed: {state['error']}")
         st.stop()
+    return state["result"], time.time() - started
 
-    st.success(f"✅ Scan finished in {elapsed:.1f} seconds.")
-    out = state["result"]
+
+if submitted:
+    if not username.strip():
+        st.warning("Enter a username.")
+        st.stop()
+    uname = username.strip()
+
+    data_opts = {
+        "forge": forge, "forge_url": forge_url.strip(), "min_stars": min_stars,
+        "discover_roles": discover_roles, "wikidata": wikidata,
+        "package_registries": package_registries, "cross_forge": cross_forge,
+    }
+    # Data-collection cache key (display options view/highlights excluded on
+    # purpose): changing only N or the view re-renders the SAME collected result
+    # instead of re-scanning. A change to username or any data option rescans.
+    key = (uname, *(data_opts[k] for k in service.DATA_OPTIONS))
+
+    if st.session_state.get("scan_key") == key:
+        result = st.session_state["scan_result"]  # reuse — no rescan
+        st.success("✅ Showing cached results — change the username, forge, or a "
+                   "scan option to re-scan.")
+    else:
+        st.info(
+            "⏳ A first-time scan can take ~30 seconds to a few minutes — praiser "
+            "queries the forge across many repositories (longer with cross-forge "
+            "or LLM discovery on). Changing only the view or top-N is instant."
+        )
+        result, elapsed = _run_scan(uname, data_opts)
+        st.session_state["scan_key"] = key
+        st.session_state["scan_result"] = result
+        st.success(f"✅ Scan finished in {elapsed:.1f} seconds.")
+
+    out = service.render_result(result, uname, view=view, highlights=highlights)
     if view == "json":
         st.json(json.loads(out))
     elif view == "markdown":
