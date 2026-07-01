@@ -7,11 +7,19 @@ per-forge transport wrappers keep their own method names so they stay easy to
 fake in tests.
 """
 
+import re
 import time
 import urllib.error
 import urllib.request
 
 from ..cache import Cache
+
+_URL_RE = re.compile(r"""https?://[^\s)"'<>\]]+""")
+
+
+def extract_urls(text: str | None) -> list[str]:
+    """All http(s) URLs in a blob of text (profile bio / README)."""
+    return _URL_RE.findall(text or "")
 
 try:  # optional accelerator
     import httpx  # type: ignore

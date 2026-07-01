@@ -191,6 +191,14 @@ class Forge(ABC):
         """Org/group logins the user belongs to. Default: none."""
         return []
 
+    def profile_links(self, login: str) -> list[str]:
+        """URLs the user publishes on their own profile (bio / website field /
+        profile README). Used for cross-forge identity resolution: links to
+        other-forge profiles that the account owner self-attests. Default: none
+        (the forge exposes no profile, so it can't contribute outbound links —
+        it can still be a verified *target* if some other forge links to it)."""
+        return []
+
     def organization_repositories(self, org: str) -> list[RepoMeta]:
         """An org/group's repos. Default: none."""
         return []

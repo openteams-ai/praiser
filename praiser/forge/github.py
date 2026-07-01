@@ -13,6 +13,7 @@ from typing import Any
 
 from ..cache import Cache
 from ..github_client import GitHubClient
+from ._http import extract_urls
 from .base import ContributorCount, DirEntry, FileHit, Forge, RepoMeta, UserRef
 
 # Repo fields we ask for everywhere a GraphQL node is returned.
@@ -238,6 +239,18 @@ class GitHubForge(Forge):
 
     def team_members(self, org: str, team: str) -> list[str]:
         return self._client.team_members(org, team)
+
+    def profile_links(self, login: str) -> list[str]:
+        data = self._client.graphql(
+            "query($l:String!){user(login:$l){websiteUrl bio}}", {"l": login}
+        )
+        user = (data or {}).get("user") or {}
+        urls: list[str] = []
+        if user.get("websiteUrl"):
+            urls.append(user["websiteUrl"])
+        urls += extract_urls(user.get("bio"))
+        urls += extract_urls(self._client.get_file(login, login, "README.md"))
+        return urls
 
     # -- search & analytics -------------------------------------------------
     def search_file_mentions(self, text: str, filename: str) -> list[FileHit]:

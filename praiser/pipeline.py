@@ -7,6 +7,7 @@ from functools import partial
 
 from .cache import Cache
 from .config import Config
+from .crossforge import resolve_cross_forge
 from .discovery import discover, org_logins
 from .extractors import ExtractContext, all_extractors
 from .forge import (
@@ -32,7 +33,7 @@ FORGES = {
 INSTANCE_FORGES = {"gitlab", "codeberg", "cgit"}
 from .identity import resolve_identity
 from .llm import LLM
-from .models import WEAK_ROLES, Evidence, ProjectRecord
+from .models import WEAK_ROLES, Evidence, Identity, ProjectRecord
 from .popularity import enrich_stars, filter_records
 from .progress import Progress
 from .registries import JSON_ACCEPT, discover_packages, index_by_repo
@@ -65,97 +66,155 @@ def _humanize(seconds: int | None) -> str:
     return f"~{hours}h {mins}min" if mins else f"~{hours}h"
 
 
+def _build_forge(forge_name: str, config: Config, cache: Cache, *, is_anchor: bool):
+    """Construct a Forge. The anchor gets the user's token + any --forge-url;
+    secondary forges (cross-forge) run public/best-effort with no token."""
+    cls = FORGES.get(forge_name, GitHubForge)
+    kwargs: dict = {"verbose": config.verbose}
+    token = config.token if is_anchor else None
+    if is_anchor and config.forge_url and forge_name in INSTANCE_FORGES:
+        kwargs["base_url"] = config.forge_url
+        if config.forge_name:
+            kwargs["name"] = config.forge_name
+    return cls(token, cache, **kwargs)
+
+
+def _dedupe(records: list[ProjectRecord]) -> list[ProjectRecord]:
+    """Drop duplicate records, keyed on the (forge-specific) URL."""
+    seen: set[str] = set()
+    out: list[ProjectRecord] = []
+    for rec in records:
+        if rec.url in seen:
+            continue
+        seen.add(rec.url)
+        out.append(rec)
+    return out
+
+
+def _scan_forge(
+    forge, forge_login, base_identity, config, registry, llm, progress,
+    *, is_anchor, label="",
+) -> tuple[list[ProjectRecord], list[ProjectRecord], int | None]:
+    """Discover + attribute + popularity-filter one forge for one login, using
+    the shared (possibly cross-forge-merged) identity for handle/name matching."""
+    identity = Identity(
+        primary_login=forge_login,
+        logins=set(base_identity.logins),
+        names=set(base_identity.names),
+    )
+    # Package registries are GitHub-anchored (github_nwo only reads github.com
+    # source URLs), so only meaningful on a GitHub anchor scan.
+    package_refs = []
+    if config.use_package_registries and is_anchor and forge.name == "github":
+        pkg_fetch = partial(forge.get_url, accept=JSON_ACCEPT)
+        package_refs = discover_packages(pkg_fetch, identity)
+        _log(config, f"package registries: {len(package_refs)} package(s) "
+                     f"({sum(1 for r in package_refs if r.repo)} on GitHub)")
+
+    progress.phase(f"{label}discovering candidate repositories…")
+    candidates = discover(
+        forge, identity, registry,
+        include_private=config.include_private,
+        extra_repos=config.extra_repos if is_anchor else [],
+        package_refs=package_refs,
+    )
+    _log(config, f"{label}discovered {len(candidates)} candidate repos")
+    rate0 = forge.rate_summary()
+    progress.phase(f"{label}discovered {len(candidates)} candidate repos"
+                   + (f" · rate: {rate0}" if rate0 else ""))
+
+    ctx = ExtractContext(
+        identity=identity, forge=forge, registry=registry, llm=llm,
+        org_logins=org_logins(forge, identity.primary_login),
+        popularity_floor=config.min_stars,
+        contributor_pages=config.contributor_pages,
+        auto_discover_roles=config.discover_roles and llm is not None,
+        manual_repos=set(config.extra_repos) if is_anchor else set(),
+        manual_subcomponents=config.extra_subcomponents if is_anchor else {},
+        package_index=index_by_repo(package_refs),
+    )
+    records, reset_in = _attribute(config, candidates, ctx, progress)
+    _log(config, f"{label}{len(records)} repos with elevated-role evidence")
+
+    progress.phase(f"{label}checking popularity…")
+    try:
+        enrich_stars(forge, records)
+    except RateLimitError as exc:
+        _log(config, f"{label}rate limit during popularity enrichment: {exc}")
+        reset_in = exc.reset_in if reset_in is None else reset_in
+    records, secondary = filter_records(
+        records, min_stars=config.min_stars, registry=registry,
+        force_primary=set(config.extra_repos) if is_anchor else set(),
+    )
+    for rec in (*records, *secondary):
+        registry.record_popularity(rec.name_with_owner, stars=rec.stars, forks=rec.forks)
+    for name, sources in ctx.discovered_sources().items():
+        registry.add_role_sources(name, sources)
+    return records, secondary, reset_in
+
+
 def run(config: Config) -> RunResult:
     cache = Cache(config.cache_dir)
-    forge_cls = FORGES.get(config.forge, GitHubForge)
-    forge_kwargs = {"verbose": config.verbose}
-    # Instance forges (gitlab/codeberg/cgit) accept a base_url + name.
-    if config.forge_url and config.forge in INSTANCE_FORGES:
-        forge_kwargs["base_url"] = config.forge_url
-        if config.forge_name:
-            forge_kwargs["name"] = config.forge_name
-    forge = forge_cls(config.token, cache, **forge_kwargs)
     registry = KnownProjects.load(config.registry_path)
     llm = LLM.maybe(cache, enabled=config.use_llm)
     _log(config, f"LLM fallback {'enabled' if llm else 'disabled'}")
-
-    # Live progress only when interactive and not in verbose/quiet mode; verbose
-    # uses the detailed per-repo _log lines instead.
     progress = Progress(
         enabled=not config.verbose and not config.quiet and sys.stderr.isatty()
     )
 
+    anchor = _build_forge(config.forge, config, cache, is_anchor=True)
+    open_forges = {config.forge: anchor}
+
+    def factory(name):
+        if name not in open_forges:
+            open_forges[name] = _build_forge(name, config, cache, is_anchor=False)
+        return open_forges[name]
+
     try:
-        progress.phase(f"resolving identity for {config.username}…")
-        identity = resolve_identity(forge, config.username)
+        # -- resolve identity/identities ------------------------------------
+        if config.cross_forge:
+            progress.phase(f"resolving identity across forges for {config.username}…")
+            identity, ids = resolve_cross_forge(anchor, config.username, factory)
+        else:
+            identity = resolve_identity(anchor, config.username)
+            ids = [(config.forge, config.username)]
+        # Manual additions (forge:login), merged in.
+        for spec in config.also_forge:
+            fname, _, login = spec.partition(":")
+            if fname in FORGES and login and (fname, login) not in ids:
+                ids.append((fname, login))
+                identity.logins.add(login.lower())
         _log(config, f"identity: logins={identity.logins} names={identity.names}")
+        if len(ids) > 1:
+            _log(config, f"multi-forge scan across {len(ids)}: {ids}")
 
-        package_refs = []
-        if config.use_package_registries:
-            pkg_fetch = partial(forge.get_url, accept=JSON_ACCEPT)
-            package_refs = discover_packages(pkg_fetch, identity)
-            _log(config, f"package registries: {len(package_refs)} package(s) "
-                         f"({sum(1 for r in package_refs if r.repo)} on GitHub)")
-
-        progress.phase("discovering candidate repositories…")
-        candidates = discover(
-            forge, identity, registry,
-            include_private=config.include_private,
-            extra_repos=config.extra_repos,
-            package_refs=package_refs,
-        )
-        _log(config, f"discovered {len(candidates)} candidate repos")
-        rate0 = forge.rate_summary()
-        progress.phase(
-            f"discovered {len(candidates)} candidate repos"
-            + (f" · rate: {rate0}" if rate0 else "")
-        )
-
-        ctx = ExtractContext(
-            identity=identity, forge=forge, registry=registry, llm=llm,
-            org_logins=org_logins(forge, identity.primary_login),
-            popularity_floor=config.min_stars,
-            contributor_pages=config.contributor_pages,
-            auto_discover_roles=config.discover_roles and llm is not None,
-            manual_repos=set(config.extra_repos),
-            manual_subcomponents=config.extra_subcomponents,
-            package_index=index_by_repo(package_refs),
-        )
-        records, reset_in = _attribute(config, candidates, ctx, progress)
+        # -- scan each forge, merge -----------------------------------------
+        all_records: list[ProjectRecord] = []
+        all_secondary: list[ProjectRecord] = []
+        reset_in: int | None = None
+        multi = len(ids) > 1
+        for fname, login in ids:
+            forge = factory(fname)
+            label = f"[{fname}] " if multi else ""
+            recs, sec, r_in = _scan_forge(
+                forge, login, identity, config, registry, llm, progress,
+                is_anchor=(fname == config.forge and login == config.username),
+                label=label,
+            )
+            all_records += recs
+            all_secondary += sec
+            if r_in is not None and reset_in is None:
+                reset_in = r_in
         progress.done()
-        _log(config, f"{len(records)} repos with elevated-role evidence")
 
-        progress.phase("checking popularity…")
-        try:
-            enrich_stars(forge, records)
-        except RateLimitError as exc:
-            _log(config, f"rate limit during popularity enrichment: {exc}")
-            reset_in = exc.reset_in if reset_in is None else reset_in
-        records, secondary = filter_records(
-            records, min_stars=config.min_stars, registry=registry,
-            force_primary=set(config.extra_repos),
-        )
-        _log(config, f"{len(records)} primary + {len(secondary)} secondary repos")
-        rate1 = forge.rate_summary()
+        records = _dedupe(all_records)
+        secondary = _dedupe(all_secondary)
+        rate1 = anchor.rate_summary()
         progress.phase(
             f"done — {len(records)} primary project(s)"
             + (f", {len(secondary)} more widely-used" if secondary else "")
             + (f" · rate: {rate1}" if rate1 else "")
         )
-        if config.verbose and rate1:
-            _log(config, f"rate limit remaining: {rate1}")
-
-        for rec in (*records, *secondary):
-            registry.record_popularity(
-                rec.name_with_owner, stars=rec.stars, forks=rec.forks
-            )
-        # Promote web-discovered role sources into the registry so a later
-        # --save-registry persists them as curated knowledge.
-        discovered = ctx.discovered_sources()
-        for name, sources in discovered.items():
-            registry.add_role_sources(name, sources)
-        if discovered:
-            _log(config, f"discovered role sources for {len(discovered)} repo(s)")
         if config.save_registry and config.registry_path:
             registry.save(config.registry_path)
             _log(config, f"saved registry to {config.registry_path}")
@@ -166,7 +225,8 @@ def run(config: Config) -> RunResult:
             records=records, secondary=secondary, partial_reset_in=reset_in
         )
     finally:
-        forge.close()
+        for f in open_forges.values():
+            f.close()
 
 
 def _scan_one(extractors, cand, ctx, config) -> list[Evidence]:
