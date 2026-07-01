@@ -17,11 +17,17 @@ ROLE_LABELS = {
 }
 
 
+def _roles_label(rec: ProjectRecord) -> str:
+    """Human-readable list of the record's distinct elevated roles."""
+    return ", ".join(ROLE_LABELS.get(r, r) for r in rec.roles) or "?"
+
+
 def _record_to_dict(rec: ProjectRecord) -> dict:
     return {
         "project": rec.name_with_owner,
         "url": rec.url,
         "role": rec.role,
+        "roles": rec.roles,
         "confidence": round(rec.confidence, 2),
         "stars": rec.stars,
         "forks": rec.forks,
@@ -85,19 +91,17 @@ def render_markdown(
             "|---|---|---:|---:|---|",
         ]
         for rec in records:
-            role = ROLE_LABELS.get(rec.role or "", rec.role or "?")
             best = rec.best_evidence
             ev_link = f"[{best.source}]({best.url})" if best else ""
             imp = f" ·{rec.importance}" if rec.importance else ""
             lines.append(
-                f"| [{rec.name_with_owner}]({rec.url}){imp} | {role} | "
+                f"| [{rec.name_with_owner}]({rec.url}){imp} | {_roles_label(rec)} | "
                 f"{rec.stars} | {rec.confidence:.2f} | {ev_link} |"
             )
 
         lines += ["", "## Details", ""]
         for rec in records:
-            role = ROLE_LABELS.get(rec.role or "", rec.role or "?")
-            lines.append(f"### [{rec.name_with_owner}]({rec.url}) — {role}")
+            lines.append(f"### [{rec.name_with_owner}]({rec.url}) — {_roles_label(rec)}")
             lines.append(
                 f"Stars: {rec.stars} · Forks: {rec.forks} · "
                 f"Confidence: {rec.confidence:.2f}"
@@ -123,9 +127,8 @@ def render_markdown(
             "|---|---|---:|---:|---:|",
         ]
         for rec in secondary:
-            role = ROLE_LABELS.get(rec.role or "", rec.role or "?")
             lines.append(
-                f"| [{rec.name_with_owner}]({rec.url}) | {role} | "
+                f"| [{rec.name_with_owner}]({rec.url}) | {_roles_label(rec)} | "
                 f"{rec.stars} | {rec.forks} | {rec.confidence:.2f} |"
             )
         lines.append("")
@@ -160,10 +163,9 @@ def render_highlights(
     if top:
         lines.append(f"{username} — top {len(top)} highlights:")
         for rec in top:
-            role = ROLE_LABELS.get(rec.role or "", rec.role or "?")
             lines.append(
-                f"- {rec.name_with_owner} — {role} "
-                f"({_human_stars(rec.stars)}★, conf {rec.confidence:.2f})"
+                f"- {rec.name_with_owner} — {_roles_label(rec)} "
+                f"({_human_stars(rec.stars)}★)"
             )
 
     # Footer stats.

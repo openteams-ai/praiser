@@ -35,9 +35,33 @@ ROLE_WEIGHTS: dict[str, float] = {
 # Roles that, on their own, are too weak to put a project in the record.
 WEAK_ROLES = frozenset({CONTRIBUTOR, ORG_MEMBER})
 
+# Order to *display* multiple roles in, following a project's lifecycle:
+# origination (author/standards) → governance (steering/org owner) →
+# contribution (building) → maintenance (owning/maintaining, the last, ongoing
+# task once the project exists). So author/creator always precedes maintainer,
+# and maintenance comes after contribution. (A logical ordering for display —
+# not a claim about actual dates; real timelines are #30.)
+ROLE_ORDER = [
+    AUTHOR,
+    STANDARDS_AUTHOR,
+    STEERING_COUNCIL,
+    ORG_OWNER,
+    CORE_CONTRIBUTOR,
+    CODE_OWNER,
+    MAINTAINER,
+    ORG_MEMBER,
+    CONTRIBUTOR,
+]
+_ROLE_ORDER_INDEX = {r: i for i, r in enumerate(ROLE_ORDER)}
+
 
 def role_weight(role: str) -> float:
     return ROLE_WEIGHTS.get(role, 0.1)
+
+
+def role_order(role: str) -> int:
+    """Lifecycle rank for display ordering (lower = earlier in a project's life)."""
+    return _ROLE_ORDER_INDEX.get(role, len(ROLE_ORDER))
 
 
 # --- Identity (Phase 0) ----------------------------------------------------
@@ -190,6 +214,20 @@ class ProjectRecord:
     def role(self) -> str | None:
         be = self.best_evidence
         return be.role if be else None
+
+    @property
+    def roles(self) -> list[str]:
+        """Distinct elevated roles held here, in project-lifecycle order (max 3).
+
+        A person can hold several — e.g. founder who later became a core
+        contributor, or author *and* maintainer. Weak roles (plain contributor /
+        org member) are dropped; the most significant (by weight) are kept, then
+        shown in lifecycle order (``role_order``) so origination precedes
+        maintenance — e.g. "Author, Maintainer", never "Maintainer, Author".
+        """
+        distinct = {e.role for e in self.evidence if e.role not in WEAK_ROLES}
+        top = sorted(distinct, key=lambda r: -role_weight(r))[:3]  # most significant
+        return sorted(top, key=role_order)                          # lifecycle order
 
     @property
     def confidence(self) -> float:
