@@ -55,7 +55,6 @@ with st.form("q"):
     forge_url = c2.text_input(
         "Instance URL (self-hosted GitLab/Gitea/cgit — optional)",
         placeholder="https://gitlab.gnome.org")
-    min_stars = st.slider("Min stars", 0, 1000, 50, step=10)
     c3, c4 = st.columns(2)
     wikidata = c3.checkbox("Wikidata roles", value=True)
     package_registries = c4.checkbox("Package registries", value=True)
@@ -66,9 +65,11 @@ with st.form("q"):
 
 # Display controls live OUTSIDE the form: changing them reruns immediately and
 # re-renders the already-collected result from cache — no button, no re-scan.
-d1, d2 = st.columns(2)
+# (min_stars is a display filter — the scan collects the full superset.)
+d1, d2, d3 = st.columns(3)
 view = d1.selectbox("View", service.VIEWS, index=0)
 highlights = d2.slider("Highlights (top N)", 3, 20, 8)
+min_stars = d3.slider("Min stars", 0, 1000, 50, step=10)
 
 
 def _run_scan(username, data_opts):
@@ -119,7 +120,7 @@ if submitted:
         st.stop()
     uname = username.strip()
     data_opts = {
-        "forge": forge, "forge_url": forge_url.strip(), "min_stars": min_stars,
+        "forge": forge, "forge_url": forge_url.strip(),
         "discover_roles": discover_roles, "wikidata": wikidata,
         "package_registries": package_registries, "cross_forge": cross_forge,
     }
@@ -147,7 +148,8 @@ if active is not None:
     if result is None:  # evicted from the LRU — ask for a re-scan
         st.info("Previous results expired — click Praise to scan again.")
     else:
-        out = service.render_result(result, uname, view=view, highlights=highlights)
+        out = service.render_result(result, uname, view=view,
+                                    highlights=highlights, min_stars=min_stars)
         if view == "json":
             st.json(json.loads(out))
         elif view == "markdown":
