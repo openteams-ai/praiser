@@ -13,9 +13,11 @@ enormous and low-signal). By default it prints a compact **highlights** summary;
 Projects record roles in many different ways — a `CODEOWNERS` file, a
 `MAINTAINERS` list, Kubernetes `OWNERS` YAML, a `GOVERNANCE.md` page, a package
 manifest's author field, a numbered enhancement-proposal series with `Author:`
-headers, a team page on the project's website, or just the commit history.
-`praiser` figures out **which convention each project uses** rather than assuming
-one, and corroborates signals that a fork or vendored copy could fake.
+headers, a team page on the project's website, the commit history, package
+registries (PyPI/npm/crates), or **Wikidata** creator/developer claims (matched
+by GitHub handle). `praiser` figures out **which convention each project uses**
+rather than assuming one, and corroborates signals that a fork or vendored copy
+could fake.
 
 It scans **GitHub** by default, plus **GitLab** (`--forge gitlab`), **Codeberg**
 / any Gitea/Forgejo host (`--forge codeberg`), **Gitee** (`--forge gitee`),
@@ -135,6 +137,7 @@ praiser <username>
     [--registry FILE]      known-projects file (default: ~/.local/share/praiser/)
     [--no-save-registry]   don't persist popularity + discovered role sources
     [--no-discover-roles]  don't web-search for role pages (default: on w/ LLM)
+    [--no-wikidata]        don't derive creator/developer roles from Wikidata
     [--no-package-registries] skip PyPI/npm/crates.io lookups (default: on)
     [--no-llm]             disable all Claude features
     [--add-repo OWNER/REPO] force-scan a repo discovery missed (repeatable)

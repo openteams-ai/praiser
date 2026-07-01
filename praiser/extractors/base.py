@@ -29,7 +29,8 @@ class ExtractContext:
     canonical_forks: int = 100   # ...or widely forked enough to be the original
     contributor_pages: int = 2  # contributors API pages (100 each) to fetch
     auto_discover_roles: bool = False  # find role pages via LLM + web search
-    role_discovery_floor: int = 1000   # only auto-discover for repos this popular
+    use_wikidata: bool = False  # derive creator/developer roles from Wikidata
+    role_discovery_floor: int = 1000   # floor for external role lookup (LLM/Wikidata)
     manual_repos: set[str] = field(default_factory=set)  # user-vouched repos
     # user-vouched subcomponents: repo -> [paths]
     manual_subcomponents: dict[str, list[str]] = field(default_factory=dict)
