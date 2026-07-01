@@ -18,8 +18,10 @@ headers, a team page on the project's website, or just the commit history.
 one, and corroborates signals that a fork or vendored copy could fake.
 
 It scans **GitHub** by default, plus **Codeberg** (any Gitea/Forgejo host) via
-`--forge codeberg` and **GitLab** via `--forge gitlab`; the pipeline talks to a
-neutral `Forge` interface, so adding another host is a self-contained addition.
+`--forge codeberg` and **GitLab** via `--forge gitlab` — including **self-hosted
+instances** with `--forge-url` (e.g. `--forge gitlab --forge-url
+https://gitlab.gnome.org`). The pipeline talks to a neutral `Forge` interface,
+so adding another host is a self-contained addition.
 
 ## Install
 
@@ -107,6 +109,8 @@ cache preserves what already succeeded — so re-running finishes the job.
 ```
 praiser <username>
     [--forge github|codeberg|gitlab]  code host to scan (default: github)
+    [--forge-url URL]      self-hosted instance for --forge gitlab|codeberg
+    [--forge-name LABEL]   short label for the --forge-url instance
     [--min-stars N]        popularity threshold (default 50)
     [--highlights [N]]     top-N highlights summary (this is the DEFAULT view; N=8)
     [--format md|json]     full per-project report instead of the highlights

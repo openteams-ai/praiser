@@ -33,3 +33,10 @@ def test_candidate_url_follows_its_forge():
     assert Candidate("a/b", forge="codeberg").url == "https://codeberg.org/a/b"
     # unknown forge falls back to the GitHub host rather than crashing
     assert repo_web_url("mystery", "a/b") == "https://github.com/a/b"
+
+
+def test_candidate_web_host_overrides_for_self_hosted_instances():
+    # A self-hosted instance's host isn't in FORGE_WEB_HOSTS, so it's stamped
+    # directly onto the candidate and takes precedence over the label map.
+    c = Candidate("gnome/mutter", forge="gitlab", web_host="https://gitlab.gnome.org")
+    assert c.url == "https://gitlab.gnome.org/gnome/mutter"

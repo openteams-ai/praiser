@@ -104,6 +104,9 @@ class Candidate:
     pushed_at: str | None = None  # ISO-8601 of last push (maintenance signal)
     sources: set[str] = field(default_factory=set)  # discovery sources
     forge: str = DEFAULT_FORGE    # which code host this repo lives on
+    # The instance web host, stamped from the forge. Needed for self-hosted
+    # instances whose host isn't in FORGE_WEB_HOSTS; falls back to the map.
+    web_host: str | None = None
 
     @property
     def owner(self) -> str:
@@ -115,6 +118,8 @@ class Candidate:
 
     @property
     def url(self) -> str:
+        if self.web_host:
+            return f"{self.web_host}/{self.name_with_owner}"
         return repo_web_url(self.forge, self.name_with_owner)
 
 
@@ -162,6 +167,15 @@ class ProjectRecord:
     pushed_at: str | None = None
     evidence: list[Evidence] = field(default_factory=list)
     importance: str | None = None  # registry label, e.g. "critical"
+    # False for hosts with no star metric (cgit, Gerrit, …); then forks stand in
+    # as the popularity signal so ranking/filtering still work. See forge.has_stars.
+    forge_has_stars: bool = True
+
+    @property
+    def popularity(self) -> int:
+        """The popularity signal for ranking/filtering: stars where the host has
+        them, else forks (the one universal proxy in ``RepoMeta``)."""
+        return self.stars if self.forge_has_stars else self.forks
 
     @property
     def best_evidence(self) -> Evidence | None:
@@ -192,5 +206,5 @@ class ProjectRecord:
         be = self.best_evidence
         if be is None:
             return 0.0
-        popularity = math.log10(self.stars + 10)  # 1.0 at 0 stars, grows slowly
-        return popularity * be.weight * self.confidence
+        factor = math.log10(self.popularity + 10)  # 1.0 at 0, grows slowly
+        return factor * be.weight * self.confidence

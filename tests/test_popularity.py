@@ -65,6 +65,30 @@ def test_widely_used_needs_use_and_maintenance():
         _rec("a/b", stars=2, forks=1, pushed_at="2026-06-01T00:00:00Z"), 100)
 
 
+def test_popularity_is_stars_on_star_hosts_forks_otherwise():
+    star_host = _rec("a/b", stars=30, forks=2)          # forge_has_stars=True (default)
+    assert star_host.popularity == 30
+    starless = ProjectRecord(
+        name_with_owner="a/b", url="u", stars=0, forks=30,
+        forge_has_stars=False,
+        evidence=[Evidence("x", CODE_OWNER, "u", 0.9, "")],
+    )
+    assert starless.popularity == 30
+    # a star-less record ranks on forks rather than scoring as if unpopular
+    assert starless.score > _rec("a/c", stars=0, forks=0).score
+
+
+def test_starless_record_survives_min_stars_gate_via_forks():
+    # forks stand in for stars: 60 forks clears a min-stars of 50 on a star-less host.
+    starless = ProjectRecord(
+        name_with_owner="gnu/hello", url="u", stars=0, forks=60,
+        pushed_at="2026-06-01T00:00:00Z", forge_has_stars=False,
+        evidence=[Evidence("x", CODE_OWNER, "u", 0.9, "")],
+    )
+    primary, secondary = filter_records([starless], min_stars=50, registry=EMPTY)
+    assert [r.name_with_owner for r in primary] == ["gnu/hello"]
+
+
 def test_filter_splits_primary_and_secondary():
     popular = _rec("a/popular", stars=500)
     used = _rec("a/lib", stars=10, forks=40, pushed_at="2026-06-01T00:00:00Z")

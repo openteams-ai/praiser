@@ -52,7 +52,13 @@ def _humanize(seconds: int | None) -> str:
 def run(config: Config) -> RunResult:
     cache = Cache(config.cache_dir)
     forge_cls = FORGES.get(config.forge, GitHubForge)
-    forge = forge_cls(config.token, cache, verbose=config.verbose)
+    forge_kwargs = {"verbose": config.verbose}
+    # Self-hosted instances: gitlab/codeberg forges accept base_url + name.
+    if config.forge_url and config.forge in ("gitlab", "codeberg"):
+        forge_kwargs["base_url"] = config.forge_url
+        if config.forge_name:
+            forge_kwargs["name"] = config.forge_name
+    forge = forge_cls(config.token, cache, **forge_kwargs)
     registry = KnownProjects.load(config.registry_path)
     llm = LLM.maybe(cache, enabled=config.use_llm)
     _log(config, f"LLM fallback {'enabled' if llm else 'disabled'}")
@@ -209,6 +215,7 @@ def _attribute(
                         stars=cand.stars,
                         forks=cand.forks,
                         pushed_at=cand.pushed_at,
+                        forge_has_stars=ctx.forge.has_stars,
                         evidence=evidence,
                     ))
                     _log(config, f"  + {cand.name_with_owner}: "

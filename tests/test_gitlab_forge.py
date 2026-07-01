@@ -55,6 +55,14 @@ def test_name_and_web_url():
     assert f.web_url("group/sub/proj") == "https://gitlab.com/group/sub/proj"
 
 
+def test_self_hosted_instance_sets_web_base_and_name():
+    f = GitLabForge(None, Cache(tempfile.mkdtemp()),
+                    base_url="https://gitlab.gnome.org", name="gnome")
+    assert f.name == "gnome"
+    assert f.web_base == "https://gitlab.gnome.org"
+    assert f.web_url("gnome/mutter") == "https://gitlab.gnome.org/gnome/mutter"
+
+
 def test_resolve_user_and_id_reuse():
     http = _FakeHttp({"users?username=jane": [{"id": 7, "username": "jane", "name": "Jane R"}]})
     f = _forge(http)
