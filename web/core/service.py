@@ -35,7 +35,16 @@ def _token_for(forge: str) -> str | None:
     return None
 
 
-def praise(
+# The options that affect DATA COLLECTION (a change here needs a re-scan). The
+# display options — ``view`` and ``highlights`` N — are deliberately excluded,
+# so a frontend can re-render them from a cached result without re-scanning.
+DATA_OPTIONS = (
+    "forge", "forge_url", "min_stars", "discover_roles", "wikidata",
+    "package_registries", "cross_forge",
+)
+
+
+def collect(
     username: str,
     *,
     forge: str = "github",
@@ -45,16 +54,15 @@ def praise(
     wikidata: bool = True,
     package_registries: bool = True,
     cross_forge: bool = False,
-    view: str = "highlights",
-    highlights: int = 8,
     cache=None,
     progress=None,
-) -> str:
-    """Run praiser for ``username`` and return the rendered output for ``view``.
+):
+    """Run praiser's data collection and return the ``RunResult`` (records etc.).
 
-    ``cache`` defaults to the shared/local backend from :func:`make_cache` — so
-    the expensive, option-independent data collection is reused across requests
-    and hosts. ``progress(msg)`` receives live phase/status lines (for a UI).
+    This is the expensive part. ``cache`` defaults to the shared/local backend
+    from :func:`make_cache`; ``progress(msg)`` receives live phase/status lines.
+    Render the returned result with :func:`render_result` — cheap, so a frontend
+    can re-render different views / top-N without re-collecting.
     """
     cache = cache if cache is not None else make_cache()
     config = Config(
@@ -70,12 +78,23 @@ def praise(
         cross_forge=cross_forge,
         quiet=True,
         save_registry=False,             # a shared service shouldn't mutate the registry
-        highlights=highlights if view == "highlights" else None,
-        fmt="json" if view == "json" else "md",
     )
-    result = run(config, cache=cache, progress_cb=progress)
+    return run(config, cache=cache, progress_cb=progress)
+
+
+def render_result(result, username: str, *, view: str = "highlights",
+                  highlights: int = 8) -> str:
+    """Render an already-collected ``RunResult`` for ``view`` (cheap, no I/O)."""
     if view == "highlights":
         return render_highlights(
             username, result.records, highlights, result.secondary
         )
-    return render(username, result.records, config.fmt, result.secondary)
+    fmt = "json" if view == "json" else "md"
+    return render(username, result.records, fmt, result.secondary)
+
+
+def praise(username: str, *, view: str = "highlights", highlights: int = 8,
+           cache=None, progress=None, **data_options) -> str:
+    """Convenience: collect then render in one call (CLI-like callers)."""
+    result = collect(username, cache=cache, progress=progress, **data_options)
+    return render_result(result, username, view=view, highlights=highlights)
