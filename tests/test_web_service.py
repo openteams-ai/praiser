@@ -62,6 +62,35 @@ def test_result_cache_key_ignores_display_options():
         assert display_only not in service.DATA_OPTIONS
 
 
+def test_recent_scans_records_on_scan_most_recent_first(monkeypatch, tmp_path):
+    # The cache keys are hashed, so this index is the only way to enumerate
+    # scanned names. Recorded on an actual scan (a cache HIT is not re-recorded,
+    # to avoid extra shared-cache commands per view).
+    monkeypatch.setattr(service, "run",
+                        lambda config, cache=None, progress_cb=None:
+                        RunResult(records=[_rec("a/b", 100)], secondary=[]))
+    rc, hc = Cache(tmp_path), Cache(tmp_path / "h")
+    service.collect("alice", forge="github", result_cache=rc, http_cache=hc)
+    service.collect("bob", forge="gitlab", result_cache=rc, http_cache=hc)
+    service.collect("alice", forge="github", result_cache=rc, http_cache=hc)  # HIT
+    recent = service.recent_scans(result_cache=rc)
+    assert [r["username"] for r in recent] == ["bob", "alice"]  # most-recent-first
+    assert len(recent) == 2                                     # no dup from the hit
+
+
+def test_record_recent_dedupes_to_front(tmp_path):
+    rc = Cache(tmp_path)
+    service._record_recent(rc, "github", "alice")
+    service._record_recent(rc, "gitlab", "bob")
+    service._record_recent(rc, "github", "alice")  # re-scan -> moves to front
+    assert [r["username"] for r in service.recent_scans(result_cache=rc)] == \
+        ["alice", "bob"]
+
+
+def test_recent_scans_empty_when_no_index(tmp_path):
+    assert service.recent_scans(result_cache=Cache(tmp_path)) == []
+
+
 def test_render_result_highlights_respects_top_n():
     result = RunResult(records=[_rec(f"o/r{i}", 1000 - i) for i in range(10)],
                         secondary=[])

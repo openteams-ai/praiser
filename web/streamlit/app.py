@@ -46,15 +46,36 @@ st.caption("The open-source projects where a person holds an elevated role — "
            "and cgit hosts.")
 st.caption(f"ℹ️ More information: [{REPO_URL.split('//', 1)[1]}]({REPO_URL})")
 
-# Data-collection controls live in a form: they only take effect on "Praise",
-# so a scan runs only on an explicit submit.
 # Forges usable from just a username (cgit needs an instance URL + --add-repo,
 # which this demo doesn't expose; the core library still supports it via CLI).
 DEMO_FORGES = [f for f in service.FORGES if f != "cgit"]
 
+# Recently-scanned names (loaded once per session — one shared-cache read — then
+# kept fresh locally). Picking one pre-fills the form via the on_change callback.
+if "recent" not in st.session_state:
+    st.session_state["recent"] = service.recent_scans()
+
+
+def _pick_recent():
+    choice = st.session_state.get("recent_pick")
+    if choice and " · " in choice:
+        forge_name, uname = choice.split(" · ", 1)
+        st.session_state["forge_sel"] = forge_name
+        st.session_state["uname"] = uname
+
+
+recent = st.session_state["recent"]
+if recent:
+    st.selectbox(
+        "Recent scans", ["—", *(f"{r['forge']} · {r['username']}" for r in recent)],
+        key="recent_pick", on_change=_pick_recent,
+        help="Pick a previously scanned account to pre-fill the form.")
+
+# Data-collection controls live in a form: they only take effect on "Praise",
+# so a scan runs only on an explicit submit.
 with st.form("q"):
-    username = st.text_input("Username / login", placeholder="e.g. certik")
-    forge = st.selectbox("Forge", DEMO_FORGES, index=0)
+    username = st.text_input("Forge username", key="uname", placeholder="e.g. pearu")
+    forge = st.selectbox("Forge", DEMO_FORGES, key="forge_sel")
     forge_url = ""  # self-hosted instance URL is a CLI/library feature, not the demo
     c3, c4 = st.columns(2)
     wikidata = c3.checkbox("Wikidata roles", value=True)
@@ -140,6 +161,11 @@ if submitted:
         result, elapsed = _run_scan(uname, data_opts)
         cache.put(key, result)
         st.success(f"✅ Scan finished in {elapsed:.1f} seconds.")
+        # Reflect this scan in the recent-picker immediately (shared index is
+        # updated inside service.collect()).
+        entry = {"forge": forge, "username": uname}
+        st.session_state["recent"] = [entry] + [
+            r for r in st.session_state.get("recent", []) if r != entry][:49]
     st.session_state["active"] = (key, uname)
 
 # Render the active result (from a fresh submit OR a display-only rerun).
