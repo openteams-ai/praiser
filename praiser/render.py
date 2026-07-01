@@ -17,9 +17,26 @@ ROLE_LABELS = {
 }
 
 
+def _role_display(rec: ProjectRecord, role: str) -> str:
+    """Label for one role, qualified with the subcomponent(s) when the role is
+    held ONLY for a part of the project — e.g. "Author (f2py)". A role also
+    evidenced at the whole-project level (any unqualified evidence) stays bare.
+    """
+    base = ROLE_LABELS.get(role, role)
+    evs = [e for e in rec.evidence if e.role == role]
+    quals = [e.qualifier for e in evs if e.qualifier]
+    if evs and len(quals) == len(evs):  # every evidence for this role is scoped
+        uniq = list(dict.fromkeys(quals))          # a person can hold it in several
+        shown = ", ".join(uniq[:3])
+        if len(uniq) > 3:
+            shown += f", +{len(uniq) - 3} more"    # keep the compact view compact
+        return f"{base} ({shown})"
+    return base
+
+
 def _roles_label(rec: ProjectRecord) -> str:
     """Human-readable list of the record's distinct elevated roles."""
-    return ", ".join(ROLE_LABELS.get(r, r) for r in rec.roles) or "?"
+    return ", ".join(_role_display(rec, r) for r in rec.roles) or "?"
 
 
 def _record_to_dict(rec: ProjectRecord) -> dict:
@@ -40,6 +57,7 @@ def _record_to_dict(rec: ProjectRecord) -> dict:
                 "url": e.url,
                 "confidence": round(e.confidence, 2),
                 "detail": e.detail,
+                "qualifier": e.qualifier,
             }
             for e in sorted(rec.evidence, key=lambda e: (-e.weight, -e.confidence))
         ],

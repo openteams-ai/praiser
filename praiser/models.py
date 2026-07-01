@@ -178,6 +178,9 @@ class Evidence:
     url: str           # link a human can click to verify
     confidence: float  # 0..1
     detail: str = ""   # short human-readable explanation
+    # If the role is for a *part* of the project (a subcomponent), the part's
+    # name — so display can say "Author (f2py)" not a bare project-level "Author".
+    qualifier: str | None = None
 
     @property
     def weight(self) -> float:
