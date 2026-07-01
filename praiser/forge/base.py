@@ -221,7 +221,15 @@ class Forge(ABC):
         return []
 
     def search_commits_by_author(self, login: str) -> list[str]:
-        """Repos (``owner/repo``) the user has authored commits in. Default: none."""
+        """Repos (``owner/repo``) the user has authored commits in, by login.
+        Default: none. (Note: GitHub no longer allows a login-qualifier-only
+        commit search — use ``search_commits_by_name`` there.)"""
+        return []
+
+    def search_commits_by_name(self, name: str) -> list[str]:
+        """Repos the user has authored commits in, matched by *commit author
+        name*. Default: none. This catches contributions authored under emails
+        not linked to the account (which GitHub's contribution graph omits)."""
         return []
 
     def merged_pr_count(self, owner: str, repo: str, login: str) -> int:
