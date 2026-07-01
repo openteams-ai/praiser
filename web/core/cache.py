@@ -89,12 +89,21 @@ def local_cache(ttl: int = 86_400):
     return Cache(Path(directory), ttl=ttl)
 
 
-def make_result_cache(ttl: int = 86_400):
+# How long a collected result stays cached. A person's elevated roles change
+# slowly, so a long TTL means fewer re-scans (and fewer Redis commands). Tunable
+# via PRAISER_RESULT_TTL (seconds) with no code change; default 30 days.
+_DEFAULT_RESULT_TTL = 30 * 86_400
+
+
+def make_result_cache(ttl: int | None = None):
     """Shared result cache: Redis when Upstash secrets are set, else local file.
 
     One entry per scan (the collected result), so it's the cheap, durable layer
-    shared across instances/sessions.
+    shared across instances/sessions. ``ttl`` defaults to ``PRAISER_RESULT_TTL``
+    (seconds) or 30 days.
     """
+    if ttl is None:
+        ttl = int(os.environ.get("PRAISER_RESULT_TTL", _DEFAULT_RESULT_TTL))
     url = os.environ.get("UPSTASH_REDIS_REST_URL")
     token = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
     if url and token:
