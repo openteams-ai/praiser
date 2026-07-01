@@ -1,5 +1,7 @@
 """Tests for the web service layer (offline; no network)."""
 
+import praiser.pipeline as pipeline
+from praiser.cache import Cache
 from praiser.models import CODE_OWNER, Evidence, ProjectRecord
 from praiser.pipeline import RunResult
 from web.core import service
@@ -32,6 +34,32 @@ def test_render_result_applies_min_stars_at_render_time():
     assert n0 == 3            # everything clears a 0 floor
     assert n1000 == 1         # only the 5000-star project clears 1000
     assert n1000 < n0         # higher threshold -> fewer primary
+
+
+def test_collect_serves_from_result_cache_without_scanning(monkeypatch, tmp_path):
+    # A warm result-cache entry must short-circuit collect() entirely — no call
+    # to pipeline.run (i.e. zero praiser HTTP work, ~1 shared-cache read).
+    calls = {"run": 0}
+
+    def _fake_run(config, cache=None, progress_cb=None):
+        calls["run"] += 1
+        return RunResult(records=[_rec("a/b", 100)], secondary=[])
+
+    monkeypatch.setattr(pipeline, "run", _fake_run)
+    monkeypatch.setattr(service, "run", _fake_run)
+    rc = Cache(tmp_path)  # stand-in shared result cache
+
+    r1 = service.collect("alice", forge="github", result_cache=rc, http_cache=Cache(tmp_path / "h"))
+    r2 = service.collect("alice", forge="github", result_cache=rc, http_cache=Cache(tmp_path / "h"))
+    assert calls["run"] == 1                       # second call served from cache
+    assert [x.name_with_owner for x in r2.records] == ["a/b"]
+    assert r1.records[0].name_with_owner == r2.records[0].name_with_owner
+
+
+def test_result_cache_key_ignores_display_options():
+    # DATA_OPTIONS (the result-cache key inputs) must exclude display options.
+    for display_only in ("view", "highlights", "min_stars"):
+        assert display_only not in service.DATA_OPTIONS
 
 
 def test_render_result_highlights_respects_top_n():

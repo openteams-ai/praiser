@@ -5,16 +5,29 @@ vars (from its own secret store), then calls :func:`praise`. Swapping Streamlit
 for FastAPI/Gradio reuses this unchanged.
 """
 
+import base64
 import functools
 import os
+import pickle
 
+from praiser.cache import Cache
 from praiser.config import Config
 from praiser.pipeline import run
 from praiser.popularity import filter_records
 from praiser.registry import KnownProjects
 from praiser.render import render, render_highlights
 
-from .cache import make_cache
+from .cache import local_cache, make_result_cache
+
+
+def _dumps(result) -> str:
+    """Serialize a RunResult to a cache-safe string (base64 of pickle)."""
+    return base64.b64encode(pickle.dumps(result)).decode("ascii")
+
+
+def _loads(blob: str):
+    # Trusted: the result cache is written only by this service.
+    return pickle.loads(base64.b64decode(blob))
 
 
 @functools.lru_cache(maxsize=1)
@@ -65,18 +78,36 @@ def collect(
     wikidata: bool = True,
     package_registries: bool = True,
     cross_forge: bool = False,
-    cache=None,
+    http_cache=None,
+    result_cache=None,
     progress=None,
 ):
     """Run praiser's data collection and return the ``RunResult`` (records etc.).
 
+    Two-layer caching (see ``web.core.cache``): the shared **result cache** is
+    checked first — a warm user returns with ONE cache read and **zero** praiser
+    HTTP calls; on a miss the scan runs against a **local** HTTP cache and the
+    result is stored (one write). This keeps shared-cache traffic to ~1–2 ops per
+    scan instead of hundreds.
+
     Collects the full role-bearing superset (``min_stars=0``) so the popularity
-    threshold can be applied at *render* time — letting a frontend move the
-    min-stars slider without re-scanning. LLM/Wikidata cost is unaffected (those
-    are gated on ``role_discovery_floor``, not min_stars). ``cache`` defaults to
-    the backend from :func:`make_cache`; ``progress(msg)`` gets live status lines.
+    threshold is applied at *render* time (min-stars slider without re-scanning).
+    LLM/Wikidata cost is unaffected (gated on ``role_discovery_floor``).
+    ``progress(msg)`` gets live status lines (only on an actual scan).
     """
-    cache = cache if cache is not None else make_cache()
+    rcache = result_cache if result_cache is not None else make_result_cache()
+    rkey = Cache.key(
+        "result", username, forge, forge_url or None, discover_roles,
+        wikidata, package_registries, cross_forge,
+    )
+    if rcache is not None:
+        blob = rcache.get(rkey)
+        if blob is not None:
+            try:
+                return _loads(blob)     # warm: no scan, no praiser HTTP calls
+            except Exception:
+                pass                    # corrupt/incompatible entry -> re-scan
+
     config = Config(
         username=username,
         forge=forge,
@@ -91,7 +122,14 @@ def collect(
         quiet=True,
         save_registry=False,             # a shared service shouldn't mutate the registry
     )
-    return run(config, cache=cache, progress_cb=progress)
+    result = run(
+        config,
+        cache=http_cache if http_cache is not None else local_cache(),
+        progress_cb=progress,
+    )
+    if rcache is not None:
+        rcache.set(rkey, _dumps(result))
+    return result
 
 
 def render_result(result, username: str, *, view: str = "highlights",
@@ -115,8 +153,8 @@ def render_result(result, username: str, *, view: str = "highlights",
 
 
 def praise(username: str, *, view: str = "highlights", highlights: int = 8,
-           min_stars: int = 50, cache=None, progress=None, **data_options) -> str:
+           min_stars: int = 50, progress=None, **data_options) -> str:
     """Convenience: collect then render in one call (CLI-like callers)."""
-    result = collect(username, cache=cache, progress=progress, **data_options)
+    result = collect(username, progress=progress, **data_options)
     return render_result(result, username, view=view, highlights=highlights,
                          min_stars=min_stars)

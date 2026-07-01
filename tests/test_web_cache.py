@@ -3,7 +3,7 @@
 import json
 
 from praiser.cache import Cache
-from web.core.cache import RedisCache, make_cache
+from web.core.cache import RedisCache, local_cache, make_result_cache
 
 
 class _FakeRedis(RedisCache):
@@ -46,8 +46,9 @@ def test_matches_praiser_cache_semantics_for_text_and_404():
 
 
 def test_large_values_are_not_pushed():
+    from web.core.cache import _MAX_VALUE_BYTES
     c = _FakeRedis()
-    c.set("big", "x" * 500_000)               # over the size cap
+    c.set("big", "x" * (_MAX_VALUE_BYTES + 1))   # over the size cap
     assert c.get("big") is None and c._store == {}
 
 
@@ -71,17 +72,24 @@ def test_none_command_result_degrades_to_miss():
     c.set("k", 1)  # no-op, must not raise
 
 
-def test_make_cache_falls_back_to_local_without_redis_secrets(monkeypatch, tmp_path):
+def test_local_cache_is_always_a_file_cache(monkeypatch, tmp_path):
+    # The HTTP layer is always local (free, per-instance) — never Redis.
+    monkeypatch.setenv("UPSTASH_REDIS_REST_URL", "https://x.upstash.io")
+    monkeypatch.setenv("UPSTASH_REDIS_REST_TOKEN", "tok")
+    monkeypatch.setenv("PRAISER_CACHE_DIR", str(tmp_path))
+    assert isinstance(local_cache(ttl=5), Cache)
+
+
+def test_result_cache_falls_back_to_local_without_redis_secrets(monkeypatch, tmp_path):
     monkeypatch.delenv("UPSTASH_REDIS_REST_URL", raising=False)
     monkeypatch.delenv("UPSTASH_REDIS_REST_TOKEN", raising=False)
     monkeypatch.setenv("PRAISER_CACHE_DIR", str(tmp_path))
-    c = make_cache(ttl=5)
-    assert isinstance(c, Cache)
+    assert isinstance(make_result_cache(ttl=5), Cache)
 
 
-def test_make_cache_uses_redis_when_secrets_present(monkeypatch):
+def test_result_cache_uses_redis_when_secrets_present(monkeypatch):
     monkeypatch.setenv("UPSTASH_REDIS_REST_URL", "https://x.upstash.io")
     monkeypatch.setenv("UPSTASH_REDIS_REST_TOKEN", "tok")
-    c = make_cache(ttl=5)
+    c = make_result_cache(ttl=5)
     assert isinstance(c, RedisCache)
     c.close()
