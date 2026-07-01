@@ -154,8 +154,11 @@ def _scan_forge(
     return records, secondary, reset_in
 
 
-def run(config: Config) -> RunResult:
-    cache = Cache(config.cache_dir)
+def run(config: Config, cache=None) -> RunResult:
+    # ``cache`` lets a caller inject a shared/durable backend (e.g. the web UI's
+    # Redis cache) so the expensive, option-independent data collection is
+    # reused across processes/hosts. Defaults to the local file cache.
+    cache = cache if cache is not None else Cache(config.cache_dir)
     registry = KnownProjects.load(config.registry_path)
     llm = LLM.maybe(cache, enabled=config.use_llm)
     _log(config, f"LLM fallback {'enabled' if llm else 'disabled'}")
