@@ -62,6 +62,24 @@ def test_result_cache_key_ignores_display_options():
         assert display_only not in service.DATA_OPTIONS
 
 
+def test_cache_version_bump_invalidates_stored_results(monkeypatch, tmp_path):
+    # Bumping CACHE_VERSION must orphan prior results (different key), so an
+    # extraction-logic change doesn't keep serving stale scans.
+    runs = {"n": 0}
+
+    def _fake_run(config, cache=None, progress_cb=None):
+        runs["n"] += 1
+        return RunResult(records=[_rec("a/b", 100)], secondary=[])
+
+    monkeypatch.setattr(service, "run", _fake_run)
+    rc, hc = Cache(tmp_path), Cache(tmp_path / "h")
+    service.collect("alice", forge="github", result_cache=rc, http_cache=hc)
+    assert runs["n"] == 1
+    monkeypatch.setattr(service, "CACHE_VERSION", service.CACHE_VERSION + 1)
+    service.collect("alice", forge="github", result_cache=rc, http_cache=hc)
+    assert runs["n"] == 2   # new version -> cache miss -> re-scanned
+
+
 def test_recent_scans_records_on_scan_most_recent_first(monkeypatch, tmp_path):
     # The cache keys are hashed, so this index is the only way to enumerate
     # scanned names. Recorded on an actual scan (a cache HIT is not re-recorded,

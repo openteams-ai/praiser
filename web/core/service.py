@@ -58,6 +58,13 @@ def _token_for(forge: str) -> str | None:
     return None
 
 
+# Bump whenever praiser's *extraction logic* changes (extractors, role rules,
+# ranking, discovery) so previously-cached results — computed by the old logic —
+# are abandoned and recomputed. Folded into the result-cache key: one bump
+# refreshes every user (old entries just TTL out). e.g. bumped for the
+# subcomponents-are-contribution fix (#47) + credit-based authorship (#48).
+CACHE_VERSION = 2
+
 # A small index of recently-scanned (forge, login) pairs — the cache keys are
 # hashed and can't be enumerated, so we track names separately for a UI picker.
 _RECENT_KEY = Cache.key("recent-scans-index")
@@ -130,8 +137,8 @@ def collect(
     """
     rcache = result_cache if result_cache is not None else make_result_cache()
     rkey = Cache.key(
-        "result", username, forge, forge_url or None, discover_roles,
-        wikidata, package_registries, cross_forge,
+        "result", CACHE_VERSION, username, forge, forge_url or None,
+        discover_roles, wikidata, package_registries, cross_forge,
     )
     if rcache is not None:
         blob = rcache.get(rkey)
