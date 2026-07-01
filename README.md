@@ -25,6 +25,14 @@ or Savannah (`--forge cgit`) — including **self-hosted instances** with
 pipeline talks to a neutral `Forge` interface, so adding another host is a
 self-contained addition.
 
+People use different usernames on different forges, so `--cross-forge` follows
+the links a person publishes on their own profile to their accounts elsewhere —
+keeping only **bidirectionally-verified** links (the other profile links back) —
+and merges everything into one record. Because the links are owner-published and
+mutually confirmed, it never falsely merges two different people (it may
+under-merge someone who hasn't cross-linked, which is safe). `--also-forge
+FORGE:LOGIN` adds an identity explicitly when you'd rather not rely on links.
+
 ## Install
 
 ```bash
@@ -110,9 +118,12 @@ cache preserves what already succeeded — so re-running finishes the job.
 
 ```
 praiser <username>
-    [--forge github|codeberg|gitlab|gitee|cgit]  code host (default: github)
+    [--forge github|codeberg|gitlab|gitee|bitbucket|cgit]  code host (default: github)
     [--forge-url URL]      self-hosted instance for --forge gitlab|codeberg|cgit
     [--forge-name LABEL]   short label for the --forge-url instance
+    [--cross-forge]        follow verified profile links to the person's other
+                           forges and merge into one record
+    [--also-forge FORGE:LOGIN]  also scan this identity on another forge (repeatable)
     [--min-stars N]        popularity threshold (default 50)
     [--highlights [N]]     top-N highlights summary (this is the DEFAULT view; N=8)
     [--format md|json]     full per-project report instead of the highlights

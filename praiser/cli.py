@@ -71,6 +71,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--forge-name", default=None, metavar="LABEL",
                    help="short label for the --forge-url instance (default: the "
                         "forge's own name)")
+    p.add_argument("--cross-forge", action="store_true",
+                   help="follow verified cross-links on the user's profile to "
+                        "their accounts on other forges (bidirectional only) and "
+                        "scan them all into one merged record")
+    p.add_argument("--also-forge", action="append", default=[],
+                   metavar="FORGE:LOGIN", dest="also_forge",
+                   help="also scan this identity on another forge (repeatable), "
+                        "e.g. --also-forge gitlab:johnsmith; merged into one record")
     p.add_argument("--min-stars", type=int, default=50,
                    help="popularity threshold (default: 50); high-signal roles "
                         "and registry overrides survive regardless")
@@ -199,6 +207,8 @@ def main(argv: list[str] | None = None) -> int:
         forge=args.forge,
         forge_url=args.forge_url,
         forge_name=args.forge_name,
+        cross_forge=args.cross_forge,
+        also_forge=args.also_forge,
         token=token,
         min_stars=args.min_stars,
         fmt=args.fmt or "md",

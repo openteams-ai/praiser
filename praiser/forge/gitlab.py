@@ -22,7 +22,7 @@ import urllib.parse
 from typing import Any
 
 from ..cache import Cache
-from ._http import USER_AGENT, fetch_text, make_session
+from ._http import USER_AGENT, extract_urls, fetch_text, make_session
 from .base import DirEntry, Forge, RepoMeta, UserRef
 
 _PROJECT_PAGE_LIMIT = 100
@@ -159,6 +159,15 @@ class GitLabForge(Forge):
         if not user.get("username"):
             return None
         return UserRef(login=user["username"], name=user.get("name") or None)
+
+    def profile_links(self, login: str) -> list[str]:
+        data = self._http.get_json("users", {"username": login})
+        user = data[0] if isinstance(data, list) and data else {}
+        urls: list[str] = []
+        if user.get("website_url"):
+            urls.append(user["website_url"])
+        urls += extract_urls(user.get("bio"))
+        return urls
 
     def user_repositories(self, login: str) -> list[RepoMeta]:
         uid = self._user_id(login)

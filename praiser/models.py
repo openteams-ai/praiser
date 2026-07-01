@@ -82,6 +82,8 @@ FORGE_WEB_HOSTS: dict[str, str] = {
     "github": "https://github.com",
     "gitlab": "https://gitlab.com",
     "codeberg": "https://codeberg.org",
+    "gitee": "https://gitee.com",
+    "bitbucket": "https://bitbucket.org",
 }
 DEFAULT_FORGE = "github"
 

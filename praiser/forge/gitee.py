@@ -15,7 +15,7 @@ import urllib.parse
 from typing import Any
 
 from ..cache import Cache
-from ._http import USER_AGENT, fetch_text, make_session
+from ._http import USER_AGENT, extract_urls, fetch_text, make_session
 from .base import DirEntry, Forge, RepoMeta, UserRef
 
 _REPO_PAGE_LIMIT = 100
@@ -146,6 +146,15 @@ class GiteeForge(Forge):
 
     def user_repositories(self, login: str) -> list[RepoMeta]:
         return self._paged_repos(f"users/{login}/repos")
+
+    def profile_links(self, login: str) -> list[str]:
+        data = self._http.get_json(f"users/{login}")
+        user = data if isinstance(data, dict) else {}
+        urls: list[str] = []
+        if user.get("blog"):
+            urls.append(user["blog"])
+        urls += extract_urls(user.get("bio"))
+        return urls
 
     def user_organizations(self, login: str) -> list[str]:
         data = self._http.get_json(f"users/{login}/orgs")
