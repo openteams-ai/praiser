@@ -6,10 +6,16 @@ the token secrets (see web/README.md). All queries and tokens stay server-side.
 
 import json
 import os
+import sys
+from pathlib import Path
 
-import streamlit as st
+# Streamlit runs this file directly, so only its own directory is on sys.path.
+# Add the repo root so `web.core` and `praiser` import regardless of CWD.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from web.core import service
+import streamlit as st  # noqa: E402
+
+from web.core import service  # noqa: E402
 
 # --- secrets -> env (server-side only; never sent to the browser) ----------
 _SECRET_KEYS = (
