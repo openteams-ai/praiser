@@ -22,6 +22,25 @@ AUTHORS_PATHS = [
 _HANDLE_RE = re.compile(r"@([A-Za-z0-9-]+)")
 
 
+def subcomponent_credits(line: str, subcomponents) -> list[tuple[str, str]]:
+    """(role, label) for each known subcomponent whose label the credit line
+    names — e.g. "… for f2py …" → the f2py subcomponent's configured role.
+
+    This is the authorship signal the subcomponents extractor deliberately does
+    NOT infer from commit volume: an explicit human credit that names the part
+    (author = provided that part), not "committed to it a lot".
+    """
+    out: list[tuple[str, str]] = []
+    for s in subcomponents:
+        label = s.label or ""
+        if not label:
+            continue
+        # Whole-token match so "f2py" doesn't match inside a larger word.
+        if re.search(rf"(?<![\w.]){re.escape(label)}(?![\w.])", line, re.I):
+            out.append((s.role, label))
+    return out
+
+
 def find_credit(text: str, names: set[str], logins: set[str]) -> tuple[str, bool] | None:
     """Return (matching line, strong) if the user is credited, else None.
 
@@ -62,13 +81,26 @@ class AuthorsExtractor(Extractor):
             # itself is trustworthy (own/org repo, or the canonical project).
             if not strong and not ctx.trust_role_file(candidate):
                 return []
+            url = f"{candidate.url}/blob/HEAD/{path}"
             snippet = (line[:60] + "…") if len(line) > 60 else line
-            return [Evidence(
-                source=self.name, role=CORE_CONTRIBUTOR,
-                url=f"{candidate.url}/blob/HEAD/{path}",
+            out = [Evidence(
+                source=self.name, role=CORE_CONTRIBUTOR, url=url,
                 confidence=0.7 if strong else 0.5,
                 detail=f"credited in {path}: “{snippet}”",
             )]
+            # If the credit names a known subcomponent ("… for f2py …"), that's
+            # an authorship attribution of that part — grant its configured role,
+            # qualified. This is the genuine authorship signal (issue #48).
+            known = ctx.known(candidate.name_with_owner)
+            if known:
+                for role, label in subcomponent_credits(line, known.subcomponents):
+                    out.append(Evidence(
+                        source=self.name, role=role, url=url,
+                        confidence=0.8 if strong else 0.65,
+                        detail=f"credited for {label} in {path}: “{snippet}”",
+                        qualifier=label,
+                    ))
+            return out
         return []
 
 
