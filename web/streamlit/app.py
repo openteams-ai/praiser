@@ -46,16 +46,16 @@ st.caption("The open-source projects where a person holds an elevated role — "
            "and cgit hosts.")
 st.caption(f"ℹ️ More information: [{REPO_URL.split('//', 1)[1]}]({REPO_URL})")
 
+# Data-collection controls live in a form: they only take effect on "Praise",
+# so a scan runs only on an explicit submit.
 with st.form("q"):
     username = st.text_input("Username / login", placeholder="e.g. certik")
     c1, c2 = st.columns(2)
     forge = c1.selectbox("Forge", service.FORGES, index=0)
-    view = c2.selectbox("View", service.VIEWS, index=0)
-    forge_url = st.text_input(
+    forge_url = c2.text_input(
         "Instance URL (self-hosted GitLab/Gitea/cgit — optional)",
         placeholder="https://gitlab.gnome.org")
     min_stars = st.slider("Min stars", 0, 1000, 50, step=10)
-    highlights = st.slider("Highlights (top N)", 3, 20, 8)
     c3, c4 = st.columns(2)
     wikidata = c3.checkbox("Wikidata roles", value=True)
     package_registries = c4.checkbox("Package registries", value=True)
@@ -63,6 +63,13 @@ with st.form("q"):
     discover_roles = c4.checkbox("LLM founder/role discovery (slower, costs)",
                                  value=False)
     submitted = st.form_submit_button("Praise")
+
+# Display controls live OUTSIDE the form: changing them reruns immediately and
+# re-renders the already-collected result from cache — no button, no re-scan.
+d1, d2 = st.columns(2)
+view = d1.selectbox("View", service.VIEWS, index=0)
+highlights = d2.slider("Highlights (top N)", 3, 20, 8)
+
 
 def _run_scan(username, data_opts):
     """Scan in a worker thread while the main thread shows a live progress bar.
@@ -96,30 +103,29 @@ def _run_scan(username, data_opts):
     return state["result"], time.time() - started
 
 
+# Size-bounded LRU across ALL scans this session, so revisiting an earlier
+# user/options is instant (not just tweaking N of the latest scan).
+if "results" not in st.session_state:
+    st.session_state["results"] = SizeBoundedLRU(_CACHE_MB * 1024 * 1024)
+cache = st.session_state["results"]
+
+# A scan runs ONLY on submit. It stores the result and marks it "active"; the
+# render block below then shows the active result with the CURRENT view/N — so
+# a later change to a display control reruns and re-renders instantly, with no
+# submit and no re-scan.
 if submitted:
     if not username.strip():
         st.warning("Enter a username.")
         st.stop()
     uname = username.strip()
-
     data_opts = {
         "forge": forge, "forge_url": forge_url.strip(), "min_stars": min_stars,
         "discover_roles": discover_roles, "wikidata": wikidata,
         "package_registries": package_registries, "cross_forge": cross_forge,
     }
-    # Data-collection cache key (display options view/highlights excluded on
-    # purpose): changing only N or the view re-renders the SAME collected result
-    # instead of re-scanning. A change to username or any data option rescans.
+    # Cache key excludes the display options (view/highlights) on purpose.
     key = (uname, *(data_opts[k] for k in service.DATA_OPTIONS))
-
-    # A size-bounded LRU across ALL scans this session, so revisiting an earlier
-    # user/options is instant (not just tweaking N of the latest scan).
-    if "results" not in st.session_state:
-        st.session_state["results"] = SizeBoundedLRU(_CACHE_MB * 1024 * 1024)
-    cache = st.session_state["results"]
-
-    result = cache.get(key)
-    if result is not None:
+    if cache.get(key) is not None:
         st.success("✅ Showing cached results — change the username, forge, or a "
                    "scan option to re-scan.")
     else:
@@ -131,11 +137,20 @@ if submitted:
         result, elapsed = _run_scan(uname, data_opts)
         cache.put(key, result)
         st.success(f"✅ Scan finished in {elapsed:.1f} seconds.")
+    st.session_state["active"] = (key, uname)
 
-    out = service.render_result(result, uname, view=view, highlights=highlights)
-    if view == "json":
-        st.json(json.loads(out))
-    elif view == "markdown":
-        st.markdown(out)
+# Render the active result (from a fresh submit OR a display-only rerun).
+active = st.session_state.get("active")
+if active is not None:
+    key, uname = active
+    result = cache.get(key)
+    if result is None:  # evicted from the LRU — ask for a re-scan
+        st.info("Previous results expired — click Praise to scan again.")
     else:
-        st.text(out)
+        out = service.render_result(result, uname, view=view, highlights=highlights)
+        if view == "json":
+            st.json(json.loads(out))
+        elif view == "markdown":
+            st.markdown(out)
+        else:
+            st.text(out)
