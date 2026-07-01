@@ -52,12 +52,13 @@ def build_parser() -> argparse.ArgumentParser:
         prog="praiser",
         description="Record the popular projects a user maintains, steers, or "
                     "authors standards for (contributors excluded). Scans GitHub "
-                    "by default, or Codeberg via --forge.",
+                    "by default, or Codeberg / GitLab via --forge.",
     )
     p.add_argument("username", help="login to investigate (on the chosen --forge)")
-    p.add_argument("--forge", choices=["github", "codeberg"], default="github",
+    p.add_argument("--forge", choices=["github", "codeberg", "gitlab"],
+                   default="github",
                    help="code host to scan (default: github); 'codeberg' uses "
-                        "the Gitea/Forgejo API")
+                        "the Gitea/Forgejo API, 'gitlab' the GitLab API")
     p.add_argument("--min-stars", type=int, default=50,
                    help="popularity threshold (default: 50); high-signal roles "
                         "and registry overrides survive regardless")
@@ -129,9 +130,13 @@ def main(argv: list[str] | None = None) -> int:
                 "severely restricted (~60 requests/hour).\n" + TOKEN_HELP,
                 file=sys.stderr,
             )
-    else:  # codeberg / other Gitea instances — public data works unauthenticated
-        token = args.token or os.environ.get("CODEBERG_TOKEN") \
-            or os.environ.get("FORGEJO_TOKEN")
+    else:  # codeberg / gitlab — public data works unauthenticated
+        token_envs = {
+            "codeberg": ("CODEBERG_TOKEN", "FORGEJO_TOKEN"),
+            "gitlab": ("GITLAB_TOKEN",),
+        }.get(args.forge, ())
+        env_token = next((v for e in token_envs if (v := os.environ.get(e))), None)
+        token = args.token or env_token
         token_source = "flag" if args.token else ("env" if token else "none")
 
     # Role discovery is on by default; only nag about missing creds/conflicts

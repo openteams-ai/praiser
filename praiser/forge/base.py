@@ -23,6 +23,7 @@ Design notes
 """
 
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 
@@ -107,9 +108,21 @@ class Forge(ABC):
     def get_files(
         self, owner: str, repo: str, paths: list[str], ref: str | None = None
     ) -> dict[str, str | None]:
-        """{path: text-or-None} for several files. Default: one ``get_file`` each;
-        a forge with batch fetch (e.g. GitHub GraphQL) should override for speed."""
-        return {p: self.get_file(owner, repo, p, ref) for p in paths}
+        """{path: text-or-None} for several files.
+
+        Default fetches concurrently (extractors probe many candidate paths, and
+        forges without a batch API — Gitea, GitLab — would otherwise crawl
+        through them one blocking request at a time). A forge with true batch
+        fetch (e.g. GitHub GraphQL) should override for a single round-trip.
+        """
+        if not paths:
+            return {}
+        if len(paths) == 1:
+            return {paths[0]: self.get_file(owner, repo, paths[0], ref)}
+        workers = min(8, len(paths))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            texts = pool.map(lambda p: self.get_file(owner, repo, p, ref), paths)
+            return dict(zip(paths, texts))
 
     @abstractmethod
     def list_dir(self, owner: str, repo: str, path: str) -> list[DirEntry]:

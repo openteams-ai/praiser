@@ -9,11 +9,11 @@ from .cache import Cache
 from .config import Config
 from .discovery import discover, org_logins
 from .extractors import ExtractContext, all_extractors
-from .forge import GiteaForge, GitHubForge
+from .forge import GiteaForge, GitHubForge, GitLabForge
 from .github_client import RateLimitError
 
 # Selectable code hosts. Each value builds a Forge from (token, cache, verbose).
-FORGES = {"github": GitHubForge, "codeberg": GiteaForge}
+FORGES = {"github": GitHubForge, "codeberg": GiteaForge, "gitlab": GitLabForge}
 from .identity import resolve_identity
 from .llm import LLM
 from .models import WEAK_ROLES, Evidence, ProjectRecord

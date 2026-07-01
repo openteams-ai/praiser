@@ -14,11 +14,13 @@ from .base import (
 )
 from .gitea import GiteaForge
 from .github import GitHubForge
+from .gitlab import GitLabForge
 
 __all__ = [
     "Forge",
     "GitHubForge",
     "GiteaForge",
+    "GitLabForge",
     "RepoMeta",
     "UserRef",
     "DirEntry",

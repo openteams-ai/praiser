@@ -110,9 +110,13 @@ def discover(
         _name_search(forge, identity, add_name)
         _commit_search(forge, identity, add_name)
 
-    # Always check registry seeds (popularity filled in Phase 3).
-    for seed in registry.seeds():
-        add_name(seed.name_with_owner, "registry")
+    # Registry seeds are GitHub-keyed curated projects (python/peps, numpy/…);
+    # they only exist on GitHub, so skip them on other forges — otherwise every
+    # seed becomes a candidate that costs a sequential 404 to enrich (forges
+    # without batch metadata would crawl).
+    if forge.name == "github":
+        for seed in registry.seeds():
+            add_name(seed.name_with_owner, "registry")
 
     # Repos the user ships packages from on PyPI/npm/crates — catches projects
     # where their role is "package maintainer" rather than "top committer".

@@ -15,22 +15,13 @@ class is unit-testable offline by injecting a fake.
 """
 
 import json
-import time
-import urllib.error
 import urllib.parse
-import urllib.request
 from typing import Any
 
 from ..cache import Cache
+from ._http import USER_AGENT, fetch_text, make_session
 from .base import DirEntry, Forge, RepoMeta, UserRef
 
-try:  # optional accelerator, mirrors github_client
-    import httpx  # type: ignore
-except ImportError:  # pragma: no cover
-    httpx = None
-
-_USER_AGENT = "praiser/0.1 (+https://github.com)"
-_NOT_FOUND = "__404__"
 _REPO_PAGE_LIMIT = 50      # Gitea max page size for repo listings
 _MAX_REPO_PAGES = 4        # cap pagination (≈200 repos) to bound cold runs
 
@@ -49,7 +40,7 @@ def _repo_meta(d: dict) -> RepoMeta | None:
 
 
 class _GiteaHttp:
-    """Minimal cached HTTP for a Gitea instance (httpx if present, else urllib)."""
+    """Cached HTTP for a Gitea instance, over the shared REST helper."""
 
     def __init__(self, api_base: str, token: str | None, cache: Cache,
                  *, max_retries: int = 3) -> None:
@@ -57,47 +48,17 @@ class _GiteaHttp:
         self.token = token
         self.cache = cache
         self.max_retries = max_retries
-        self._client = httpx.Client(timeout=30.0) if httpx is not None else None
-
-    def _headers(self, accept: str, auth: bool) -> dict[str, str]:
-        h = {"Accept": accept, "User-Agent": _USER_AGENT}
-        if auth and self.token:
-            h["Authorization"] = f"token {self.token}"
-        return h
+        self._session = make_session()
 
     def _fetch_text(self, url: str, *, accept: str, auth: bool) -> str | None:
-        ck = Cache.key("gitea", url, accept, auth)
-        cached = self.cache.get(ck, default=None)
-        if cached is not None:
-            return None if cached == _NOT_FOUND else cached
-        headers = self._headers(accept, auth)
-        for attempt in range(self.max_retries):
-            try:
-                if self._client is not None:
-                    resp = self._client.get(url, headers=headers)
-                    status, data = resp.status_code, resp.content
-                else:
-                    req = urllib.request.Request(url, headers=headers, method="GET")
-                    try:
-                        with urllib.request.urlopen(req) as r:
-                            status, data = r.status, r.read()
-                    except urllib.error.HTTPError as e:
-                        status, data = e.code, e.read()
-            except Exception:
-                time.sleep(1.0 * (attempt + 1))
-                continue
-            if status in (502, 503, 504):
-                time.sleep(1.0 * (attempt + 1))
-                continue
-            if status == 404:
-                self.cache.set(ck, _NOT_FOUND)
-                return None
-            if status >= 400:
-                return None
-            text = data.decode("utf-8", errors="replace")
-            self.cache.set(ck, text)
-            return text
-        return None
+        headers = {"Accept": accept, "User-Agent": USER_AGENT}
+        if auth and self.token:
+            headers["Authorization"] = f"token {self.token}"
+        return fetch_text(
+            self._session, url, headers=headers, cache=self.cache,
+            cache_key=Cache.key("gitea", url, accept, auth),
+            max_retries=self.max_retries,
+        )
 
     def get_json(self, path: str, params: dict | None = None) -> Any | None:
         url = f"{self.api_base}/{path.lstrip('/')}"
@@ -122,8 +83,8 @@ class _GiteaHttp:
         return self._fetch_text(url, accept=accept, auth=False)
 
     def close(self) -> None:
-        if self._client is not None:
-            self._client.close()
+        if self._session is not None:
+            self._session.close()
 
 
 class GiteaForge(Forge):
