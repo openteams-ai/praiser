@@ -58,6 +58,7 @@ class SubcomponentsExtractor(Extractor):
                 url=f"{candidate.url}/commits/HEAD/{path}",
                 confidence=confidence,
                 detail=f"{count} commits to {label}",
+                qualifier=label,  # this role is for a subcomponent, e.g. "f2py"
             ))
         return evidence
 

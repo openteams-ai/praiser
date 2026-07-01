@@ -8,7 +8,12 @@ from praiser.models import (
     Evidence,
     ProjectRecord,
 )
-from praiser.render import render_highlights, render_json, render_markdown
+from praiser.render import (
+    _role_display,
+    render_highlights,
+    render_json,
+    render_markdown,
+)
 
 
 def _multi(name, roles, stars=100):
@@ -43,6 +48,46 @@ def test_roles_shown_in_lifecycle_order_not_weight_order():
     # contributor role even though it outweighs it.
     assert _multi("a/b", [MAINTAINER, CORE_CONTRIBUTOR]).roles == [
         CORE_CONTRIBUTOR, MAINTAINER]
+
+
+def test_subcomponent_role_is_qualified_in_display():
+    # pearu/numpy: "Author" only via the f2py subcomponent -> show "Author (f2py)".
+    rec = ProjectRecord(
+        name_with_owner="numpy/numpy", url="https://github.com/numpy/numpy", stars=32000,
+        evidence=[
+            Evidence("subcomponents", AUTHOR, "u", 0.85, "188 commits to f2py",
+                     qualifier="f2py"),
+            Evidence("contributors", CORE_CONTRIBUTOR, "u", 0.8, "1107 commits"),
+        ],
+    )
+    out = render_highlights("pearu", [rec], 8)
+    assert "Author (f2py), Core contributor" in out.splitlines()[1]
+
+
+def test_multiple_subcomponents_are_listed_and_capped():
+    def author_of(*parts):
+        return ProjectRecord(
+            name_with_owner="numpy/numpy", url="u", stars=32000,
+            evidence=[Evidence("subcomponents", AUTHOR, "u", 0.85, "", qualifier=p)
+                      for p in parts],
+        )
+    assert _role_display(author_of("f2py", "numpy.distutils"), AUTHOR) == \
+        "Author (f2py, numpy.distutils)"
+    # capped at 3 with a "+N more"
+    assert _role_display(author_of("a", "b", "c", "d", "e"), AUTHOR) == \
+        "Author (a, b, c, +2 more)"
+
+
+def test_whole_project_author_stays_bare_even_with_a_subcomponent():
+    # If authorship is ALSO evidenced project-wide (unqualified), don't narrow it.
+    rec = ProjectRecord(
+        name_with_owner="pearu/pkg", url="https://github.com/pearu/pkg", stars=100,
+        evidence=[
+            Evidence("ownership", AUTHOR, "u", 0.9, "owns the repository"),  # no qualifier
+            Evidence("subcomponents", AUTHOR, "u", 0.85, "commits to core", qualifier="core"),
+        ],
+    )
+    assert _role_display(rec, AUTHOR) == "Author"
 
 
 def test_json_exposes_roles_list():
