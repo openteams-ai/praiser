@@ -48,20 +48,22 @@ st.caption(f"ℹ️ More information: [{REPO_URL.split('//', 1)[1]}]({REPO_URL})
 
 # Data-collection controls live in a form: they only take effect on "Praise",
 # so a scan runs only on an explicit submit.
+# Forges usable from just a username (cgit needs an instance URL + --add-repo,
+# which this demo doesn't expose; the core library still supports it via CLI).
+DEMO_FORGES = [f for f in service.FORGES if f != "cgit"]
+
 with st.form("q"):
     username = st.text_input("Username / login", placeholder="e.g. certik")
-    c1, c2 = st.columns(2)
-    forge = c1.selectbox("Forge", service.FORGES, index=0)
-    forge_url = c2.text_input(
-        "Instance URL (self-hosted GitLab/Gitea/cgit — optional)",
-        placeholder="https://gitlab.gnome.org")
+    forge = st.selectbox("Forge", DEMO_FORGES, index=0)
+    forge_url = ""  # self-hosted instance URL is a CLI/library feature, not the demo
     c3, c4 = st.columns(2)
     wikidata = c3.checkbox("Wikidata roles", value=True)
     package_registries = c4.checkbox("Package registries", value=True)
     cross_forge = c3.checkbox("Cross-forge (follow profile links)", value=False)
     discover_roles = c4.checkbox("LLM founder/role discovery (slower, costs)",
                                  value=False)
-    submitted = st.form_submit_button("Praise")
+    submitted = st.form_submit_button(
+        "🌟 Praise", type="primary", use_container_width=True)
 
 # Display controls live OUTSIDE the form: changing them reruns immediately and
 # re-renders the already-collected result from cache — no button, no re-scan.
