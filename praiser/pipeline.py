@@ -129,6 +129,7 @@ def _scan_forge(
         popularity_floor=config.min_stars,
         contributor_pages=config.contributor_pages,
         auto_discover_roles=config.discover_roles and llm is not None,
+        use_wikidata=config.use_wikidata,
         manual_repos=set(config.extra_repos) if is_anchor else set(),
         manual_subcomponents=config.extra_subcomponents if is_anchor else {},
         package_index=index_by_repo(package_refs),

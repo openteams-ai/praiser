@@ -22,6 +22,7 @@ _BUILTIN_MODULES = [
     "web_roles",
     "packages",
     "curated",
+    "wikidata",
 ]
 
 
