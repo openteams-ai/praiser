@@ -12,6 +12,7 @@ from .base import (
     RepoMeta,
     UserRef,
 )
+from .bitbucket import BitbucketForge
 from .cgit import CgitForge
 from .gitea import GiteaForge
 from .gitee import GiteeForge
@@ -25,6 +26,7 @@ __all__ = [
     "GiteeForge",
     "GitLabForge",
     "CgitForge",
+    "BitbucketForge",
     "RepoMeta",
     "UserRef",
     "DirEntry",

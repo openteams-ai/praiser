@@ -56,12 +56,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("username", help="login to investigate (on the chosen --forge)")
     p.add_argument("--forge",
-                   choices=["github", "codeberg", "gitlab", "gitee", "cgit"],
+                   choices=["github", "codeberg", "gitlab", "gitee", "bitbucket",
+                            "cgit"],
                    default="github",
                    help="code host to scan (default: github); 'codeberg' uses "
                         "the Gitea/Forgejo API, 'gitlab' the GitLab API, 'gitee' "
-                        "the Gitee API, 'cgit' an API-less cgit host (e.g. "
-                        "kernel.org, Savannah) via --forge-url + --add-repo")
+                        "the Gitee API, 'bitbucket' the Bitbucket API, 'cgit' an "
+                        "API-less cgit host (e.g. kernel.org, Savannah) via "
+                        "--forge-url + --add-repo")
     p.add_argument("--forge-url", default=None, metavar="URL",
                    help="base URL of a self-hosted instance for --forge "
                         "gitlab|codeberg (e.g. https://gitlab.gnome.org or a "
@@ -145,10 +147,19 @@ def main(argv: list[str] | None = None) -> int:
             "codeberg": ("CODEBERG_TOKEN", "FORGEJO_TOKEN"),
             "gitlab": ("GITLAB_TOKEN",),
             "gitee": ("GITEE_TOKEN",),
+            "bitbucket": ("BITBUCKET_TOKEN",),
         }.get(args.forge, ())
         env_token = next((v for e in token_envs if (v := os.environ.get(e))), None)
         token = args.token or env_token
         token_source = "flag" if args.token else ("env" if token else "none")
+        if args.forge == "bitbucket" and not token:
+            print(
+                "warning: Bitbucket's anonymous rate limit is very low (~60 "
+                "requests/hour) — a multi-repo scan will be throttled. Set "
+                "BITBUCKET_TOKEN (an app password or access token) or pass "
+                "--token for a usable scan.",
+                file=sys.stderr,
+            )
 
     # Role discovery is on by default; only nag about missing creds/conflicts
     # when the user EXPLICITLY asked for it (default-on degrades silently).
