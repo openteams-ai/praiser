@@ -1,7 +1,55 @@
 import json
 
-from praiser.models import CODE_OWNER, CORE_CONTRIBUTOR, Evidence, ProjectRecord
+from praiser.models import (
+    AUTHOR,
+    CODE_OWNER,
+    CONTRIBUTOR,
+    CORE_CONTRIBUTOR,
+    Evidence,
+    ProjectRecord,
+)
 from praiser.render import render_highlights, render_json, render_markdown
+
+
+def _multi(name, roles, stars=100):
+    """A record carrying several role-evidences on one project."""
+    return ProjectRecord(
+        name_with_owner=name, url=f"https://github.com/{name}", stars=stars,
+        evidence=[Evidence(f"s{i}", r, "u", 0.9, "") for i, r in enumerate(roles)],
+    )
+
+
+def test_highlights_show_multiple_roles_without_confidence():
+    rec = _multi("sympy/sympy", [AUTHOR, CORE_CONTRIBUTOR], stars=15000)
+    out = render_highlights("certik", [rec], 8)
+    line = out.splitlines()[1]
+    assert "Author, Core contributor" in line   # both distinct roles, strongest first
+    assert "15k★" in line
+    assert "conf" not in out                      # confidence dropped from highlights
+
+
+def test_roles_drop_weak_and_dedupe():
+    # plain 'contributor' (weak) is dropped; distinct elevated roles kept.
+    rec = _multi("a/b", [AUTHOR, CONTRIBUTOR, CORE_CONTRIBUTOR])
+    assert rec.roles == [AUTHOR, CORE_CONTRIBUTOR]
+
+
+def test_roles_shown_in_lifecycle_order_not_weight_order():
+    from praiser.models import MAINTAINER
+    # Maintainer outweighs Author (0.85 > 0.84), but you can't maintain what
+    # isn't created — Author must come first regardless of evidence order.
+    assert _multi("a/b", [MAINTAINER, AUTHOR]).roles == [AUTHOR, MAINTAINER]
+    # Maintenance is the LAST lifecycle phase: maintainer comes after the
+    # contributor role even though it outweighs it.
+    assert _multi("a/b", [MAINTAINER, CORE_CONTRIBUTOR]).roles == [
+        CORE_CONTRIBUTOR, MAINTAINER]
+
+
+def test_json_exposes_roles_list():
+    rec = _multi("a/b", [AUTHOR, CORE_CONTRIBUTOR])
+    data = json.loads(render_json("u", [rec]))
+    assert data["projects"][0]["role"] == AUTHOR              # headline unchanged
+    assert data["projects"][0]["roles"] == [AUTHOR, CORE_CONTRIBUTOR]
 
 
 def _r(name, role, stars):
