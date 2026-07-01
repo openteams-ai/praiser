@@ -154,16 +154,19 @@ def _scan_forge(
     return records, secondary, reset_in
 
 
-def run(config: Config, cache=None) -> RunResult:
+def run(config: Config, cache=None, progress_cb=None) -> RunResult:
     # ``cache`` lets a caller inject a shared/durable backend (e.g. the web UI's
     # Redis cache) so the expensive, option-independent data collection is
     # reused across processes/hosts. Defaults to the local file cache.
+    # ``progress_cb(msg)`` receives each phase/status line (e.g. for a web UI),
+    # independent of the terminal display.
     cache = cache if cache is not None else Cache(config.cache_dir)
     registry = KnownProjects.load(config.registry_path)
     llm = LLM.maybe(cache, enabled=config.use_llm)
     _log(config, f"LLM fallback {'enabled' if llm else 'disabled'}")
     progress = Progress(
-        enabled=not config.verbose and not config.quiet and sys.stderr.isatty()
+        enabled=not config.verbose and not config.quiet and sys.stderr.isatty(),
+        callback=progress_cb,
     )
 
     anchor = _build_forge(config.forge, config, cache, is_anchor=True)

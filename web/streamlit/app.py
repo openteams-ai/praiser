@@ -6,7 +6,10 @@ the token secrets (see web/README.md). All queries and tokens stay server-side.
 
 import json
 import os
+import re
 import sys
+import threading
+import time
 from pathlib import Path
 
 # Streamlit runs this file directly, so only its own directory is on sys.path.
@@ -16,6 +19,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import streamlit as st  # noqa: E402
 
 from web.core import service  # noqa: E402
+
+REPO_URL = "https://github.com/openteams-ai/praiser"
+_SCANNED_RE = re.compile(r"scanned (\d+)/(\d+)")
 
 # --- secrets -> env (server-side only; never sent to the browser) ----------
 _SECRET_KEYS = (
@@ -28,24 +34,13 @@ for _k in _SECRET_KEYS:
         os.environ[_k] = str(st.secrets[_k])
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def _praise(username, forge, forge_url, min_stars, discover_roles, wikidata,
-            package_registries, cross_forge, view, highlights):
-    # Per-instance memo on top of the shared cache in service (which spans hosts).
-    return service.praise(
-        username, forge=forge, forge_url=forge_url, min_stars=min_stars,
-        discover_roles=discover_roles, wikidata=wikidata,
-        package_registries=package_registries, cross_forge=cross_forge,
-        view=view, highlights=highlights,
-    )
-
-
 st.set_page_config(page_title="praiser", page_icon="🌟")
 st.title("🌟 praiser")
 st.caption("The open-source projects where a person holds an elevated role — "
            "author, maintainer, steering council, standards author — with "
            "evidence links, across GitHub, GitLab, Codeberg, Gitee, Bitbucket "
            "and cgit hosts.")
+st.caption(f"ℹ️ More information: [{REPO_URL.split('//', 1)[1]}]({REPO_URL})")
 
 with st.form("q"):
     username = st.text_input("Username / login", placeholder="e.g. certik")
@@ -69,14 +64,55 @@ if submitted:
     if not username.strip():
         st.warning("Enter a username.")
         st.stop()
-    with st.spinner(f"Scanning {username} on {forge}…"):
+
+    st.info(
+        "⏳ A first-time scan can take ~30 seconds to a few minutes — praiser "
+        "queries the forge across many repositories (longer with cross-forge or "
+        "LLM discovery on). Repeat scans are fast thanks to caching."
+    )
+
+    # Run the scan in a worker thread and poll its progress on the main thread,
+    # so the UI can show a live bar (Streamlit blocks on a synchronous call).
+    # The worker never touches st.* — it only writes to `state`.
+    state = {"msg": "starting…", "result": None, "error": None, "done": False}
+
+    def _work():
         try:
-            out = _praise(username.strip(), forge, forge_url.strip(), min_stars,
-                          discover_roles, wikidata, package_registries,
-                          cross_forge, view, highlights)
-        except Exception as exc:  # never dump a traceback at the user
-            st.error(f"Failed: {exc}")
-            st.stop()
+            state["result"] = service.praise(
+                username.strip(), forge=forge, forge_url=forge_url.strip(),
+                min_stars=min_stars, discover_roles=discover_roles,
+                wikidata=wikidata, package_registries=package_registries,
+                cross_forge=cross_forge, view=view, highlights=highlights,
+                progress=lambda m: state.update(msg=m),
+            )
+        except Exception as exc:  # surface a message, never a traceback
+            state["error"] = str(exc)
+        finally:
+            state["done"] = True
+
+    started = time.time()
+    worker = threading.Thread(target=_work, daemon=True)
+    worker.start()
+
+    bar = st.empty()
+    status = st.empty()
+    while not state["done"]:
+        msg = state["msg"]
+        m = _SCANNED_RE.search(msg)
+        bar.progress(min(1.0, int(m.group(1)) / max(1, int(m.group(2)))) if m else 0.0)
+        status.caption(f"⏳ {msg}")
+        time.sleep(0.2)
+    worker.join()
+    bar.empty()
+    status.empty()
+    elapsed = time.time() - started
+
+    if state["error"]:
+        st.error(f"Failed: {state['error']}")
+        st.stop()
+
+    st.success(f"✅ Scan finished in {elapsed:.1f} seconds.")
+    out = state["result"]
     if view == "json":
         st.json(json.loads(out))
     elif view == "markdown":
