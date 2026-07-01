@@ -135,7 +135,7 @@ if submitted:
         st.info(
             "⏳ A first-time scan can take ~30 seconds to a few minutes — praiser "
             "queries the forge across many repositories (longer with cross-forge "
-            "or LLM discovery on). Changing only the view or top-N is instant."
+            "or LLM discovery on). Changing the view, top-N or min-stars is instant."
         )
         result, elapsed = _run_scan(uname, data_opts)
         cache.put(key, result)
