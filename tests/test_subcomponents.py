@@ -28,16 +28,19 @@ def _ctx(client, registry=None, manual_subs=None):
     )
 
 
-def test_registry_subcomponent_grants_role():
+def test_subcomponent_grants_contribution_not_authorship():
+    # Commit volume to a path is CONTRIBUTION, never authorship — even a large
+    # count and even when the registry labels the subcomponent "author".
+    # (Guards the rgommers/f2py false-positive: heavy f2py committer != author.)
     reg = KnownProjects({"numpy/numpy": KnownProject(
         "numpy/numpy",
         subcomponents=[Subcomponent("numpy/f2py", "author", "f2py")])})
     ctx = _ctx(_Client({"numpy/f2py": 120}), registry=reg)
     ev = SubcomponentsExtractor().extract(Candidate("numpy/numpy"), ctx)
     assert len(ev) == 1
-    assert ev[0].role == "author"
+    assert ev[0].role == "core_contributor"      # NOT "author"
     assert ev[0].confidence == 0.85
-    assert "f2py" in ev[0].detail
+    assert ev[0].qualifier == "f2py" and "f2py" in ev[0].detail
 
 
 def test_subcomponent_below_threshold_skipped():
