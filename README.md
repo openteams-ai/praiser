@@ -26,9 +26,12 @@ pipeline talks to a neutral `Forge` interface, so adding another host is a
 self-contained addition.
 
 People use different usernames on different forges, so `--cross-forge` follows
-the links a person publishes on their own profile to their accounts elsewhere —
-keeping only **bidirectionally-verified** links (the other profile links back) —
-and merges everything into one record. Because the links are owner-published and
+the links a person publishes on their own profile — and on the personal site
+those profiles point to — to their accounts elsewhere, keeping only links
+confirmed either **bidirectionally** (the other profile links back) or through
+an **owned personal-site hub** (a site reached from, and linking back to, a
+confirmed account, that also lists the other account with a matching
+handle/name), and merges everything into one record. Because the links are owner-published and
 mutually confirmed, it never falsely merges two different people (it may
 under-merge someone who hasn't cross-linked, which is safe). `--also-forge
 FORGE:LOGIN` adds an identity explicitly when you'd rather not rely on links.
