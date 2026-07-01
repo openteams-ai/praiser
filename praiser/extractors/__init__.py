@@ -21,6 +21,7 @@ _BUILTIN_MODULES = [
     "authors",
     "web_roles",
     "packages",
+    "curated",
 ]
 
 

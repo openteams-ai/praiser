@@ -83,6 +83,35 @@ class RoleSource:
 
 
 @dataclass
+class CuratedRole:
+    """A hand-curated role for a *specific* person on a project.
+
+    Unlike ``RoleSource`` (a web page matched by name/handle across everyone
+    listed), this is scoped to one ``login`` — so it can assert a fact like
+    "founded/created this project" without over-crediting others. ``url`` is a
+    citation for the claim.
+    """
+
+    login: str
+    role: str
+    url: str | None = None
+    label: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "CuratedRole":
+        return cls(login=d["login"], role=d["role"],
+                   url=d.get("url"), label=d.get("label"))
+
+    def to_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {"login": self.login, "role": self.role}
+        if self.url is not None:
+            out["url"] = self.url
+        if self.label is not None:
+            out["label"] = self.label
+        return out
+
+
+@dataclass
 class Subcomponent:
     """A subdirectory/path of a repo that the user may lead or have authored.
 
@@ -112,6 +141,7 @@ class KnownProject:
     aliases: list[str] = field(default_factory=list)
     role_conventions: list[RoleConvention] = field(default_factory=list)
     role_sources: list[RoleSource] = field(default_factory=list)
+    curated_roles: list[CuratedRole] = field(default_factory=list)
     subcomponents: list[Subcomponent] = field(default_factory=list)
     popularity: dict[str, Any] = field(default_factory=dict)
     notes: str = ""
@@ -135,6 +165,9 @@ class KnownProject:
             role_sources=[
                 RoleSource.from_dict(s) for s in d.get("role_sources", [])
             ],
+            curated_roles=[
+                CuratedRole.from_dict(c) for c in d.get("curated_roles", [])
+            ],
             subcomponents=[
                 Subcomponent.from_dict(s) for s in d.get("subcomponents", [])
             ],
@@ -152,6 +185,8 @@ class KnownProject:
             out["role_conventions"] = [c.to_dict() for c in self.role_conventions]
         if self.role_sources:
             out["role_sources"] = [s.to_dict() for s in self.role_sources]
+        if self.curated_roles:
+            out["curated_roles"] = [c.to_dict() for c in self.curated_roles]
         if self.subcomponents:
             out["subcomponents"] = [s.to_dict() for s in self.subcomponents]
         if self.popularity:
@@ -197,8 +232,23 @@ class KnownProjects:
             p = Path(extra_path)
             if p.exists():
                 user = cls._parse(json.loads(p.read_text(encoding="utf-8")))
-                projects.update(user)  # user entries win on name clash
+                for name, uproj in user.items():
+                    base = projects.get(name)
+                    projects[name] = cls.merge_project(base, uproj) if base else uproj
         return cls(projects)
+
+    @staticmethod
+    def merge_project(base: KnownProject, overlay: KnownProject) -> KnownProject:
+        """Field-level overlay of a user entry onto a seed entry.
+
+        The learned/user file often carries only observed popularity, so a plain
+        replace would wipe the seed's curated role_sources / curated_roles / etc.
+        ``to_dict`` omits empty fields, so ``{**base, **overlay}`` keeps seed
+        fields the overlay doesn't set and lets the overlay win where it does.
+        """
+        return KnownProject.from_dict(
+            base.name_with_owner, {**base.to_dict(), **overlay.to_dict()}
+        )
 
     # -- lookup -------------------------------------------------------------
     def get(self, name_with_owner: str) -> KnownProject | None:
