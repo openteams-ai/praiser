@@ -1,15 +1,20 @@
 """Cache backends for the web app.
 
-praiser's data collection is expensive and option-independent, so a *shared,
-durable* cache (across hosts/restarts) is worth it. Streamlit Cloud's filesystem
-is ephemeral, so the default there is a **serverless Redis** (Upstash REST) when
-its secrets are present; otherwise a local file cache (fine for dev / a single
-long-lived instance).
+Two layers, on purpose (see ``web.core.service``):
 
-Both expose praiser's ``get/set/has`` interface, so either can be injected into
-``pipeline.run(config, cache=...)``. The Redis backend is **best-effort**: any
-network/backend error degrades to a miss and never breaks a scan.
-"""
+* **HTTP layer** (``local_cache``) — praiser's per-fetch cache, passed to
+  ``pipeline.run(config, cache=...)``. Kept **local** (file), which is free and
+  fast; being per-instance/ephemeral is fine because the result layer is what's
+  shared. Caching every fetch in a shared KV would burn hundreds of commands per
+  scan — the thing we're avoiding.
+* **Result layer** (``make_result_cache``) — the *shared, durable* cache: one
+  entry per scan (the collected ``RunResult``), so a warm user costs ~1–2 Redis
+  commands total instead of hundreds. Serverless **Redis** (Upstash REST) when
+  its secrets are present, else a local file cache.
+
+All backends expose praiser's ``get/set/has`` interface. The Redis backend is
+**best-effort**: any network/backend error degrades to a miss, never breaking a
+scan. Values must be JSON-serialisable (the service base64-encodes the result)."""
 
 import json
 import os
@@ -17,9 +22,9 @@ from pathlib import Path
 
 from praiser.cache import Cache  # local file backend + the shared key() helper
 
-# Upstash's free tier caps request size; skip pushing very large blobs to the
-# shared KV (the scan still works, that entry just isn't shared-cached).
-_MAX_VALUE_BYTES = 400_000
+# Skip pushing very large blobs to the shared KV (still works, just not shared).
+# Bandwidth is ample (50 GB tier); this guards a single pathological result.
+_MAX_VALUE_BYTES = 2_000_000
 _PREFIX = "praiser:"
 
 
@@ -78,11 +83,23 @@ class RedisCache:
             pass
 
 
-def make_cache(ttl: int = 86_400):
-    """Shared Redis cache when Upstash secrets are set, else a local file cache."""
+def local_cache(ttl: int = 86_400):
+    """Local file cache for praiser's HTTP layer (free, fast, per-instance)."""
+    directory = os.environ.get("PRAISER_CACHE_DIR", "/tmp/praiser-cache")
+    return Cache(Path(directory), ttl=ttl)
+
+
+def make_result_cache(ttl: int = 86_400):
+    """Shared result cache: Redis when Upstash secrets are set, else local file.
+
+    One entry per scan (the collected result), so it's the cheap, durable layer
+    shared across instances/sessions.
+    """
     url = os.environ.get("UPSTASH_REDIS_REST_URL")
     token = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
     if url and token:
         return RedisCache(url, token, ttl)
-    directory = os.environ.get("PRAISER_CACHE_DIR", "/tmp/praiser-cache")
+    directory = os.environ.get("PRAISER_RESULT_CACHE_DIR",
+                               os.environ.get("PRAISER_CACHE_DIR",
+                                              "/tmp/praiser-cache") + "/results")
     return Cache(Path(directory), ttl=ttl)

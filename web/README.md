@@ -3,8 +3,10 @@
 A web frontend for [praiser](../). Layered so the frontend is swappable:
 
 - **`core/`** — framework-agnostic. `service.praise(username, **options)` wraps
-  `praiser.run` + render; `cache.make_cache()` picks a **shared Redis** cache
-  (Upstash) when configured, else a local file cache.
+  `praiser.run` + render. Two cache layers: a **local** HTTP cache for praiser's
+  per-fetch calls (free, per-instance) and a **shared result cache** (Upstash
+  Redis when configured, else local) holding one entry per scan — so a warm user
+  costs ~1–2 Redis commands, not hundreds.
 - **`streamlit/`** — the Streamlit UI only (a thin form over `core`). To add a
   different frontend later (FastAPI, Gradio), add a sibling dir that reuses
   `web.core` — no changes to `core` needed.
@@ -42,8 +44,12 @@ A web frontend for [praiser](../). Layered so the frontend is swappable:
 ## Notes
 
 - **Shared cache = the point:** praiser's data collection is expensive and
-  option-independent, so the Redis cache makes the *second* query for a user (any
-  options, any host) fast. `@st.cache_data` adds a per-instance memo on top.
+  option-independent, so the **result cache** makes the *second* query for a user
+  (any options, any host) fast — a warm user is served from one cache read with
+  **zero** praiser HTTP calls. It caches the collected result (not every
+  fetch), so Redis sees ~1–2 commands per scan — deliberately, to stay well
+  under the free tier's monthly command quota. A per-session in-memory LRU sits
+  on top (0 Redis for repeats within a session).
 - **Cost/quota:** the LLM toggle (founder/role discovery) costs money and runs
   per popular candidate — left **off** by default. Tokens are shared service-wide,
   so watch rate limits; consider an allowlist if the app is public.
