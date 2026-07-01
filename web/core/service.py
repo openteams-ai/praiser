@@ -58,6 +58,39 @@ def _token_for(forge: str) -> str | None:
     return None
 
 
+# A small index of recently-scanned (forge, login) pairs — the cache keys are
+# hashed and can't be enumerated, so we track names separately for a UI picker.
+_RECENT_KEY = Cache.key("recent-scans-index")
+_RECENT_CAP = 50
+
+
+def _record_recent(rcache, forge: str, username: str) -> None:
+    """Prepend (forge, username) to the recent-scans index (best-effort)."""
+    if rcache is None:
+        return
+    try:
+        idx = rcache.get(_RECENT_KEY) or []
+        entry = [forge, username]
+        idx = [entry] + [e for e in idx if e != entry]
+        rcache.set(_RECENT_KEY, idx[:_RECENT_CAP])
+    except Exception:
+        pass
+
+
+def recent_scans(result_cache=None) -> list[dict]:
+    """Recently-scanned ``[{"forge", "username"}]``, most-recent-first (for a UI
+    picker). Reads the shared index once; degrades to [] on any error."""
+    rcache = result_cache if result_cache is not None else make_result_cache()
+    if rcache is None:
+        return []
+    try:
+        idx = rcache.get(_RECENT_KEY) or []
+    except Exception:
+        return []
+    return [{"forge": e[0], "username": e[1]} for e in idx
+            if isinstance(e, list) and len(e) == 2]
+
+
 # The options that affect DATA COLLECTION (a change here needs a re-scan). The
 # display options — ``view``, ``highlights`` N, and ``min_stars`` — are excluded:
 # a frontend re-renders them from a cached result without re-scanning. (min_stars
@@ -129,6 +162,7 @@ def collect(
     )
     if rcache is not None:
         rcache.set(rkey, _dumps(result))
+        _record_recent(rcache, forge, username)
     return result
 
 
