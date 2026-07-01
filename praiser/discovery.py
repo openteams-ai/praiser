@@ -183,12 +183,25 @@ def _name_search(forge: Forge, identity: Identity, add_name) -> None:
 
 
 def _commit_search(forge: Forge, identity: Identity, add_name) -> None:
-    """Find repos the user has authored commits in (any age, recent first)."""
+    """Find repos the user has authored commits in (any age, recent first).
+
+    Searches by author *name* (catches commits authored under emails not linked
+    to the account — see #22), plus by login for forges that support it. Phase 2
+    filters name-ambiguity false positives (non-contributors get no role).
+    """
+    repos: list[str] = []
     try:
-        repos = forge.search_commits_by_author(identity.primary_login)
+        repos += forge.search_commits_by_author(identity.primary_login)
     except Exception:
-        repos = []
-    for nwo in repos:
+        pass
+    for name in identity.names:
+        if len(name) < 5:  # short names are too ambiguous
+            continue
+        try:
+            repos += forge.search_commits_by_name(name)
+        except Exception:
+            pass
+    for nwo in dict.fromkeys(repos):
         add_name(nwo, "commit-search")
 
 

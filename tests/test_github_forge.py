@@ -131,8 +131,12 @@ def test_search_file_mentions_quotes_multiword_and_parses_hits():
                                    '"Pearu Peterson" filename:AUTHORS']
 
 
-def test_search_commits_by_author_dedupes():
-    assert _forge().search_commits_by_author("pearu") == ["a/b"]
+def test_search_commits_by_name_dedupes():
+    # login-qualifier commit search is disallowed by GitHub (422) -> empty;
+    # name search is the working path and dedupes.
+    f = _forge()
+    assert f.search_commits_by_author("pearu") == []
+    assert f.search_commits_by_name("Pearu Peterson") == ["a/b"]
 
 
 def test_repo_contributors_adapter_and_none_passthrough():

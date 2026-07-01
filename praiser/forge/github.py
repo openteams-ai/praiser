@@ -263,9 +263,15 @@ class GitHubForge(Forge):
                 hits.append(FileHit(name_with_owner=nwo, path=item.get("path", "")))
         return hits
 
-    def search_commits_by_author(self, login: str) -> list[str]:
+    # Note: GitHub rejects a login-qualifier-only commit search ("author:x")
+    # with 422, so search_commits_by_author inherits the empty default. Commit
+    # discovery goes through name search instead (issue #22).
+    def search_commits_by_name(self, name: str) -> list[str]:
+        # A quoted author-name is a valid (text-bearing) commit search, and it
+        # finds commits authored under emails unlinked to the GitHub account —
+        # which contributionsCollection/repositoriesContributedTo omit.
         repos: list[str] = []
-        for item in self._client.search_commits(f"author:{login}"):
+        for item in self._client.search_commits(f'author-name:"{name}"'):
             nwo = (item.get("repository") or {}).get("full_name")
             if nwo:
                 repos.append(nwo)
