@@ -59,6 +59,13 @@ def build_parser() -> argparse.ArgumentParser:
                    default="github",
                    help="code host to scan (default: github); 'codeberg' uses "
                         "the Gitea/Forgejo API, 'gitlab' the GitLab API")
+    p.add_argument("--forge-url", default=None, metavar="URL",
+                   help="base URL of a self-hosted instance for --forge "
+                        "gitlab|codeberg (e.g. https://gitlab.gnome.org or a "
+                        "private Gitea); default: the public host")
+    p.add_argument("--forge-name", default=None, metavar="LABEL",
+                   help="short label for the --forge-url instance (default: the "
+                        "forge's own name)")
     p.add_argument("--min-stars", type=int, default=50,
                    help="popularity threshold (default: 50); high-signal roles "
                         "and registry overrides survive regardless")
@@ -168,9 +175,15 @@ def main(argv: list[str] | None = None) -> int:
     if highlights is None and args.fmt is None:
         highlights = 8
 
+    if args.forge_url and args.forge == "github":
+        print("warning: --forge-url is ignored for --forge github (github.com "
+              "is the only GitHub host praiser supports).", file=sys.stderr)
+
     config = Config(
         username=args.username,
         forge=args.forge,
+        forge_url=args.forge_url,
+        forge_name=args.forge_name,
         token=token,
         min_stars=args.min_stars,
         fmt=args.fmt or "md",

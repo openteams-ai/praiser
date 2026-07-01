@@ -51,7 +51,9 @@ def _gh_cli_token() -> str | None:
 @dataclass
 class Config:
     username: str
-    forge: str = "github"           # "github" | "codeberg"
+    forge: str = "github"           # "github" | "codeberg" | "gitlab"
+    forge_url: str | None = None    # base URL of a self-hosted instance
+    forge_name: str | None = None   # short label for that instance
     token: str | None = None
     min_stars: int = 50
     fmt: str = "md"                 # "md" | "json"

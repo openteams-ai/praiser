@@ -21,6 +21,8 @@ class FakeExtractor:
 
 
 class _StubForge:
+    has_stars = True
+
     def rate_summary(self):
         return ""
 

@@ -106,6 +106,7 @@ class GitLabForge(Forge):
         verbose: bool = False,
     ) -> None:
         self._web = base_url.rstrip("/")
+        self.web_base = self._web  # instance web host (for record URLs)
         if name is not None:
             self.name = name
         self._http = _GitLabHttp(f"{self._web}/api/v4", token, cache)

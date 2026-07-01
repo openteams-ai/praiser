@@ -44,7 +44,7 @@ def _is_maintained(pushed_at: str | None) -> bool:
 
 def is_widely_used_and_maintained(rec: ProjectRecord, min_stars: int) -> bool:
     """A below-threshold project that still looks worth recording."""
-    used = rec.forks >= SECONDARY_MIN_FORKS or rec.stars >= max(5, min_stars // 5)
+    used = rec.forks >= SECONDARY_MIN_FORKS or rec.popularity >= max(5, min_stars // 5)
     return used and _is_maintained(rec.pushed_at)
 
 
@@ -55,7 +55,7 @@ def is_notable_authored(rec: ProjectRecord) -> bool:
     it doesn't require recent maintenance — only some minimal traction, to skip
     throwaway personal repos and personal sites.
     """
-    return rec.role == AUTHOR and (rec.stars >= 5 or rec.forks >= 3)
+    return rec.role == AUTHOR and (rec.popularity >= 5 or rec.forks >= 3)
 
 
 def enrich_stars(forge: Forge, records: list[ProjectRecord]) -> None:
@@ -99,10 +99,10 @@ def filter_records(
         high_signal = (
             rec.role in HIGH_SIGNAL_ROLES
             and rec.confidence >= 0.7
-            and rec.stars >= high_signal_floor
+            and rec.popularity >= high_signal_floor
         )
         if (rec.name_with_owner in force_primary
-                or rec.stars >= min_stars or override or high_signal):
+                or rec.popularity >= min_stars or override or high_signal):
             primary.append(rec)
         elif is_widely_used_and_maintained(rec, min_stars) or is_notable_authored(rec):
             secondary.append(rec)

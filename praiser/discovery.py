@@ -72,10 +72,13 @@ def discover(
     # fork filter, since forks inherit upstream role files (false positives).
     has_meta: set[str] = set()
 
+    web_host = getattr(forge, "web_base", None) or None
+
     def add_meta(meta: RepoMeta, source: str) -> None:
         c = candidates.get(meta.name_with_owner)
         if c is None:
-            c = Candidate(name_with_owner=meta.name_with_owner, forge=forge.name)
+            c = Candidate(name_with_owner=meta.name_with_owner,
+                          forge=forge.name, web_host=web_host)
             candidates[meta.name_with_owner] = c
         c.sources.add(source)
         c.stars = max(c.stars, meta.stars)
@@ -88,7 +91,8 @@ def discover(
     def add_name(name_with_owner: str, source: str) -> None:
         c = candidates.get(name_with_owner)
         if c is None:
-            c = Candidate(name_with_owner=name_with_owner, forge=forge.name)
+            c = Candidate(name_with_owner=name_with_owner,
+                          forge=forge.name, web_host=web_host)
             candidates[name_with_owner] = c
         c.sources.add(source)
 

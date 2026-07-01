@@ -87,6 +87,7 @@ def _metas_from_nodes(nodes: list[dict] | None) -> list[RepoMeta]:
 class GitHubForge(Forge):
     name = "github"
     WEB_HOST = "https://github.com"
+    web_base = WEB_HOST  # instance web host (constant for github.com)
 
     def __init__(
         self,

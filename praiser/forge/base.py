@@ -76,18 +76,40 @@ class ContributorCount:
 class Forge(ABC):
     """The operations praiser needs from a code-hosting platform.
 
-    Subclass this for each platform. Implement the ``@abstractmethod`` members
-    (the irreducible core); override any of the rest to light up extra signal a
-    platform supports. ``owner``/``repo`` are always the two halves of an
-    ``"owner/repo"`` slug. Methods return ``None``/empty for "not found" rather
-    than raising, except that a forge may raise its own rate-limit error to stop
-    a run (the pipeline catches it and reports partial results).
+    Subclass this for each platform. Support comes in tiers, so a host is never
+    all-or-nothing:
+
+    * **Required core** (``@abstractmethod``): ``web_url``, ``get_file``,
+      ``list_dir``, ``repository``, ``get_url`` — enough to fetch files and
+      attribute file-based roles on repos named via ``--add-repo``.
+    * **Discovery** (``resolve_user``, ``user_repositories``, orgs, history,
+      search): override to find a user's repos automatically. Hosts without a
+      user API inherit safe defaults and run ``--add-repo``-driven.
+    * **Analytics** (``repo_contributors``, ``merged_pr_count``, …): override
+      where the host exposes them cheaply; otherwise defaults mean "unknown".
+
+    ``owner``/``repo`` are the two halves of an ``"owner/repo"`` slug (``repo``
+    keeps everything after the first ``/``, so nested paths survive). Methods
+    return ``None``/empty for "not found" rather than raising, except that a
+    forge may raise its own rate-limit error to stop a run (the pipeline catches
+    it and reports partial results).
     """
 
     #: Short identifier for this platform (e.g. "github"). Stamped onto every
     #: discovered repo so its web link is built for the right host. Must match a
     #: key in ``praiser.models.FORGE_WEB_HOSTS``.
     name: str = "forge"
+
+    #: Whether this host exposes a star metric. When False (cgit, Gerrit, …),
+    #: ``RepoMeta.stars`` is meaningless and ranking/filtering fall back to forks
+    #: as the popularity signal (see ``ProjectRecord.popularity``).
+    has_stars: bool = True
+
+    #: This instance's web host (e.g. https://gitlab.gnome.org). Stamped onto
+    #: candidates so record links point at the actual instance, not a static
+    #: guess from ``name`` — essential for self-hosted instances. Set per
+    #: instance by forges that accept a ``base_url``.
+    web_base: str = ""
 
     # -- web identity -------------------------------------------------------
     @abstractmethod
@@ -147,13 +169,19 @@ class Forge(ABC):
         return out
 
     # -- people & projects (discovery) --------------------------------------
-    @abstractmethod
     def resolve_user(self, login: str) -> UserRef | None:
-        """The account's canonical login + display name, or None if unknown."""
+        """The account's canonical login + display name, or None if unknown.
 
-    @abstractmethod
+        Default: echo the login (no display name). A host with no user API can
+        rely on this and be driven by ``--add-repo`` — the display name only
+        strengthens name-based credit matching, it isn't required."""
+        return UserRef(login=login)
+
     def user_repositories(self, login: str) -> list[RepoMeta]:
-        """Repos the user owns."""
+        """Repos the user owns. Default: none — a host without user→repos
+        discovery finds candidates via ``--add-repo`` + package registries
+        instead."""
+        return []
 
     def user_contributed_repositories(self, login: str) -> list[RepoMeta]:
         """Repos the user has contributed to (not owned). Default: none."""
