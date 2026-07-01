@@ -19,9 +19,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import streamlit as st  # noqa: E402
 
 from web.core import service  # noqa: E402
+from web.core.resultcache import SizeBoundedLRU  # noqa: E402
 
 REPO_URL = "https://github.com/openteams-ai/praiser"
 _SCANNED_RE = re.compile(r"scanned (\d+)/(\d+)")
+# Per-session result cache, bounded by total size (a RunResult is tens of KB, so
+# this holds a whole session's scans; oldest evicted only when over budget).
+_CACHE_MB = 200
 
 # --- secrets -> env (server-side only; never sent to the browser) ----------
 _SECRET_KEYS = (
@@ -108,8 +112,14 @@ if submitted:
     # instead of re-scanning. A change to username or any data option rescans.
     key = (uname, *(data_opts[k] for k in service.DATA_OPTIONS))
 
-    if st.session_state.get("scan_key") == key:
-        result = st.session_state["scan_result"]  # reuse — no rescan
+    # A size-bounded LRU across ALL scans this session, so revisiting an earlier
+    # user/options is instant (not just tweaking N of the latest scan).
+    if "results" not in st.session_state:
+        st.session_state["results"] = SizeBoundedLRU(_CACHE_MB * 1024 * 1024)
+    cache = st.session_state["results"]
+
+    result = cache.get(key)
+    if result is not None:
         st.success("✅ Showing cached results — change the username, forge, or a "
                    "scan option to re-scan.")
     else:
@@ -119,8 +129,7 @@ if submitted:
             "or LLM discovery on). Changing only the view or top-N is instant."
         )
         result, elapsed = _run_scan(uname, data_opts)
-        st.session_state["scan_key"] = key
-        st.session_state["scan_result"] = result
+        cache.put(key, result)
         st.success(f"✅ Scan finished in {elapsed:.1f} seconds.")
 
     out = service.render_result(result, uname, view=view, highlights=highlights)
