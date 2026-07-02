@@ -70,6 +70,30 @@ def test_rank1_rescue_does_not_trust_non_top_contributor():
     assert ContributorsExtractor().extract(cand, ctx) == []
 
 
+def test_genuine_contribution_source_is_trusted_even_low_fork():
+    # draive/KaQuMiQ: #1 of a modest non-fork repo (few forks, <1000 stars, no
+    # affiliation) is trusted BECAUSE it was discovered via a genuine live-
+    # contribution signal (contributed/history) — copy-resistant, so no fork/
+    # star threshold needed. (#62)
+    from praiser.extractors.contributors import ContributorsExtractor
+    cand = Candidate("miquido/draive", stars=110, forks=12)  # below all thresholds
+    cand.is_fork = False
+    cand.sources = {"contributed", "history"}
+    ev = ContributorsExtractor().extract(cand, _contrib_ctx())
+    assert ev and ev[0].role == "core_contributor"
+
+
+def test_low_repo_without_genuine_source_still_rejected():
+    # Same modest, unaffiliated repo but NO genuine-contribution source (e.g.
+    # discovered by name-search only / a vendored copy) -> still gated out.
+    # Guards that #62 didn't weaken the copy-resistance (EasyFHE-style).
+    from praiser.extractors.contributors import ContributorsExtractor
+    cand = Candidate("jizhuoran/EasyFHE", stars=53, forks=1)
+    cand.is_fork = False
+    cand.sources = {"commit-search"}       # name/search, not a contribution signal
+    assert ContributorsExtractor().extract(cand, _contrib_ctx()) == []
+
+
 def test_contributor_signal_kept_on_canonical_repo():
     from praiser.extractors.contributors import ContributorsExtractor
     ev = ContributorsExtractor().extract(

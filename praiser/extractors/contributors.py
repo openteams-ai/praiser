@@ -48,14 +48,17 @@ class ContributorsExtractor(Extractor):
         # history makes the user look like a heavy committer everywhere. Trust
         # the contributor signal on the user's own/org repos or the canonical
         # (popular/widely-forked) project — OR when the user is the #1
-        # contributor to a widely-forked, non-fork repo: a vendored copy rarely
-        # has the upstream author as its top committer, so this rescues a genuine
-        # lead of a modest, unaffiliated project (e.g. a heavy contributor to
-        # someone's personal repo) without trusting small copies.
+        # contributor to a widely-forked, non-fork repo (a vendored copy rarely
+        # has the upstream author as its top committer) — OR when the repo was
+        # discovered via a genuine live-contribution signal (contributed/history):
+        # GitHub attributes a vendored copy's commits to the ORIGINAL authors, not
+        # the copier, so those sources are copy-resistant and rescue genuine leads
+        # of modest projects (e.g. a 110-star lib) without relaxing thresholds.
         trusted = ctx.trust_role_file(candidate)
-        rank_rescue = (not trusted and not candidate.is_fork
+        genuine_contrib = bool(candidate.sources & {"contributed", "history"})
+        rank_rescue = (not trusted and not genuine_contrib and not candidate.is_fork
                        and candidate.forks >= WIDELY_USED_FORKS)
-        if not trusted and not rank_rescue:
+        if not trusted and not genuine_contrib and not rank_rescue:
             return []
         contribs = ctx.contributors(candidate)
         if not contribs:
