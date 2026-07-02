@@ -176,10 +176,8 @@ def _show(result, uname):
                                 highlights=highlights, min_stars=min_stars)
     if view == "json":
         st.json(json.loads(out))
-    elif view == "markdown":
-        st.markdown(out)
     else:
-        st.text(out)
+        st.markdown(out)   # highlights (repos linked) + markdown both render here
 
 
 def _run_scan(username, data_opts, token_options, exhausted):

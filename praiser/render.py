@@ -159,11 +159,24 @@ def _human_stars(stars: int) -> str:
     return str(stars)
 
 
+def _highlight_line(rec: ProjectRecord, link_repos: bool) -> str:
+    """One highlight: `REPO (STARS★) — ROLES (#R/N)`. REPO is a markdown link
+    when link_repos; the `#R/N` contributor-standing is shown only when known."""
+    repo = f"[{rec.name_with_owner}]({rec.url})" if link_repos else rec.name_with_owner
+    standing = rec.contributor_standing
+    rn = ""
+    if standing:
+        rank, total, capped = standing
+        rn = f" (#{rank}/{total}{'+' if capped else ''})"
+    return f"- {repo} ({_human_stars(rec.stars)}★) — {_roles_label(rec)}{rn}"
+
+
 def render_highlights(
     username: str,
     records: list[ProjectRecord],
     n: int,
     secondary: list[ProjectRecord] | None = None,
+    link_repos: bool = False,
 ) -> str:
     """A compact top-N summary plus reach stats.
 
@@ -181,10 +194,7 @@ def render_highlights(
     if top:
         lines.append(f"{username} — top {len(top)} highlights:")
         for rec in top:
-            lines.append(
-                f"- {rec.name_with_owner} — {_roles_label(rec)} "
-                f"({_human_stars(rec.stars)}★)"
-            )
+            lines.append(_highlight_line(rec, link_repos))
 
     # Footer stats.
     bits = []

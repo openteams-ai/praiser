@@ -82,6 +82,10 @@ class ContributorsExtractor(Extractor):
         if count <= 0:
             return []
         rank = 1 + sum(1 for v in contribs.values() if v > count)
+        n_contributors = len(contribs)   # contributors considered
+        # We only fetch up to contributor_pages×100; if we got that many, more
+        # likely exist → the count is a lower bound (display as "N+").
+        capped = n_contributors >= max(1, ctx.contributor_pages) * 100
         if rank_rescue and rank != 1:
             return []  # widely-forked but not the top contributor -> not trusted
         manual = candidate.name_with_owner in ctx.manual_repos
@@ -110,6 +114,7 @@ class ContributorsExtractor(Extractor):
             source=self.name, role=CORE_CONTRIBUTOR,
             url=f"{candidate.url}/graphs/contributors",
             confidence=confidence, detail=detail,
+            rank=rank, n_contributors=n_contributors, contributors_capped=capped,
         )]
 
 
