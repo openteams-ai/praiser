@@ -18,9 +18,17 @@ _MISS = object()
 
 
 class Cache:
-    def __init__(self, directory: Path | str, ttl: float | None = None) -> None:
+    def __init__(
+        self,
+        directory: Path | str,
+        ttl: float | None = None,
+        refresh: bool = False,
+    ) -> None:
         self.dir = Path(directory)
-        self.ttl = ttl  # seconds; None = never expire
+        self.ttl = ttl          # seconds; None = never expire
+        # refresh=True: ignore existing entries on read (force a re-fetch) but
+        # still write, so a run repopulates the cache fresh (--refresh).
+        self.refresh = refresh
         self.dir.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
@@ -35,6 +43,8 @@ class Cache:
         return self.get(key, default=_MISS) is not _MISS
 
     def get(self, key: str, default: Any = None) -> Any:
+        if self.refresh:            # force-refresh: treat every entry as a miss
+            return default
         path = self._path(key)
         if not path.exists():
             return default
@@ -44,6 +54,7 @@ class Cache:
         except (json.JSONDecodeError, OSError):
             return default
         if self.ttl is not None and time.time() - record.get("ts", 0) > self.ttl:
+            path.unlink(missing_ok=True)   # expired -> delete (keeps the cache from growing forever)
             return default
         return record.get("value")
 

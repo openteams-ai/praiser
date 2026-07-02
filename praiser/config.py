@@ -61,6 +61,8 @@ class Config:
     fmt: str = "md"                 # "md" | "json"
     highlights: int | None = None   # if set, print only the top-N highlights
     cache_dir: Path | None = None
+    cache_ttl: float | None = 2_592_000  # cached fetches expire after 30 days by default
+    refresh: bool = False                # ignore cached fetches this run (re-fetch)
     use_llm: bool = True
     registry_path: Path | None = None   # user known-projects file (defaults below)
     save_registry: bool = True          # persist learned popularity + role sources

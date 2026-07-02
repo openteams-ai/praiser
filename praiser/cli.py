@@ -94,6 +94,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="GitHub token (or set GITHUB_TOKEN / GH_TOKEN)")
     p.add_argument("--cache-dir", default=None,
                    help="cache directory (default: ~/.cache/praiser)")
+    p.add_argument("--refresh", action="store_true",
+                   help="ignore cached fetches and re-scan fresh (repopulates "
+                        "the cache); use when a person's recent activity isn't "
+                        "showing up yet. Cached fetches otherwise expire after "
+                        "30 days.")
     p.add_argument("--registry", default=None, dest="registry_path",
                    help="known-projects JSON file, merged over the seed "
                         "(default: ~/.local/share/praiser/known_projects.json)")
@@ -219,6 +224,7 @@ def main(argv: list[str] | None = None) -> int:
         fmt=args.fmt or "md",
         highlights=highlights,
         cache_dir=args.cache_dir,
+        refresh=args.refresh,
         use_llm=not args.no_llm,
         registry_path=args.registry_path,
         save_registry=args.save_registry,
