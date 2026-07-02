@@ -12,7 +12,7 @@ import json
 from typing import Any
 
 from ..cache import Cache
-from ..github_client import GitHubClient
+from ..github_client import GitHubClient, GitHubError
 from ._http import extract_urls
 from .base import ContributorCount, DirEntry, FileHit, Forge, RepoMeta, UserRef
 
@@ -24,12 +24,15 @@ _USER_QUERY = """
 query($login:String!) { user(login:$login) { login name } }
 """
 
-# Owned repos + contributed-to repos + org memberships, in one round-trip.
+# Owned repos + contributed-to repos, in one round-trip. Org memberships are a
+# SEPARATE query (_ORGS_QUERY): reading `organizations{login}` needs the read:org
+# scope, and bundling it here made a no-scope token (e.g. an OAuth user token)
+# fail the WHOLE query — GitHub nulls all data on a scope error. Kept apart so
+# org data degrades gracefully without breaking repo discovery.
 _DISCOVERY_QUERY = f"""
 query($login:String!) {{
   user(login:$login) {{
     login name
-    organizations(first:100){{ nodes{{ login }} }}
     repositories(first:100, ownerAffiliations:[OWNER],
         orderBy:{{field:STARGAZERS, direction:DESC}}){{
       nodes{{ {_REPO_FIELDS} }}
@@ -41,6 +44,14 @@ query($login:String!) {{
     }}
   }}
 }}
+"""
+
+# Org memberships — separate so a missing read:org scope degrades to [] instead
+# of failing discovery.
+_ORGS_QUERY = """
+query($login:String!) {
+  user(login:$login) { organizations(first:100){ nodes{ login } } }
+}
 """
 
 _ORG_REPOS_QUERY = f"""
@@ -106,6 +117,7 @@ class GitHubForge(Forge):
         # DISCOVERY_QUERY answers three methods; memoise so they share one call
         # (the client also caches, but this avoids re-parsing per login).
         self._discovery: dict[str, dict] = {}
+        self._orgs: dict[str, list[str]] = {}  # separate org-memberships cache
 
     # -- web identity -------------------------------------------------------
     def web_url(self, name_with_owner: str) -> str:
@@ -206,9 +218,18 @@ class GitHubForge(Forge):
         )
 
     def user_organizations(self, login: str) -> list[str]:
-        user = self._discovery_data(login)
-        nodes = (user.get("organizations") or {}).get("nodes", []) or []
-        return [o["login"] for o in nodes if o.get("login")]
+        # Separate query + graceful []: reading org memberships needs read:org,
+        # which a no-scope token (e.g. an OAuth user token) lacks — degrade
+        # rather than fail the scan (org-repo discovery + affiliation just drop).
+        if login not in self._orgs:
+            try:
+                data = self._client.graphql(_ORGS_QUERY, {"login": login})
+                nodes = (((data or {}).get("user") or {}).get("organizations")
+                         or {}).get("nodes", []) or []
+                self._orgs[login] = [o["login"] for o in nodes if o.get("login")]
+            except GitHubError:
+                self._orgs[login] = []   # e.g. INSUFFICIENT_SCOPES
+        return self._orgs[login]
 
     def organization_repositories(self, org: str) -> list[RepoMeta]:
         data = self._client.graphql(_ORG_REPOS_QUERY, {"org": org})
