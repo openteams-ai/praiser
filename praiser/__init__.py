@@ -4,4 +4,4 @@ Elevated roles are maintainer / code owner / steering-council member /
 standards author. Plain contributors are intentionally excluded.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
