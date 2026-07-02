@@ -1,6 +1,8 @@
 # praiser
 
 [![CI](https://github.com/openteams-ai/praiser/actions/workflows/ci.yml/badge.svg)](https://github.com/openteams-ai/praiser/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/praiser.svg)](https://pypi.org/project/praiser/)
+[![Python versions](https://img.shields.io/pypi/pyversions/praiser.svg)](https://pypi.org/project/praiser/)
 
 **🌟 Try the web demo: <https://praiser.streamlit.app/>**
 
