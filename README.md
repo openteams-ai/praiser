@@ -80,14 +80,23 @@ count.
 
 ```
 pearu — top 8 highlights:
-- pytorch/pytorch — Maintainer (101k★, conf 0.90)
-- numpy/numpy — Maintainer (32k★, conf 0.90)
-- scipy/scipy — Maintainer (15k★, conf 0.90)
-- heavyai/heavydb — Core contributor (3k★, conf 0.80)
-…
-…plus N more elevated-role project(s); M smaller but widely-used project(s) with a notable role.
-Reach: T project(s) across C communities (distinct orgs).
+- pytorch/pytorch (101k★) — Core contributor, Code owner, Maintainer (#88/200+)
+- numpy/numpy (32k★) — Author (f2py), Core contributor, Maintainer (#8/200+)
+- scipy/scipy (15k★) — Core contributor, Maintainer (#14/200+)
+- heavyai/heavydb (3k★) — Core contributor (#19/80)
+- pearu/pylibtiff (140★) — Author, Core contributor (#2/24)
+- pearu/f2py (57★) — Author, Core contributor (#1/5)
+- pytorch/audio (3k★) — Core contributor (#9/200+)
+- conda-forge/staged-recipes (834★) — Core contributor (#192/200+)
+…plus 1 more elevated-role project(s); 10 smaller but widely-used project(s) with a notable role.
+Reach: 19 project(s) across 5 communities (distinct orgs).
 ```
+
+Each line reads `REPO (STARS★) — ROLES`. When the role rests on ranked
+contribution, a `(#R/N)` suffix gives the user's rank `R` among the project's
+`N` contributors (e.g. `#2/24`); `N+` marks a contributor list that hit the
+scan's page cap. Roles scoped to one part of a project are qualified, e.g.
+`Author (f2py)`. The suffix is omitted when that standing isn't known.
 
 The footer summarises breadth beyond the top roles: the smaller-but-widely-used
 projects where the user also holds a notable role, and the **community reach**
