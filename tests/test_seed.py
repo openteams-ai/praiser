@@ -7,12 +7,30 @@ from praiser.seed import seed_org
 from web.seed import parse_seed_target
 
 
-def test_parse_seed_target_forge_and_org():
-    assert parse_seed_target("github/numpy") == ("github", "numpy")
-    assert parse_seed_target("numpy") == ("github", "numpy")       # default forge
-    assert parse_seed_target("gitlab/foo") == ("gitlab", "foo")
-    assert parse_seed_target("/numpy/") == ("github", "numpy")     # stray slashes
-    assert parse_seed_target("", "gitea") == ("gitea", "")
+def test_parse_seed_target_org_repo_and_forge():
+    # bare / forge-prefixed org
+    assert parse_seed_target("numpy") == ("github", "org", "numpy")
+    assert parse_seed_target("github/numpy") == ("github", "org", "numpy")
+    assert parse_seed_target("gitlab/foo") == ("gitlab", "org", "foo")
+    # single repo: forge/owner/repo, or bare owner/repo (leading seg not a forge)
+    assert parse_seed_target("github/pytorch/pytorch") == ("github", "repo", "pytorch/pytorch")
+    assert parse_seed_target("pytorch/pytorch") == ("github", "repo", "pytorch/pytorch")
+    # stray slashes / empty
+    assert parse_seed_target("/numpy/") == ("github", "org", "numpy")
+    assert parse_seed_target("", "gitea") == ("gitea", "org", "")
+
+
+def test_seed_one_repo_indexes_just_that_repo(tmp_path):
+    from praiser.seed import seed_one
+    cache = Cache(tmp_path)
+    idx = ContributorIndex(cache)
+    f = FakeForge()
+    res = seed_one("acme/big", forge=f, index=idx, cache=cache)
+    assert res["seeded"] == 1 and res["contributors_indexed"] == 2
+    assert f.fetches == ["acme/big"]                       # only that repo
+    assert set(idx.repos_for("jek")) == {"acme/big"}
+    # re-seed within TTL is skipped
+    assert seed_one("acme/big", forge=f, index=idx, cache=cache)["seeded"] == 0
 
 
 class FakeForge:

@@ -217,42 +217,42 @@ if active is not None:
     else:
         _show(result, uname)
 
-# --- Seed the shared reverse-index from an org (#65) --------------------------
-# Enabled by a deployment flag (SEED_ENABLED in the app's secrets — set ONCE by
-# the deployer; not a secret the triggering user enters). When enabled, a
-# knowledgeable user just opens the URL `?seed=<org>` and clicks Seed — no login,
-# no secret. Seeding an org's repos into the shared reverse-index lets the app
-# discover that org's (even hidden) contributors on later scans.
-#
-# Streamlit has no path routing, so `/seed/github/numpy` isn't possible; the
-# query param `?seed=numpy` is the equivalent (GitHub-only — the index is too).
-# Safe to leave to knowledgeable users: seeding is bounded (a repo budget),
-# idempotent (already-seeded repos are skipped for 30 days), additive (it can
-# only improve recall, never corrupt data), and spends the deployment's own bot
-# quota (with a low-quota guard), not the user's.
-if "SEED_ENABLED" in st.secrets:
+# --- Seed the shared reverse-index (#65) --------------------------------------
+# Shown ONLY when the URL has `?seed` AND the deployer opted in (SEED_ENABLED in
+# secrets — one-time deployer config, not a secret the triggering user enters).
+# So normal users never see it; a knowledgeable user opens `?seed=github/numpy`
+# (org) or `?seed=github/pytorch/pytorch` (single repo) and clicks Seed — no
+# login, no secret. (Streamlit has no path routing, so the query param is the
+# `/seed/...` equivalent.) Seeding is bounded, idempotent (30-day per-repo
+# markers), additive, and spends the deployment's bot quota, not the user's.
+if "SEED_ENABLED" in st.secrets and "seed" in st.query_params:
     from web import seed as webseed
-    # `?seed=github/numpy` (forge/org) or `?seed=numpy` (defaults github).
-    _qp_forge, _qp_org = webseed.parse_seed_target(st.query_params.get("seed", ""))
-    if _qp_org and "seed_org" not in st.session_state:
-        st.session_state["seed_org"] = _qp_org            # pre-fill from the URL
-    with st.expander("🌱 Seed reverse-index from an org (advanced)",
-                     expanded=bool(_qp_org)):
+    _forge, _kind, _name = webseed.parse_seed_target(st.query_params.get("seed", ""))
+    if _name and "seed_name" not in st.session_state:
+        st.session_state["seed_name"] = _name             # pre-fill from the URL
+    with st.expander("🌱 Seed reverse-index", expanded=True):
         a_forge = st.selectbox("Forge", service.FORGES,
-                               index=service.FORGES.index(_qp_forge)
-                               if _qp_forge in service.FORGES else 0,
+                               index=service.FORGES.index(_forge)
+                               if _forge in service.FORGES else 0,
                                key="seed_forge",
                                help="Only GitHub is functional today.")
-        a_org = st.text_input("Organization", placeholder="numpy", key="seed_org")
-        a_budget = st.number_input("Repos to seed (budget)", 1, 200, 30, key="seed_budget")
-        if st.button("Seed org", key="seed_go"):
-            if not a_org.strip():
-                st.warning("Enter an organization.")
+        a_kind = st.radio("Seed", ["org", "repo"],
+                          index=0 if _kind == "org" else 1,
+                          horizontal=True, key="seed_kind",
+                          help="An org's repos, or a single owner/repo.")
+        a_name = st.text_input(
+            "Org or owner/repo", key="seed_name",
+            placeholder="numpy" if a_kind == "org" else "pytorch/pytorch")
+        a_budget = st.number_input("Repos to seed (budget, org only)",
+                                   1, 200, 30, key="seed_budget")
+        if st.button("Seed", key="seed_go"):
+            if not a_name.strip():
+                st.warning("Enter an org or owner/repo.")
             else:
-                with st.spinner(f"Seeding {a_forge}/{a_org} "
-                                f"(bounded to {int(a_budget)} repos)…"):
+                with st.spinner(f"Seeding {a_forge}/{a_name}…"):
                     try:
-                        res = webseed.run_seed(a_org.strip(), a_forge, int(a_budget))
+                        res = webseed.run_seed(a_name.strip(), a_forge,
+                                               int(a_budget), a_kind)
                     except Exception as exc:
                         st.error(f"Seed failed: {exc}")
                         res = None
