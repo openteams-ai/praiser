@@ -46,6 +46,67 @@ for _k in _SECRET_KEYS:
         os.environ[_k] = str(st.secrets[_k])
 
 
+def _fetch_login(token: str) -> str | None:
+    """The signed-in user's GitHub login (works with any user token; login is
+    public). Best-effort — greeting only."""
+    try:
+        import httpx
+        r = httpx.get("https://api.github.com/user", timeout=10,
+                      headers={"Authorization": f"Bearer {token}",
+                               "Accept": "application/vnd.github+json"})
+        if r.status_code == 200:
+            return r.json().get("login")
+    except Exception:
+        pass
+    return None
+
+
+def github_account():
+    """(login, token) for the signed-in GitHub user, or (None, None), rendering a
+    sign-in/out control in the sidebar. Dormant unless the OAuth app is configured
+    (GITHUB_OAUTH_CLIENT_ID/SECRET in the deployment's secrets). The token is
+    session-only — never logged, cached, or written anywhere."""
+    if "GITHUB_OAUTH_CLIENT_ID" not in st.secrets or \
+       "GITHUB_OAUTH_CLIENT_SECRET" not in st.secrets:
+        return None, None
+    with st.sidebar:
+        st.markdown("### GitHub account")
+        tok = st.session_state.get("gh_user_token")
+        if tok:
+            login = st.session_state.get("gh_user_login")
+            st.success(f"Signed in as @{login}" if login else "Signed in")
+            st.caption("Scans use your GitHub rate limit first, so you're not "
+                       "blocked when the shared demo limit is hit.")
+            if st.button("Sign out"):
+                st.session_state.pop("gh_user_token", None)
+                st.session_state.pop("gh_user_login", None)
+                st.rerun()
+            return login, tok
+        st.caption("Sign in with GitHub to scan on your own rate limit (public, "
+                   "read-only) — handy when the shared demo limit is reached.")
+        try:
+            from streamlit_oauth import OAuth2Component
+        except Exception:
+            st.caption("_(sign-in unavailable: streamlit-oauth not installed)_")
+            return None, None
+        redirect = (st.secrets["GITHUB_OAUTH_REDIRECT_URI"]
+                    if "GITHUB_OAUTH_REDIRECT_URI" in st.secrets
+                    else "https://praiser.streamlit.app/")
+        oauth = OAuth2Component(
+            st.secrets["GITHUB_OAUTH_CLIENT_ID"],
+            st.secrets["GITHUB_OAUTH_CLIENT_SECRET"],
+            "https://github.com/login/oauth/authorize",
+            "https://github.com/login/oauth/access_token")
+        result = oauth.authorize_button("Sign in with GitHub", redirect,
+                                        scope="", key="gh_oauth")
+        if result and "token" in result:
+            t = result["token"]["access_token"]
+            st.session_state["gh_user_token"] = t
+            st.session_state["gh_user_login"] = _fetch_login(t)
+            st.rerun()
+    return None, None
+
+
 st.set_page_config(page_title="praiser", page_icon="🌟")
 st.title("🌟 praiser")
 st.caption("The open-source projects where a person holds an elevated role — "
@@ -54,6 +115,8 @@ st.caption("The open-source projects where a person holds an elevated role — "
            "and cgit hosts.")
 st.caption(f"ℹ️ More information: [{REPO_URL.split('//', 1)[1]}]({REPO_URL}) · "
            f"praiser v{PRAISER_VERSION}")
+
+USER_LOGIN, USER_TOKEN = github_account()   # signed-in GitHub user (or None, None)
 
 # Forges usable from just a username (cgit needs an instance URL + --add-repo,
 # which this demo doesn't expose; the core library still supports it via CLI).
@@ -116,17 +179,24 @@ def _show(result, uname):
         st.text(out)
 
 
-def _run_scan(username, data_opts):
-    """Scan in a worker thread while the main thread shows a live progress bar.
-    Returns (RunResult, elapsed_seconds). The worker never touches st.*."""
-    state = {"msg": "starting…", "result": None, "error": None, "done": False}
+def _run_scan(username, data_opts, token_options, exhausted):
+    """Scan in a worker thread (live progress bar on the main thread), trying the
+    token options in order and falling back on rate limits (signed-in user's
+    quota first, shared bot behind it). Returns (result, elapsed, label): result
+    may be complete, partial (with .partial_reset_in), or None (all limited).
+    The worker never touches st.* — it only mutates the plain `state`/`exhausted`."""
+    state = {"msg": "starting…", "result": None, "label": None,
+             "reset": None, "error": None, "done": False}
 
     def _work():
+        def _collect(u, token=None, **k):
+            return service.collect(u, token=token,
+                                   progress=lambda m: state.update(msg=m), **k)
         try:
-            state["result"] = service.collect(
-                username, progress=lambda m: state.update(msg=m), **data_opts)
-        except RateLimitError as exc:  # rate limit before/at discovery
-            state["rate_limited"] = humanize_wait(exc.reset_in)
+            result, label, reset = service.scan_with_fallback(
+                username, token_options, data_opts=data_opts,
+                exhausted=exhausted, now=time.time(), collect_fn=_collect)
+            state.update(result=result, label=label, reset=reset)
         except Exception as exc:  # surface a message, never a traceback
             state["error"] = str(exc)
         finally:
@@ -144,20 +214,22 @@ def _run_scan(username, data_opts):
     worker.join()
     bar.empty()
     status.empty()
-    if state.get("rate_limited"):
-        st.warning(
-            f"⏳ The forge's API rate limit was reached (shared across all users "
-            f"of this demo). Please try again in {state['rate_limited']}.\n\n"
-            f"Tip: run praiser locally with your own token to get an independent "
-            f"rate limit — `pip install praiser`, then `praiser <username>` "
-            f"(with `GITHUB_TOKEN` set or after `gh auth login`). "
-            f"See {REPO_URL}."
-        )
-        st.stop()
     if state["error"]:
         st.error(f"Failed: {state['error']}")
         st.stop()
-    return state["result"], time.time() - started
+    if state["result"] is None:      # every token rate-limited, nothing usable
+        reset = state["reset"]
+        wait = humanize_wait(int(reset - time.time())) if reset else "a while"
+        msg = (f"⏳ The GitHub API rate limit was reached on all available tokens. "
+               f"Please try again in {wait}.")
+        if not USER_TOKEN:
+            msg += ("\n\n**Sign in with GitHub** (sidebar) to scan on your own "
+                    "rate limit — independent of other demo users.")
+        msg += (f"\n\nOr run praiser locally: `pip install praiser`, then "
+                f"`praiser {username}`. See {REPO_URL}.")
+        st.warning(msg)
+        st.stop()
+    return state["result"], time.time() - started, state["label"]
 
 
 # Size-bounded LRU across ALL scans this session, so revisiting an earlier
@@ -191,21 +263,34 @@ if submitted:
             "queries the forge across many repositories (longer with cross-forge "
             "or LLM discovery on). Changing the view, top-N or min-stars is instant."
         )
-        result, elapsed = _run_scan(uname, data_opts)
+        # Token options: a signed-in user's own quota first, the shared bot token
+        # behind it (GitHub only — the OAuth token is a GitHub token). Other forges
+        # use their configured env token via collect(). The exhausted map persists
+        # in the session so a rate-limited token is skipped until it resets.
+        exhausted = st.session_state.setdefault("tok_exhausted", {})
+        if forge == "github":
+            bot = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+            token_options = ([("your GitHub account", USER_TOKEN)] if USER_TOKEN else [])
+            token_options += ([("the shared demo token", bot)] if bot else [])
+            token_options = token_options or [("anonymous (60/hr)", None)]
+        else:
+            token_options = [(forge, None)]     # forge's own env token, no fallback
+        result, elapsed, label = _run_scan(uname, data_opts, token_options, exhausted)
         if result.partial_reset_in is not None:
-            # Rate limit hit mid-scan → results are incomplete. Don't cache them
-            # (so a retry re-scans); show them with a clear warning + wait time.
+            # Every token hit its limit mid-scan → incomplete. Don't cache it;
+            # show what we have with a clear warning + wait time.
             st.warning(
-                "⚠️ Partial results — the forge's API rate limit was reached "
-                "mid-scan, so some projects may be missing. Re-scan in "
-                f"{humanize_wait(result.partial_reset_in)} for the full record, "
-                f"or run praiser locally with your own token for an independent "
-                f"limit (`pip install praiser`; see {REPO_URL})."
+                "⚠️ Partial results — the API rate limit was reached mid-scan on "
+                "all available tokens, so some projects may be missing. Re-scan in "
+                f"{humanize_wait(result.partial_reset_in)} for the full record"
+                + ("" if USER_TOKEN else " (or sign in with GitHub for your own limit)")
+                + f". Or run praiser locally (`pip install praiser`; see {REPO_URL})."
             )
             _show(result, uname)
             st.stop()
         cache.put(key, result)
-        st.success(f"✅ Scan finished in {elapsed:.1f} seconds.")
+        _via = f" (via {label})" if label and USER_TOKEN else ""
+        st.success(f"✅ Scan finished in {elapsed:.1f} seconds{_via}.")
         # Reflect this scan in the recent-picker immediately (shared index is
         # updated inside service.collect()).
         entry = {"forge": forge, "username": uname}

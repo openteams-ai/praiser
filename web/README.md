@@ -47,10 +47,26 @@ A web frontend for [praiser](../). Layered so the frontend is swappable:
    # PRAISER_RESULT_TTL = "2592000"   # optional; result cache TTL in seconds
    #                                  # (default 30 days). A result persists in
    #                                  # Redis across app reboots until it expires.
+
+   # "Sign in with GitHub" (optional but recommended for a public demo): lets
+   # visitors scan on their OWN GitHub rate limit, so the shared bot limit is
+   # rarely hit — and each such scan warms the shared cache for everyone.
+   # GITHUB_OAUTH_CLIENT_ID = "Iv1.…"
+   # GITHUB_OAUTH_CLIENT_SECRET = "…"
+   # GITHUB_OAUTH_REDIRECT_URI = "https://praiser.streamlit.app/"  # = the app URL
    ```
 
    Without the Upstash secrets it falls back to a local cache (works, but
    Streamlit Cloud's disk is ephemeral, so it's lost on restart and not shared).
+
+   **Sign in with GitHub (OAuth) setup:** register a GitHub **OAuth App**
+   (Settings → Developer settings → OAuth Apps → New) with Homepage and
+   **Authorization callback URL both set to the app's URL** (Streamlit is a
+   single page, so the `?code=` returns to the same URL). Copy the Client ID,
+   generate a Client Secret, and set the three `GITHUB_OAUTH_*` secrets above.
+   The sign-in control then appears in the sidebar; the user's token is
+   **session-only** (never logged/cached) and scans use their own quota first,
+   falling back to the shared bot token when hit.
 
 ## Notes
 
