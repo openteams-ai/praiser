@@ -164,7 +164,9 @@ def run(config: Config, cache=None, progress_cb=None) -> RunResult:
     # reused across processes/hosts. Defaults to the local file cache.
     # ``progress_cb(msg)`` receives each phase/status line (e.g. for a web UI),
     # independent of the terminal display.
-    cache = cache if cache is not None else Cache(config.cache_dir)
+    cache = cache if cache is not None else Cache(
+        config.cache_dir, ttl=config.cache_ttl, refresh=config.refresh
+    )
     registry = KnownProjects.load(config.registry_path)
     llm = LLM.maybe(cache, enabled=config.use_llm)
     _log(config, f"LLM fallback {'enabled' if llm else 'disabled'}")
