@@ -1,21 +1,21 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]   # SPDX license expression + license-files (PEP 639)
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "praiser"
-version = "0.1.0"
+dynamic = ["version"]            # single-sourced from praiser.__version__
 description = "Record the popular open-source projects where a person holds an elevated role (author, maintainer, steering council, standards author, core contributor), with evidence."
 readme = "README.md"
 requires-python = ">=3.11"   # needs stdlib tomllib (3.11+); no 3.12+ features used
-license = { text = "BSD-3-Clause" }
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
 authors = [
     { name = "Pearu Peterson", email = "pearu.peterson@gmail.com" },
 ]
 # Created by Pearu Peterson with assistance from Claude (Anthropic).
 keywords = ["open-source", "maintainer", "contributions", "github", "roles"]
 classifiers = [
-    "License :: OSI Approved :: BSD License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -25,6 +25,11 @@ classifiers = [
 ]
 dependencies = []   # core runs on the stdlib; tomllib is built in on 3.11+
 
+[project.urls]
+Homepage = "https://github.com/openteams-ai/praiser"
+Repository = "https://github.com/openteams-ai/praiser"
+Issues = "https://github.com/openteams-ai/praiser/issues"
+
 [project.optional-dependencies]
 http = ["httpx>=0.27"]       # faster, connection-pooled HTTP client (falls back to urllib)
 llm = ["anthropic>=0.40"]    # Claude fallback for ambiguous governance prose
@@ -33,6 +38,9 @@ dev = ["pytest>=7"]
 
 [project.scripts]
 praiser = "praiser.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "praiser.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["praiser*"]

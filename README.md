@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/openteams-ai/praiser/actions/workflows/ci.yml/badge.svg)](https://github.com/openteams-ai/praiser/actions/workflows/ci.yml)
 
+**🌟 Try the web demo: <https://praiser.streamlit.app/>**
+
 Given a username, **praiser** records the popular open-source projects where
 that person holds an **elevated role** — author/creator, maintainer, code owner,
 steering-council member, standards (PEP/RFC) author, or core contributor — with
@@ -41,8 +43,20 @@ FORGE:LOGIN` adds an identity explicitly when you'd rather not rely on links.
 ## Install
 
 ```bash
-pip install -e .            # core (stdlib only)
-pip install -e '.[http,llm,yaml,dev]'   # httpx + Claude fallback + YAML + tests
+pip install praiser                 # core (stdlib only)
+pip install 'praiser[http]'         # + httpx (faster, pooled HTTP; recommended)
+pip install 'praiser[http,llm,yaml]'  # + Claude fallback + YAML role files
+```
+
+The core has **no dependencies** (it runs on the stdlib), so `pip install praiser`
+is enough to get the `praiser` command. The extras add: `http` (httpx, falls back
+to urllib), `llm` (Claude fallback for ambiguous governance prose), `yaml`
+(Kubernetes `OWNERS` / YAML-front-matter proposals).
+
+From a checkout, for development:
+
+```bash
+pip install -e '.[http,llm,yaml,dev]'   # editable + all extras + tests
 ```
 
 Requires Python 3.11+ (for the stdlib `tomllib`).
@@ -157,6 +171,21 @@ redirected, with `-q`, or in `-v` mode (which prints detailed logs instead).
 JSON is the source of truth; Markdown is a human-readable view. Every claim
 carries an **evidence link** (file/page URL) and a **confidence** score.
 
+## Web demo
+
+A [Streamlit](https://streamlit.io) web UI wraps the same engine: type a
+username, pick a forge, and get the ranked record with evidence links — with
+instant **view / top-N / min-stars** controls, a live progress bar, and a
+"recent scans" picker. Collected results are shared across sessions via a
+durable cache, so repeat lookups are fast.
+
+- **Hosted demo:** <https://praiser.streamlit.app/>
+- **Run locally or deploy your own:** see [`web/README.md`](web/README.md).
+
+The web layer is split into a framework-agnostic core (`web/core` — a
+`praise()` service + cache) and the Streamlit frontend (`web/streamlit`), so a
+different frontend (FastAPI, Gradio, …) can reuse the core unchanged.
+
 ## How it works
 
 1. **Identity resolution** — assemble `{logins, names, emails}` from the
@@ -269,6 +298,21 @@ pytest            # offline parser tests, no network
 Each extractor keeps its parsing logic in a pure function (e.g.
 `parse_codeowners`, `parse_proposal_header`, `parse_owners_yaml`) so tests run
 fully offline.
+
+### Releasing to PyPI
+
+The version is single-sourced from `praiser.__version__`. To cut a release:
+
+1. Bump `__version__` in `praiser/__init__.py`; commit.
+2. Create a **GitHub Release** with tag `vX.Y.Z` (matching the version).
+3. The `publish.yml` workflow builds the sdist + wheel and uploads them to PyPI
+   via **Trusted Publishing** (OIDC — no API token stored).
+
+**One-time PyPI setup** (before the first release): on PyPI, add a *trusted
+publisher* for the project — owner `openteams-ai`, repo `praiser`, workflow
+`publish.yml`, environment `pypi`. (For the very first upload you can instead
+`python -m build && twine upload dist/*` with a PyPI token, then switch to
+trusted publishing.)
 
 ## Author & license
 
