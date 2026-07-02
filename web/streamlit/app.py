@@ -18,10 +18,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import streamlit as st  # noqa: E402
 
+import praiser  # noqa: E402
 from praiser.github_client import RateLimitError  # noqa: E402
 from praiser.pipeline import humanize_wait  # noqa: E402
 from web.core import service  # noqa: E402
 from web.core.resultcache import SizeBoundedLRU  # noqa: E402
+
+# The version the app actually RUNS: the imported module's __version__ (the repo
+# checkout on Streamlit Cloud), not importlib.metadata (which reflects a possibly
+# different/absent installed distribution).
+PRAISER_VERSION = getattr(praiser, "__version__", "dev")
 
 REPO_URL = "https://github.com/openteams-ai/praiser"
 _SCANNED_RE = re.compile(r"scanned (\d+)/(\d+)")
@@ -46,7 +52,8 @@ st.caption("The open-source projects where a person holds an elevated role — "
            "author, maintainer, steering council, standards author — with "
            "evidence links, across GitHub, GitLab, Codeberg, Gitee, Bitbucket "
            "and cgit hosts.")
-st.caption(f"ℹ️ More information: [{REPO_URL.split('//', 1)[1]}]({REPO_URL})")
+st.caption(f"ℹ️ More information: [{REPO_URL.split('//', 1)[1]}]({REPO_URL}) · "
+           f"praiser v{PRAISER_VERSION}")
 
 # Forges usable from just a username (cgit needs an instance URL + --add-repo,
 # which this demo doesn't expose; the core library still supports it via CLI).
@@ -93,7 +100,7 @@ with st.form("q"):
 # (min_stars is a display filter — the scan collects the full superset.)
 d1, d2, d3 = st.columns(3)
 view = d1.selectbox("View", service.VIEWS, index=0)
-highlights = d2.slider("Highlights (top N)", 3, 20, 8)
+highlights = d2.slider("Highlights (top N)", 3, 100, 8)
 min_stars = d3.slider("Min stars", 0, 1000, 50, step=10)
 
 
