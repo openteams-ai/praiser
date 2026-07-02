@@ -65,6 +65,7 @@ def discover(
     include_private: bool = False,
     extra_repos: list[str] | None = None,
     package_refs: list[PackageRef] | None = None,
+    index_repos: list[str] | None = None,
 ) -> list[Candidate]:
     candidates: dict[str, Candidate] = {}
     # Names whose fork/star metadata is authoritative (came from the forge with
@@ -134,6 +135,14 @@ def discover(
     for ref in package_refs or []:
         if ref.repo:
             add_name(ref.repo, f"pkg:{ref.registry}")
+
+    # Repos where the contributor reverse-index (#59) recorded this user as a
+    # substantial contributor — recovers direct committers with no person-side
+    # signal (e.g. old contributions). NOT trusted like "manual": they pass the
+    # normal fork filter and attribution gate.
+    for repo in index_repos or []:
+        if "/" in repo:
+            add_name(repo, "reverse-index")
 
     # User-supplied repos the tool didn't find on its own.
     for repo in extra_repos or []:
