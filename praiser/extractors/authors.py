@@ -11,6 +11,7 @@ import re
 from ..models import CORE_CONTRIBUTOR, Evidence
 from . import register
 from .base import Extractor, ExtractContext
+from .contributors import MIN_RANKED_CONTRIBUTIONS
 
 AUTHORS_PATHS = [
     "AUTHORS", "AUTHORS.txt", "AUTHORS.rst", "AUTHORS.md",
@@ -69,6 +70,11 @@ class AuthorsExtractor(Extractor):
         files = ctx.forge.get_files(
             candidate.owner, candidate.repo, AUTHORS_PATHS
         )
+        # The user's real contribution to this repo, used to corroborate a bare
+        # listing (see below). Cached — the contributors extractor fetches it too.
+        contribs = ctx.contributors(candidate) or {}
+        commit_count = max((contribs.get(h, 0) for h in ctx.identity.logins),
+                           default=0)
         for path in AUTHORS_PATHS:
             text = files.get(path)
             if text is None:
@@ -83,14 +89,23 @@ class AuthorsExtractor(Extractor):
                 return []
             url = f"{candidate.url}/blob/HEAD/{path}"
             snippet = (line[:60] + "…") if len(line) > 60 else line
-            out = [Evidence(
-                source=self.name, role=CORE_CONTRIBUTOR, url=url,
-                confidence=0.7 if strong else 0.5,
-                detail=f"credited in {path}: “{snippet}”",
-            )]
-            # If the credit names a known subcomponent ("… for f2py …"), that's
-            # an authorship attribution of that part — grant its configured role,
-            # qualified. This is the genuine authorship signal (issue #48).
+            out: list[Evidence] = []
+            # A BARE listing is corroboration, not proof: AUTHORS/CONTRIBUTORS
+            # files are frequently exhaustive all-contributors lists (a single
+            # merged PR gets you added), so being listed there isn't an elevated
+            # role on its own. Emit it only when backed by a real contribution —
+            # in which case the contributors extractor also fires and this raises
+            # confidence. Otherwise skip it (kills the "one PR → listed → core"
+            # false positive).
+            if commit_count >= MIN_RANKED_CONTRIBUTIONS:
+                out.append(Evidence(
+                    source=self.name, role=CORE_CONTRIBUTOR, url=url,
+                    confidence=0.7 if strong else 0.5,
+                    detail=f"credited in {path}: “{snippet}”",
+                ))
+            # A credit that NAMES a known subcomponent ("… for f2py …") is a
+            # specific authorship attribution — a genuine standalone signal
+            # (issues #48/#49), kept regardless of commit volume.
             known = ctx.known(candidate.name_with_owner)
             if known:
                 for role, label in subcomponent_credits(line, known.subcomponents):

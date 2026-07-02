@@ -65,7 +65,7 @@ def _token_for(forge: str) -> str | None:
 # subcomponents-are-contribution fix (#47) + credit-based authorship (#48);
 # bumped to 3 for the discovery/attribution false-negative fixes (#57 #58 #59
 # #62 #63) so the web app recomputes with the improved recall.
-CACHE_VERSION = 3
+CACHE_VERSION = 4
 
 # A small index of recently-scanned (forge, login) pairs — the cache keys are
 # hashed and can't be enumerated, so we track names separately for a UI picker.
