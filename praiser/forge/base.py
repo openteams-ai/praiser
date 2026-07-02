@@ -38,6 +38,7 @@ class RepoMeta:
     is_fork: bool = False
     is_private: bool = False
     pushed_at: str | None = None  # ISO-8601 of last push (maintenance signal)
+    parent: str | None = None     # if a fork, the canonical upstream "owner/repo"
 
 
 @dataclass

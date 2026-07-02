@@ -99,6 +99,13 @@ def discover(
     login = identity.primary_login
     for meta in forge.user_repositories(login):
         add_meta(meta, "owned")
+        # A personal fork of a canonical repo is the bridge to a project whose
+        # (often old/graph-invisible) contributions no person-side signal
+        # surfaces — add its upstream parent as a candidate (#58). The fork
+        # itself is dropped by the fork filter; attribution still gates whether
+        # the parent earns a role, so a no-real-contribution fork adds nothing.
+        if meta.is_fork and meta.parent:
+            add_name(meta.parent, "fork-parent")
     for meta in forge.user_contributed_repositories(login):
         add_meta(meta, "contributed")
     if include_org_repos:
