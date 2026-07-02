@@ -62,8 +62,10 @@ def _token_for(forge: str) -> str | None:
 # ranking, discovery) so previously-cached results — computed by the old logic —
 # are abandoned and recomputed. Folded into the result-cache key: one bump
 # refreshes every user (old entries just TTL out). e.g. bumped for the
-# subcomponents-are-contribution fix (#47) + credit-based authorship (#48).
-CACHE_VERSION = 2
+# subcomponents-are-contribution fix (#47) + credit-based authorship (#48);
+# bumped to 3 for the discovery/attribution false-negative fixes (#57 #58 #59
+# #62 #63) so the web app recomputes with the improved recall.
+CACHE_VERSION = 3
 
 # A small index of recently-scanned (forge, login) pairs — the cache keys are
 # hashed and can't be enumerated, so we track names separately for a UI picker.
@@ -166,6 +168,11 @@ def collect(
         config,
         cache=http_cache if http_cache is not None else local_cache(),
         progress_cb=progress,
+        # The reverse-index (#59) rides the SHARED cache (rcache = Redis), not the
+        # ephemeral local http cache — so it persists across reboots and is
+        # collaborative across sessions, and so the org seeder (which writes to
+        # the same shared cache) is effective for the web app (#65).
+        index_cache=rcache,
     )
     # Only cache COMPLETE scans — a partial result (rate limit hit mid-scan)
     # must not be frozen for the cache TTL; let a later retry get the full data.

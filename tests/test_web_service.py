@@ -41,7 +41,7 @@ def test_collect_serves_from_result_cache_without_scanning(monkeypatch, tmp_path
     # to pipeline.run (i.e. zero praiser HTTP work, ~1 shared-cache read).
     calls = {"run": 0}
 
-    def _fake_run(config, cache=None, progress_cb=None):
+    def _fake_run(config, cache=None, progress_cb=None, index_cache=None):
         calls["run"] += 1
         return RunResult(records=[_rec("a/b", 100)], secondary=[])
 
@@ -61,7 +61,7 @@ def test_partial_results_are_not_cached(monkeypatch, tmp_path):
     # for the full record, not keep serving the incomplete one.
     runs = {"n": 0}
 
-    def _partial_run(config, cache=None, progress_cb=None):
+    def _partial_run(config, cache=None, progress_cb=None, index_cache=None):
         runs["n"] += 1
         return RunResult(records=[_rec("a/b", 100)], secondary=[],
                          partial_reset_in=1800)  # rate-limited mid-scan
@@ -84,7 +84,7 @@ def test_cache_version_bump_invalidates_stored_results(monkeypatch, tmp_path):
     # extraction-logic change doesn't keep serving stale scans.
     runs = {"n": 0}
 
-    def _fake_run(config, cache=None, progress_cb=None):
+    def _fake_run(config, cache=None, progress_cb=None, index_cache=None):
         runs["n"] += 1
         return RunResult(records=[_rec("a/b", 100)], secondary=[])
 
@@ -102,7 +102,7 @@ def test_recent_scans_records_on_scan_most_recent_first(monkeypatch, tmp_path):
     # scanned names. Recorded on an actual scan (a cache HIT is not re-recorded,
     # to avoid extra shared-cache commands per view).
     monkeypatch.setattr(service, "run",
-                        lambda config, cache=None, progress_cb=None:
+                        lambda config, cache=None, progress_cb=None, index_cache=None:
                         RunResult(records=[_rec("a/b", 100)], secondary=[]))
     rc, hc = Cache(tmp_path), Cache(tmp_path / "h")
     service.collect("alice", forge="github", result_cache=rc, http_cache=hc)
