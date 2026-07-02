@@ -189,14 +189,12 @@ def render_highlights(
     if not records and not secondary:
         return f"{username}: no elevated roles found."
 
-    lines: list[str] = []
     top = records[:max(1, n)] if records else []
-    if top:
-        lines.append(f"{username} — top {len(top)} highlights:")
-        for rec in top:
-            lines.append(_highlight_line(rec, link_repos))
+    header = f"{username} — top {len(top)} highlights:" if top else None
+    items = [_highlight_line(rec, link_repos) for rec in top]
 
     # Footer stats.
+    footer: list[str] = []
     bits = []
     extra = len(records) - len(top)
     if extra > 0:
@@ -206,16 +204,24 @@ def render_highlights(
             f"{len(secondary)} smaller but widely-used project(s) "
             "with a notable role")
     if bits:
-        lines.append("…plus " + "; ".join(bits) + ".")
-
+        footer.append("…plus " + "; ".join(bits) + ".")
     owners = {r.name_with_owner.split("/", 1)[0]
               for r in (*records, *secondary)}
     communities = {o for o in owners if o.lower() != username.lower()}
     total = len(records) + len(secondary)
-    lines.append(
+    footer.append(
         f"Reach: {total} project(s) across {len(communities)} "
         "communities (distinct orgs).")
-    return "\n".join(lines)
+
+    if link_repos:
+        # Markdown (web): separate the header, the bullet list, and each footer
+        # line with BLANK lines — else st.markdown lazily merges the footer onto
+        # the last list item (the "Reach: … on the same line as REPO" bug).
+        blocks = ([header] if header else []) + \
+                 (["\n".join(items)] if items else []) + footer
+        return "\n\n".join(blocks)
+    # Plain text (CLI): single newlines, rendered verbatim.
+    return "\n".join(([header] if header else []) + items + footer)
 
 
 def render(
