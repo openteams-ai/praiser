@@ -4,6 +4,15 @@ from praiser.cache import Cache
 from praiser.contribindex import ContributorIndex
 from praiser.forge import ContributorCount, RepoMeta
 from praiser.seed import seed_org
+from web.seed import parse_seed_target
+
+
+def test_parse_seed_target_forge_and_org():
+    assert parse_seed_target("github/numpy") == ("github", "numpy")
+    assert parse_seed_target("numpy") == ("github", "numpy")       # default forge
+    assert parse_seed_target("gitlab/foo") == ("gitlab", "foo")
+    assert parse_seed_target("/numpy/") == ("github", "numpy")     # stray slashes
+    assert parse_seed_target("", "gitea") == ("gitea", "")
 
 
 class FakeForge:
