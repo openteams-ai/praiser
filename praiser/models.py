@@ -181,6 +181,12 @@ class Evidence:
     # If the role is for a *part* of the project (a subcomponent), the part's
     # name — so display can say "Author (f2py)" not a bare project-level "Author".
     qualifier: str | None = None
+    # Contributor standing, when this signal is a contributor ranking: the user's
+    # rank and the number of contributors considered — display can show "#6/200".
+    # ``contributors_capped`` means the list hit the fetch cap (more exist) → "N+".
+    rank: int | None = None
+    n_contributors: int | None = None
+    contributors_capped: bool = False
 
     @property
     def weight(self) -> float:
@@ -217,6 +223,16 @@ class ProjectRecord:
     def role(self) -> str | None:
         be = self.best_evidence
         return be.role if be else None
+
+    @property
+    def contributor_standing(self) -> tuple[int, int, bool] | None:
+        """(rank, n_contributors, capped) from the contributor signal, if present
+        — for a "#6/200" (or "#6/200+" when capped) display. None when no
+        contributor ranking backs this record."""
+        for e in self.evidence:
+            if e.rank and e.n_contributors:
+                return e.rank, e.n_contributors, e.contributors_capped
+        return None
 
     @property
     def roles(self) -> list[str]:

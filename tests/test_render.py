@@ -24,6 +24,39 @@ def _multi(name, roles, stars=100):
     )
 
 
+def test_highlight_line_format_stars_before_roles():
+    # New format: `REPO (STARS★) — ROLES`, no #R/N when standing is unknown.
+    rec = _r("numpy/numpy", CODE_OWNER, 32000)
+    line = render_highlights("u", [rec], 8).splitlines()[1]
+    assert line == "- numpy/numpy (32k★) — Code owner"
+
+
+def test_highlight_line_shows_rank_of_n_when_available():
+    rec = ProjectRecord(
+        name_with_owner="a/b", url="https://github.com/a/b", stars=1000,
+        evidence=[Evidence("contributors", CORE_CONTRIBUTOR, "u", 0.8,
+                           "50 commits (~#6 contributor)", rank=6, n_contributors=72)],
+    )
+    line = render_highlights("u", [rec], 8).splitlines()[1]
+    assert line == "- a/b (1k★) — Core contributor (#6/72)"
+
+
+def test_highlight_line_marks_capped_contributor_count():
+    rec = ProjectRecord(
+        name_with_owner="a/b", url="https://github.com/a/b", stars=1000,
+        evidence=[Evidence("contributors", CORE_CONTRIBUTOR, "u", 0.8, "",
+                           rank=64, n_contributors=200, contributors_capped=True)],
+    )
+    line = render_highlights("u", [rec], 8).splitlines()[1]
+    assert line == "- a/b (1k★) — Core contributor (#64/200+)"
+
+
+def test_highlight_link_repos_makes_markdown_link():
+    rec = _r("numpy/numpy", CODE_OWNER, 32000)
+    line = render_highlights("u", [rec], 8, link_repos=True).splitlines()[1]
+    assert line == "- [numpy/numpy](https://github.com/numpy/numpy) (32k★) — Code owner"
+
+
 def test_highlights_show_multiple_roles_without_confidence():
     rec = _multi("sympy/sympy", [AUTHOR, CORE_CONTRIBUTOR], stars=15000)
     out = render_highlights("certik", [rec], 8)

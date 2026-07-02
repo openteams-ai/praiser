@@ -247,7 +247,9 @@ def render_result(result, username: str, *, view: str = "highlights",
     primary.sort(key=lambda r: r.score, reverse=True)
     secondary.sort(key=lambda r: r.score, reverse=True)
     if view == "highlights":
-        return render_highlights(username, primary, highlights, secondary)
+        # link_repos: the web renders highlights as markdown (repos clickable).
+        return render_highlights(username, primary, highlights, secondary,
+                                 link_repos=True)
     fmt = "json" if view == "json" else "md"
     return render(username, primary, fmt, secondary)
 
