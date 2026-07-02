@@ -53,8 +53,23 @@ def test_highlight_line_marks_capped_contributor_count():
 
 def test_highlight_link_repos_makes_markdown_link():
     rec = _r("numpy/numpy", CODE_OWNER, 32000)
-    line = render_highlights("u", [rec], 8, link_repos=True).splitlines()[1]
+    out = render_highlights("u", [rec], 8, link_repos=True)
+    line = next(l for l in out.splitlines() if l.startswith("- "))
     assert line == "- [numpy/numpy](https://github.com/numpy/numpy) (32k★) — Code owner"
+
+
+def test_markdown_highlights_separate_list_from_footer_with_blank_lines():
+    # Regression: st.markdown lazily merges the footer onto the last list item
+    # without blank-line separation ("Reach: … on the same line as REPO").
+    recs = [_r(f"o/r{i}", CODE_OWNER, 100 - i) for i in range(3)]
+    out = render_highlights("u", recs, 1, secondary=[_r("s/x", CODE_OWNER, 5)],
+                            link_repos=True)
+    assert "\n\n- [o/r0]" in out          # blank line before the list
+    assert "\n\n…plus" in out             # blank line before the footer
+    assert "\n\nReach:" in out            # Reach on its own paragraph
+    # plain text (CLI) stays compact — no blank lines
+    plain = render_highlights("u", recs, 1, secondary=[_r("s/x", CODE_OWNER, 5)])
+    assert "\n\n" not in plain
 
 
 def test_highlights_show_multiple_roles_without_confidence():
