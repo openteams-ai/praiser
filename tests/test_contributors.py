@@ -38,6 +38,38 @@ def test_contributor_signal_rejected_on_vendored_copy():
     assert ev == []
 
 
+def test_rank1_rescue_trusts_top_contributor_of_widely_forked_nonfork_repo():
+    # djhoese/pylibtiff case: unaffiliated + below canonical popularity, so
+    # trust_role_file is False — but the user is the #1 contributor to a
+    # widely-forked, non-fork repo, so the signal is trusted (rescued).
+    from praiser.extractors.contributors import ContributorsExtractor
+
+    class TopContrib:
+        def repo_contributors(self, o, r, max_pages=2):
+            return [ContributorCount("pearu", 107), ContributorCount("other", 40)]
+    ctx = ExtractContext(identity=Identity(primary_login="pearu"), forge=TopContrib(),
+                         registry=KnownProjects(projects={}))
+    cand = Candidate("someoneelse/pylibtiff", stars=140, forks=57)  # 57 >= WIDELY_USED_FORKS
+    cand.is_fork = False
+    ev = ContributorsExtractor().extract(cand, ctx)
+    assert ev and ev[0].role == "core_contributor" and "#1" in ev[0].detail
+
+
+def test_rank1_rescue_does_not_trust_non_top_contributor():
+    # Same modest, unaffiliated repo but the user is NOT #1 -> not trusted
+    # (guards against vendored-copy false positives).
+    from praiser.extractors.contributors import ContributorsExtractor
+
+    class NotTop:
+        def repo_contributors(self, o, r, max_pages=2):
+            return [ContributorCount("lead", 300), ContributorCount("pearu", 40)]
+    ctx = ExtractContext(identity=Identity(primary_login="pearu"), forge=NotTop(),
+                         registry=KnownProjects(projects={}))
+    cand = Candidate("someoneelse/proj", stars=140, forks=57)
+    cand.is_fork = False
+    assert ContributorsExtractor().extract(cand, ctx) == []
+
+
 def test_contributor_signal_kept_on_canonical_repo():
     from praiser.extractors.contributors import ContributorsExtractor
     ev = ContributorsExtractor().extract(
