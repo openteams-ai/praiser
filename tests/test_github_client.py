@@ -1,8 +1,59 @@
+import json
 import time
 
-from praiser.github_client import GitHubClient
+import pytest
+
+from praiser.github_client import GitHubError, GitHubClient, RateLimitError
 
 reset_in = GitHubClient._ratelimit_reset_in
+
+
+class _MemCache:
+    def __init__(self): self._d = {}
+    def get(self, k, default=None): return self._d.get(k, default)
+    def set(self, k, v): self._d[k] = v
+
+
+def _client_with_graphql(status, body_obj, rate=None):
+    """A bare client whose _request returns a canned GraphQL response."""
+    c = GitHubClient.__new__(GitHubClient)
+    c.cache = _MemCache()
+    c.rate = rate or {}
+    c._request = lambda *a, **k: (status, {}, json.dumps(body_obj).encode())
+    return c
+
+
+def test_graphql_rate_limited_error_becomes_ratelimiterror():
+    future = int(time.time()) + 180
+    c = _client_with_graphql(
+        200, {"data": None, "errors": [{"type": "RATE_LIMITED",
+                                        "message": "API rate limit exceeded"}]},
+        rate={"graphql": (0, 5000, future)})
+    with pytest.raises(RateLimitError) as ei:
+        c.graphql("query{x}", {})
+    assert 170 <= ei.value.reset_in <= 181       # reset time surfaced
+
+
+def test_graphql_partial_data_with_errors_is_returned():
+    # A non-rate-limit error (e.g. a missing field) with usable data -> no raise.
+    c = _client_with_graphql(
+        200, {"data": {"user": {"login": "x"}},
+              "errors": [{"type": "NOT_FOUND", "message": "no such field"}]})
+    assert c.graphql("q", {}) == {"user": {"login": "x"}}
+
+
+def test_graphql_error_without_data_raises_generic():
+    c = _client_with_graphql(
+        200, {"data": None, "errors": [{"type": "NOT_FOUND", "message": "boom"}]})
+    with pytest.raises(GitHubError):
+        c.graphql("q", {})
+
+
+def test_bucket_reset_in():
+    c = GitHubClient.__new__(GitHubClient)
+    c.rate = {"graphql": (0, 5000, int(time.time()) + 90)}
+    assert 80 <= c._bucket_reset_in("graphql") <= 91
+    assert c._bucket_reset_in("core") is None    # untouched bucket
 
 
 def test_non_rate_limit_statuses_return_none():

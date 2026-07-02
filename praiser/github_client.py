@@ -192,13 +192,32 @@ class GitHubClient:
             raise GitHubError(f"GraphQL HTTP {status}: {data[:300]!r}")
         parsed = json.loads(data)
         if parsed.get("errors"):
-            # Partial data is common (e.g. a missing user field); surface but
-            # do not crash if there is usable data.
+            # GraphQL signals a rate limit as HTTP 200 with a RATE_LIMITED error
+            # in the body (not a 403/429), so _request doesn't catch it. Convert
+            # it to RateLimitError with the reset time (already tracked from the
+            # response headers) so callers show a friendly "try again in ~X" —
+            # same handling as the REST path.
+            if any((e or {}).get("type") == "RATE_LIMITED"
+                   or "rate limit" in str((e or {}).get("message", "")).lower()
+                   for e in parsed["errors"]):
+                raise RateLimitError(
+                    "GitHub GraphQL API rate limit exceeded.",
+                    reset_in=self._bucket_reset_in("graphql"),
+                )
+            # Otherwise partial data is common (e.g. a missing user field);
+            # surface the error only if there is no usable data.
             if not parsed.get("data"):
                 raise GitHubError(f"GraphQL errors: {parsed['errors']}")
         result = parsed.get("data") or {}
         self.cache.set(ck, result)
         return result
+
+    def _bucket_reset_in(self, resource: str) -> int | None:
+        """Seconds until the given rate-limit bucket resets, from tracked headers."""
+        entry = self.rate.get(resource)
+        if not entry:
+            return None
+        return max(0, entry[2] - int(time.time()))
 
     # -- REST ---------------------------------------------------------------
     def rest_json(self, path: str, params: dict[str, Any] | None = None) -> Any:
