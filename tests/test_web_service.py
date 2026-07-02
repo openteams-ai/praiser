@@ -132,3 +132,64 @@ def test_render_result_highlights_respects_top_n():
     out = service.render_result(result, "u", view="highlights", highlights=3,
                                 min_stars=0)
     assert out.splitlines()[0] == "u — top 3 highlights:"
+
+
+def test_scan_fallback_uses_first_token_when_ok():
+    from praiser.pipeline import RunResult
+    calls = []
+    def fake(u, token=None, **k): calls.append(token); return RunResult(records=[_rec("a/b",100)], secondary=[])
+    result, label, soonest = service.scan_with_fallback(
+        "u", [("user", "T1"), ("bot", "T2")], data_opts={}, exhausted={}, now=1000, collect_fn=fake)
+    assert label == "user" and calls == ["T1"] and soonest is None
+
+
+def test_scan_fallback_switches_on_rate_limit():
+    from praiser.pipeline import RunResult
+    from praiser.github_client import RateLimitError
+    def fake(u, token=None, **k):
+        if token == "T1": raise RateLimitError("x", reset_in=1800)
+        return RunResult(records=[_rec("a/b",100)], secondary=[])
+    exhausted = {}
+    result, label, soonest = service.scan_with_fallback(
+        "u", [("user","T1"),("bot","T2")], data_opts={}, exhausted=exhausted, now=1000, collect_fn=fake)
+    assert label == "bot" and result is not None and soonest is None
+    assert exhausted["user"] == 2800                # user marked exhausted until reset
+
+
+def test_scan_fallback_partial_then_complete_on_next():
+    from praiser.pipeline import RunResult
+    def fake(u, token=None, **k):
+        if token == "T1": return RunResult(records=[], secondary=[], partial_reset_in=600)
+        return RunResult(records=[_rec("a/b",100)], secondary=[])
+    result, label, soonest = service.scan_with_fallback(
+        "u", [("user","T1"),("bot","T2")], data_opts={}, exhausted={}, now=1000, collect_fn=fake)
+    assert label == "bot" and result.partial_reset_in is None   # completed on fallback
+
+
+def test_scan_fallback_all_partial_returns_best_effort_partial():
+    from praiser.pipeline import RunResult
+    def fake(u, token=None, **k):
+        return RunResult(records=[_rec("a/b",100)], secondary=[], partial_reset_in=600)
+    result, label, soonest = service.scan_with_fallback(
+        "u", [("user","T1"),("bot","T2")], data_opts={}, exhausted={}, now=1000, collect_fn=fake)
+    assert result is not None and result.partial_reset_in == 600  # partial preserved
+    assert soonest == 1600
+
+
+def test_scan_fallback_all_exhausted_returns_soonest():
+    from praiser.github_client import RateLimitError
+    def fake(u, token=None, **k):
+        raise RateLimitError("x", reset_in=1200 if token == "T1" else 300)
+    result, label, soonest = service.scan_with_fallback(
+        "u", [("user","T1"),("bot","T2")], data_opts={}, exhausted={}, now=1000, collect_fn=fake)
+    assert result is None and label is None and soonest == 1300   # min(1000+1200, 1000+300)
+
+
+def test_scan_fallback_skips_cooling_down_token():
+    from praiser.pipeline import RunResult
+    calls = []
+    def fake(u, token=None, **k): calls.append(token); return RunResult(records=[_rec("a/b",100)], secondary=[])
+    result, label, soonest = service.scan_with_fallback(
+        "u", [("user","T1"),("bot","T2")], data_opts={},
+        exhausted={"user": 5000}, now=1000, collect_fn=fake)
+    assert label == "bot" and calls == ["T2"]

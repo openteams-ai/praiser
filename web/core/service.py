@@ -12,6 +12,7 @@ import pickle
 
 from praiser.cache import Cache
 from praiser.config import Config
+from praiser.github_client import RateLimitError
 from praiser.pipeline import run
 from praiser.popularity import filter_records
 from praiser.registry import KnownProjects
@@ -120,6 +121,7 @@ def collect(
     wikidata: bool = True,
     package_registries: bool = True,
     cross_forge: bool = False,
+    token: str | None = None,       # explicit token (e.g. a signed-in user's) — overrides env
     http_cache=None,
     result_cache=None,
     progress=None,
@@ -154,7 +156,7 @@ def collect(
         username=username,
         forge=forge,
         forge_url=forge_url or None,
-        token=_token_for(forge),
+        token=token or _token_for(forge),   # signed-in user's token wins, else the shared bot
         min_stars=0,                     # collect everything; filter at render time
         use_llm=discover_roles,          # only load the LLM when it's wanted
         discover_roles=discover_roles,
@@ -182,6 +184,52 @@ def collect(
         rcache.set(rkey, _dumps(result))
         _record_recent(rcache, forge, username)
     return result
+
+
+def scan_with_fallback(username, token_options, *, data_opts, exhausted, now,
+                       collect_fn=collect):
+    """Scan trying each token in order, skipping ones known rate-limited, and
+    falling back on a hit — so a signed-in user's own quota is used first and the
+    shared bot token backs it up (and vice-versa as limits reset).
+
+    ``token_options``: ordered ``[(label, token), …]``. ``exhausted``: a
+    ``{label: reset_epoch}`` map (mutated in place; persist it across scans in the
+    session so a token is skipped until it resets). ``now``: current epoch.
+
+    Returns ``(result, label, soonest_reset)``:
+      * complete scan → ``(RunResult, label, None)``
+      * every token rate-limited, but one produced a partial result →
+        ``(partial_RunResult, label, soonest_reset_epoch)``
+      * every token rate-limited with nothing usable → ``(None, None, soonest)``
+    A mid-scan hit (partial result) counts as rate-limited and falls back; the
+    shared HTTP cache makes each retry resume cheaply, so a second token with
+    fresh quota usually completes."""
+    soonest = None
+    partial = None  # (result, label) — best-effort if nothing completes
+
+    def _mark(label, reset_epoch):
+        nonlocal soonest
+        exhausted[label] = reset_epoch
+        soonest = reset_epoch if soonest is None else min(soonest, reset_epoch)
+
+    for label, token in token_options:
+        if exhausted.get(label, 0) > now:            # still cooling down — skip
+            soonest = exhausted[label] if soonest is None else min(soonest, exhausted[label])
+            continue
+        try:
+            result = collect_fn(username, token=token, **data_opts)
+        except RateLimitError as exc:
+            _mark(label, now + (exc.reset_in or 60))
+            continue
+        if getattr(result, "partial_reset_in", None):   # hit mid-scan
+            _mark(label, now + result.partial_reset_in)
+            if partial is None:
+                partial = (result, label)
+            continue
+        return result, label, None                       # complete
+    if partial is not None:
+        return partial[0], partial[1], soonest           # best-effort partial
+    return None, None, soonest
 
 
 def render_result(result, username: str, *, view: str = "highlights",
