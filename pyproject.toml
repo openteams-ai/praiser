@@ -38,6 +38,7 @@ dev = ["pytest>=7"]
 
 [project.scripts]
 praiser = "praiser.cli:main"
+praiser-seed = "praiser.seed:main"
 
 [tool.setuptools.dynamic]
 version = { attr = "praiser.__version__" }
