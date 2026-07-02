@@ -251,6 +251,14 @@ class Forge(ABC):
         None: not every forge exposes aggregate contributor counts cheaply."""
         return None
 
+    def repo_contributor_count(
+        self, owner: str, repo: str, anon: bool = True
+    ) -> int | None:
+        """Total number of contributors (distinct commit-author identities when
+        ``anon``), or None if the forge can't answer cheaply. Used to replace a
+        capped ``N+`` estimate with the real total. Default None."""
+        return None
+
     # -- generic HTTP + housekeeping ----------------------------------------
     @abstractmethod
     def get_url(self, url: str, accept: str = "text/html,application/xhtml+xml") -> str | None:

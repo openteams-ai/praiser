@@ -150,6 +150,12 @@ class KnownProject:
     def min_stars_override(self) -> bool:
         return bool(self.popularity.get("min_stars_override"))
 
+    @property
+    def contributor_count(self) -> int | None:
+        """Curated/cached total-contributors snapshot (``popularity['contributors']``)."""
+        n = self.popularity.get("contributors")
+        return int(n) if isinstance(n, (int, float)) and n > 0 else None
+
     def conventions_for(self, extractor: str) -> list[RoleConvention]:
         return [c for c in self.role_conventions if c.extractor == extractor]
 
@@ -264,9 +270,16 @@ class KnownProjects:
 
     # -- updating / persistence --------------------------------------------
     def record_popularity(
-        self, name_with_owner: str, *, stars: int, forks: int
+        self, name_with_owner: str, *, stars: int, forks: int,
+        contributors: int | None = None,
     ) -> None:
-        """Cache observed popularity for a project (creates an entry if new)."""
+        """Cache observed popularity for a project (creates an entry if new).
+
+        ``contributors`` snapshots the total contributor count so a later scan
+        can show the real ``N`` for a big project without re-deriving it (and so
+        the shipped registry can carry curated counts for repos where the live
+        API caps the number). Only stored when given (a resolved, non-capped
+        total)."""
         proj = self.get(name_with_owner)
         if proj is None:
             proj = KnownProject(name_with_owner=name_with_owner)
@@ -274,6 +287,13 @@ class KnownProjects:
             self._reindex()
         proj.popularity["stars"] = stars
         proj.popularity["forks"] = forks
+        if contributors:
+            proj.popularity["contributors"] = int(contributors)
+
+    def contributor_count(self, name_with_owner: str) -> int | None:
+        """Curated/cached total-contributors snapshot for a project, if any."""
+        proj = self.get(name_with_owner)
+        return proj.contributor_count if proj else None
 
     def add_role_sources(
         self, name_with_owner: str, sources: list[dict[str, Any]]

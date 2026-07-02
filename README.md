@@ -80,22 +80,26 @@ count.
 
 ```
 pearu — top 8 highlights:
-- pytorch/pytorch (101k★) — Core contributor, Code owner, Maintainer (#88/200+)
-- numpy/numpy (32k★) — Author (f2py), Core contributor, Maintainer (#8/200+)
-- scipy/scipy (15k★) — Core contributor, Maintainer (#14/200+)
+- pytorch/pytorch (101k★) — Core contributor, Code owner, Maintainer (#88/~6700)
+- numpy/numpy (32k★) — Author (f2py), Core contributor, Maintainer (#8/~2100)
+- scipy/scipy (15k★) — Core contributor, Maintainer (#14/~1900)
 - heavyai/heavydb (3k★) — Core contributor (#19/80)
+- sympy/sympy (15k★) — Core contributor (#162/~1500)
 - pearu/pylibtiff (140★) — Author, Core contributor (#2/24)
-- pearu/f2py (57★) — Author, Core contributor (#1/5)
-- pytorch/audio (3k★) — Core contributor (#9/200+)
-- conda-forge/staged-recipes (834★) — Core contributor (#192/200+)
-…plus 1 more elevated-role project(s); 10 smaller but widely-used project(s) with a notable role.
-Reach: 19 project(s) across 5 communities (distinct orgs).
+- numba/numba (11k★) — Core contributor (#29/~440)
+- rapidsai/cudf (10k★) — Core contributor (#78/~340)
+…plus 5 more elevated-role project(s); 15 smaller but widely-used project(s) with a notable role.
+Reach: 28 project(s) across 9 communities (distinct orgs).
 ```
 
 Each line reads `REPO (STARS★) — ROLES`. When the role rests on ranked
 contribution, a `(#R/N)` suffix gives the user's rank `R` among the project's
-`N` contributors (e.g. `#2/24`); `N+` marks a contributor list that hit the
-scan's page cap. Roles scoped to one part of a project are qualified, e.g.
+`N` contributors (e.g. `#2/24`). `N` is **exact** when praiser read the whole
+contributor list; **`~N`** (rounded, e.g. `~6700`) when the total is a
+large-project estimate — GitHub's contributor API only resolves the top ~500
+accounts, so praiser reads the true total (distinct commit-author identities) in
+one extra request, or uses a curated snapshot; and **`N+`** only when even that
+couldn't be resolved. Roles scoped to one part of a project are qualified, e.g.
 `Author (f2py)`. The suffix is omitted when that standing isn't known.
 
 The footer summarises breadth beyond the top roles: the smaller-but-widely-used

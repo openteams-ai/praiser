@@ -121,6 +121,73 @@ def test_merged_pr_rescue_elevates_undercounted_contributor():
     assert "merged PRs" in ev[0].detail
 
 
+class _CappedForge:
+    """200 contributors fetched (== the 2-page cap) → the list is truncated."""
+    def __init__(self, real_count):
+        self.real_count = real_count
+        self.count_calls = 0
+    def repo_contributors(self, o, r, max_pages=2):
+        return ([ContributorCount("pearu", 500)]
+                + [ContributorCount(f"u{i}", 50) for i in range(199)])
+    def repo_contributor_count(self, o, r, anon=True):
+        self.count_calls += 1
+        assert anon is True         # the uncapped identity count
+        return self.real_count
+
+
+def _capped_ctx(forge, **kw):
+    return ExtractContext(
+        identity=Identity(primary_login="pearu"), forge=forge,
+        registry=kw.pop("registry", KnownProjects(projects={})),
+        contributor_pages=2, popularity_floor=50, **kw)
+
+
+def test_capped_contributor_list_gets_real_total_from_forge():
+    from praiser.extractors.contributors import ContributorsExtractor
+    forge = _CappedForge(6683)
+    ev = ContributorsExtractor().extract(
+        Candidate("big/repo", stars=9000), _capped_ctx(forge))
+    assert ev[0].n_contributors == 6683 and ev[0].contributors_capped is False
+    assert ev[0].contributors_approx is True        # resolved total is approximate
+    assert forge.count_calls == 1
+
+
+def test_capped_falls_back_to_lower_bound_when_forge_cant_answer():
+    from praiser.extractors.contributors import ContributorsExtractor
+    forge = _CappedForge(None)          # forge can't determine the total
+    ev = ContributorsExtractor().extract(
+        Candidate("big/repo", stars=9000), _capped_ctx(forge))
+    assert ev[0].n_contributors == 200 and ev[0].contributors_capped is True
+    assert ev[0].contributors_approx is False       # lower bound, not an estimate
+
+
+def test_registry_snapshot_wins_over_live_count():
+    from praiser.extractors.contributors import ContributorsExtractor
+    from praiser.registry import KnownProject
+    reg = KnownProjects(projects={"big/repo": KnownProject(
+        "big/repo", popularity={"contributors": 16432})})
+    forge = _CappedForge(6683)
+    ev = ContributorsExtractor().extract(
+        Candidate("big/repo", stars=9000), _capped_ctx(forge, registry=reg))
+    assert ev[0].n_contributors == 16432 and ev[0].contributors_capped is False
+    assert ev[0].contributors_approx is True        # a snapshot is approximate
+    assert forge.count_calls == 0       # snapshot short-circuits the live call
+
+
+def test_uncapped_list_is_exact_and_makes_no_extra_call():
+    from praiser.extractors.contributors import ContributorsExtractor
+
+    class Small:
+        def repo_contributors(self, o, r, max_pages=2):
+            return [ContributorCount("pearu", 500), ContributorCount("x", 5)]
+        def repo_contributor_count(self, o, r, anon=True):
+            raise AssertionError("must not query the total for a complete list")
+    ev = ContributorsExtractor().extract(
+        Candidate("small/repo", stars=9000), _capped_ctx(Small()))
+    assert ev[0].n_contributors == 2 and ev[0].contributors_capped is False
+    assert ev[0].contributors_approx is False       # full list -> exact
+
+
 def test_contributor_pages_cap_is_passed_through():
     forge = _RecordingForge()
     ctx = ExtractContext(

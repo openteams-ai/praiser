@@ -216,7 +216,11 @@ def _scan_forge(
         force_primary=set(config.extra_repos) if is_anchor else set(),
     )
     for rec in (*records, *secondary):
-        registry.record_popularity(rec.name_with_owner, stars=rec.stars, forks=rec.forks)
+        std = rec.contributor_standing          # (rank, total, capped, approx) or None
+        registry.record_popularity(
+            rec.name_with_owner, stars=rec.stars, forks=rec.forks,
+            # persist a real (non-capped) total so the registry accrues snapshots
+            contributors=(std[1] if std and not std[2] else None))
     for name, sources in ctx.discovered_sources().items():
         registry.add_role_sources(name, sources)
     return records, secondary, reset_in

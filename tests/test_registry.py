@@ -65,3 +65,21 @@ def test_record_popularity_creates_entry_and_roundtrips(tmp_path):
     assert proj is not None
     assert proj.popularity["stars"] == 1234
     assert proj.popularity["forks"] == 56
+
+
+def test_contributor_count_snapshot_shipped_and_roundtrips(tmp_path):
+    reg = KnownProjects.load()
+    # The shipped registry carries curated totals for big seeds (>500 contribs).
+    assert reg.contributor_count("numpy/numpy") and reg.contributor_count("numpy/numpy") > 500
+    assert reg.contributor_count("scientific-python/specs") is None   # small: no snapshot
+    assert reg.contributor_count("unknown/repo") is None
+
+    reg.record_popularity("someorg/big", stars=9, forks=9, contributors=16432)
+    out = tmp_path / "reg.json"
+    reg.save(out)
+    reloaded = KnownProjects.load(extra_path=out)
+    assert reloaded.contributor_count("someorg/big") == 16432
+
+    # a capped total isn't persisted (record_popularity gets None for those)
+    reg.record_popularity("someorg/small", stars=9, forks=9, contributors=None)
+    assert reg.contributor_count("someorg/small") is None

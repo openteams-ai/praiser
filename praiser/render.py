@@ -159,15 +159,28 @@ def _human_stars(stars: int) -> str:
     return str(stars)
 
 
+def _approx_count(n: int) -> str:
+    """Round an approximate contributor total to 2 significant figures for
+    display: 6835 -> "~6800", 2097 -> "~2100", 637 -> "~640", 251 -> "~250"."""
+    if n < 100:
+        return f"~{n}"                       # small: nothing meaningful to round
+    step = 10 ** (len(str(n)) - 2)           # 2 significant figures
+    return f"~{round(n / step) * step}"
+
+
 def _highlight_line(rec: ProjectRecord, link_repos: bool) -> str:
     """One highlight: `REPO (STARS★) — ROLES (#R/N)`. REPO is a markdown link
-    when link_repos; the `#R/N` contributor-standing is shown only when known."""
+    when link_repos; the `#R/N` contributor-standing is shown only when known.
+    ``N`` is exact when the full contributor list was read, ``N+`` when it was
+    truncated and no total was resolved, and ``~N`` (rounded) when the total is a
+    snapshot / uncapped estimate."""
     repo = f"[{rec.name_with_owner}]({rec.url})" if link_repos else rec.name_with_owner
     standing = rec.contributor_standing
     rn = ""
     if standing:
-        rank, total, capped = standing
-        rn = f" (#{rank}/{total}{'+' if capped else ''})"
+        rank, total, capped, approx = standing
+        shown = _approx_count(total) if approx else f"{total}{'+' if capped else ''}"
+        rn = f" (#{rank}/{shown})"
     return f"- {repo} ({_human_stars(rec.stars)}★) — {_roles_label(rec)}{rn}"
 
 

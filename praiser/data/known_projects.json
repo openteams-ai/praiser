@@ -12,7 +12,7 @@
           "header_format": "rst"
         }
       ],
-      "popularity": { "min_stars_override": true },
+      "popularity": { "min_stars_override": true, "contributors": 637 },
       "notes": "Python Enhancement Proposals; RST files pep-NNNN.rst with ':Author:' headers."
     },
     "numpy/numpy": {
@@ -41,6 +41,7 @@
       "subcomponents": [
         { "path": "numpy/f2py", "role": "author", "label": "f2py" }
       ],
+      "popularity": { "contributors": 2097 },
       "notes": "NEPs under doc/neps (RST); authoritative roles on numpy.org."
     },
     "pytorch/pytorch": {
@@ -56,6 +57,7 @@
         { "path": "aten/src/ATen/native/sparse", "role": "maintainer", "label": "sparse tensors" },
         { "path": "torch/sparse", "role": "maintainer", "label": "sparse tensors" }
       ],
+      "popularity": { "contributors": 6683 },
       "notes": "Module maintainers listed on the Persons of Interest page; the repo also has a CODEOWNERS."
     },
     "scientific-python/specs": {
@@ -89,6 +91,7 @@
       "role_conventions": [
         { "extractor": "maintainers", "role": "maintainer", "path": "OWNERS" }
       ],
+      "popularity": { "contributors": 5778 },
       "notes": "Uses Kubernetes OWNERS (YAML) files with approvers/reviewers."
     }
   }

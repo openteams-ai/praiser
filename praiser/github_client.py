@@ -5,6 +5,7 @@ runs with zero third-party dependencies. All GETs/queries go through the cache.
 """
 
 import json
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -12,6 +13,15 @@ import urllib.request
 from typing import Any
 
 from .cache import Cache
+
+# The pagination `Link` header's rel="last" page number. With per_page=1 that
+# number equals the total item count — see `repo_contributor_count`.
+_LINK_LAST_RE = re.compile(r'[?&]page=(\d+)>;\s*rel="last"')
+
+
+def _link_last_page(link_header: str) -> int | None:
+    m = _LINK_LAST_RE.search(link_header or "")
+    return int(m.group(1)) if m else None
 
 try:  # optional accelerator
     import httpx  # type: ignore
@@ -475,6 +485,44 @@ class GitHubClient:
             if len(chunk) < 100:
                 break
         return out
+
+    def repo_contributor_count(
+        self, owner: str, repo: str, anon: bool = True
+    ) -> int | None:
+        """Total number of contributors, in ONE request, via the `Link` header.
+
+        ``per_page=1`` makes the ``rel="last"`` page number equal the total
+        contributor count. ``anon=True`` counts distinct commit-author
+        *identities* — the real total, and **uncapped** (a huge repo returns its
+        true tens of thousands). ``anon=False`` counts GitHub *accounts*, which
+        GitHub caps near ~500 (only the first ~500 author emails resolve to
+        accounts), so it badly undercounts large repos. Returns None when it
+        can't be determined; propagates RateLimitError."""
+        ck = Cache.key("contrib-count", owner, repo, anon)
+        cached = self.cache.get(ck, default=None)
+        if cached is not None:
+            return cached
+        url = (f"{REST_BASE}/repos/{owner}/{repo}/contributors?"
+               + urllib.parse.urlencode(
+                   {"per_page": 1, "anon": "true" if anon else "false"}))
+        try:
+            status, h, data = self._request(
+                "GET", url, accept="application/vnd.github+json")
+        except RateLimitError:
+            raise
+        except GitHubError:
+            return None
+        if status != 200:
+            return None
+        count = _link_last_page(h.get("link", ""))
+        if count is None:            # no Link header -> single page: count items
+            try:
+                body = json.loads(data) if data else []
+            except ValueError:
+                body = []
+            count = len(body) if isinstance(body, list) else 0
+        self.cache.set(ck, count)
+        return count
 
     def close(self) -> None:
         if self._client is not None:
