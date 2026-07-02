@@ -149,9 +149,8 @@ Many thanks to all contributors.
 
 def test_classify_elevation_tiers():
     assert classify(500, 3) == 0.8      # huge volume
-    assert classify(30, 25) == 0.6      # solid volume
-    assert classify(15, 7) == 0.8       # top rank + real work
-    assert classify(12, 25) == 0.6      # good rank + real work
+    assert classify(30, 25) == 0.6      # solid volume (rank irrelevant)
+    assert classify(15, 7) == 0.8       # genuine top-10 + real work
     assert classify(3, 200) is None     # a few commits -> not elevated
 
 
@@ -161,7 +160,15 @@ def test_classify_rank_needs_real_work_not_a_few_prs():
     assert classify(2, 2) is None       # openai/tiktoken: 2 commits, rank #2
     assert classify(8, 5) is None       # pyca/bcrypt: 8 commits, rank #5
     assert classify(1, 7) is None       # httptools: 1 commit, rank #7
-    assert classify(4, 7) is None       # safetensors: 4 commits, rank #7
+
+
+def test_classify_regular_contributor_not_core():
+    # The ev-br/tunix class: double-digit commits at a middling rank is a
+    # regular contributor, not core — the loose top-30 tier is gone.
+    assert classify(11, 17) is None     # google/tunix: 11 commits, rank #17
+    assert classify(15, 20) is None     # regular contributor
+    assert classify(24, 12) is None     # just under the volume bar, not top-10
+    assert classify(25, 500) == 0.6     # but real volume still counts, any rank
 
 
 def test_find_credit_name_match():

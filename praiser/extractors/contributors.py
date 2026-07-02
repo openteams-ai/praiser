@@ -28,20 +28,21 @@ MIN_RANKED_CONTRIBUTIONS = 10
 def classify(count: int, rank: int) -> float | None:
     """Confidence for a contributor, or None if too minor to count as elevated.
 
-    ``count`` is commits (or merged PRs, via the rescue). Two ways to qualify:
-    absolute volume, or a top rank *backed by* a non-trivial contribution — the
-    latter guard stops a couple of commits on a small-team repo from reading as
-    "core" (a real false-positive class, e.g. a few free-threading PRs)."""
+    ``count`` is commits (or merged PRs, via the rescue). "Core" means either a
+    substantial body of work (volume), or a genuine top-of-project position
+    backed by real work. A merely double-digit rank with barely double-digit
+    commits (e.g. 11 commits at #17) is a *regular* contributor, not core — that
+    middle zone is deliberately excluded to avoid over-crediting."""
     if count >= 100:
-        return 0.8
+        return 0.8                          # heavy volume
     if count >= 25:
-        return 0.6
-    if count >= MIN_RANKED_CONTRIBUTIONS:   # rank only counts with real work behind it
-        if rank <= 10:
-            return 0.8
-        if rank <= 30:
-            return 0.6
-    return None  # a handful of commits is a plain contributor — skip
+        return 0.6                          # solid volume
+    # Rank shortcut: only a genuine top-10 position, and only with real work
+    # behind it (a couple of commits ranking high on a small-team repo isn't
+    # core). No looser "top-30" tier — that over-credits regular contributors.
+    if count >= MIN_RANKED_CONTRIBUTIONS and rank <= 10:
+        return 0.8
+    return None
 
 
 class ContributorsExtractor(Extractor):
