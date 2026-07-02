@@ -98,7 +98,7 @@ def _dedupe(records: list[ProjectRecord]) -> list[ProjectRecord]:
 
 def _scan_forge(
     forge, forge_login, base_identity, config, registry, llm, progress,
-    *, is_anchor, label="", index=None,
+    *, is_anchor, label="", index=None, populate_index=True,
 ) -> tuple[list[ProjectRecord], list[ProjectRecord], int | None]:
     """Discover + attribute + popularity-filter one forge for one login, using
     the shared (possibly cross-forge-merged) identity for handle/name matching."""
@@ -158,7 +158,12 @@ def _scan_forge(
 
     # Feed the reverse-index with the rosters we just fetched, so future scans
     # of any substantial contributor to these repos can discover them (#59).
-    if index is not None and forge.name == "github":
+    # Gated by populate_index: with a SHARED/remote index (the web app's Redis)
+    # this is a per-login write storm — slow and command-expensive — so the web
+    # app disables it and relies on the (batched, controlled) org seeder to
+    # populate the shared index instead. Local CLI runs keep it (cheap).
+    if populate_index and index is not None and forge.name == "github":
+        progress.phase(f"{label}updating contributor index…")
         try:
             index.record_rosters(ctx.fetched_rosters())
         except Exception:
@@ -181,7 +186,8 @@ def _scan_forge(
     return records, secondary, reset_in
 
 
-def run(config: Config, cache=None, progress_cb=None, index_cache=None) -> RunResult:
+def run(config: Config, cache=None, progress_cb=None, index_cache=None,
+        populate_index=True) -> RunResult:
     # ``cache`` lets a caller inject a shared/durable backend (e.g. the web UI's
     # Redis cache) so the expensive, option-independent data collection is
     # reused across processes/hosts. Defaults to the local file cache.
@@ -239,7 +245,7 @@ def run(config: Config, cache=None, progress_cb=None, index_cache=None) -> RunRe
             recs, sec, r_in = _scan_forge(
                 forge, login, identity, config, registry, llm, progress,
                 is_anchor=(fname == config.forge and login == config.username),
-                label=label, index=index,
+                label=label, index=index, populate_index=populate_index,
             )
             all_records += recs
             all_secondary += sec
