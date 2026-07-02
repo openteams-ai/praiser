@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from functools import partial
 
 from .cache import Cache
+from .contribindex import ContributorIndex
 from .config import Config
 from .crossforge import resolve_cross_forge
 from .discovery import discover, org_logins
@@ -97,7 +98,7 @@ def _dedupe(records: list[ProjectRecord]) -> list[ProjectRecord]:
 
 def _scan_forge(
     forge, forge_login, base_identity, config, registry, llm, progress,
-    *, is_anchor, label="",
+    *, is_anchor, label="", index=None,
 ) -> tuple[list[ProjectRecord], list[ProjectRecord], int | None]:
     """Discover + attribute + popularity-filter one forge for one login, using
     the shared (possibly cross-forge-merged) identity for handle/name matching."""
@@ -106,6 +107,19 @@ def _scan_forge(
         logins=set(base_identity.logins),
         names=set(base_identity.names),
     )
+    # Contributor reverse-index (#59): repos where this user was recorded as a
+    # substantial contributor by a prior scan — recovers direct committers with
+    # no person-side signal. GitHub-only (rosters are github logins).
+    index_repos = []
+    if index is not None and forge.name == "github":
+        seen = set()
+        for lg in identity.logins:
+            for r in index.repos_for(lg):
+                if r not in seen:
+                    seen.add(r)
+                    index_repos.append(r)
+        if index_repos:
+            _log(config, f"{label}reverse-index: {len(index_repos)} candidate repo(s)")
     # Package registries are GitHub-anchored (github_nwo only reads github.com
     # source URLs), so only meaningful on a GitHub anchor scan.
     package_refs = []
@@ -121,6 +135,7 @@ def _scan_forge(
         include_private=config.include_private,
         extra_repos=config.extra_repos if is_anchor else [],
         package_refs=package_refs,
+        index_repos=index_repos,
     )
     _log(config, f"{label}discovered {len(candidates)} candidate repos")
     rate0 = forge.rate_summary()
@@ -141,6 +156,14 @@ def _scan_forge(
     records, reset_in = _attribute(config, candidates, ctx, progress)
     _log(config, f"{label}{len(records)} repos with elevated-role evidence")
 
+    # Feed the reverse-index with the rosters we just fetched, so future scans
+    # of any substantial contributor to these repos can discover them (#59).
+    if index is not None and forge.name == "github":
+        try:
+            index.record_rosters(ctx.fetched_rosters())
+        except Exception:
+            pass  # index is best-effort; never break a scan
+
     progress.phase(f"{label}checking popularity…")
     try:
         enrich_stars(forge, records)
@@ -158,7 +181,7 @@ def _scan_forge(
     return records, secondary, reset_in
 
 
-def run(config: Config, cache=None, progress_cb=None) -> RunResult:
+def run(config: Config, cache=None, progress_cb=None, index_cache=None) -> RunResult:
     # ``cache`` lets a caller inject a shared/durable backend (e.g. the web UI's
     # Redis cache) so the expensive, option-independent data collection is
     # reused across processes/hosts. Defaults to the local file cache.
@@ -167,6 +190,10 @@ def run(config: Config, cache=None, progress_cb=None) -> RunResult:
     cache = cache if cache is not None else Cache(
         config.cache_dir, ttl=config.cache_ttl, refresh=config.refresh
     )
+    # Contributor reverse-index (#59) rides the (possibly shared) cache. A caller
+    # can inject a different backend (e.g. the web app's shared Redis) via
+    # index_cache; defaults to the run cache.
+    index = ContributorIndex(index_cache if index_cache is not None else cache)
     registry = KnownProjects.load(config.registry_path)
     llm = LLM.maybe(cache, enabled=config.use_llm)
     _log(config, f"LLM fallback {'enabled' if llm else 'disabled'}")
@@ -212,7 +239,7 @@ def run(config: Config, cache=None, progress_cb=None) -> RunResult:
             recs, sec, r_in = _scan_forge(
                 forge, login, identity, config, registry, llm, progress,
                 is_anchor=(fname == config.forge and login == config.username),
-                label=label,
+                label=label, index=index,
             )
             all_records += recs
             all_secondary += sec

@@ -56,6 +56,12 @@ class ExtractContext:
         with self._discovered_lock:
             return {k: list(v) for k, v in self._discovered.items()}
 
+    def fetched_rosters(self) -> dict[str, dict[str, int]]:
+        """Contributor rosters actually fetched this run: {repo: {login: commits}}.
+        Feeds the contributor reverse-index (#59); skips repos that couldn't be
+        fetched (None)."""
+        return {k: v for k, v in self._contrib_cache.items() if v}
+
     def contributors(self, candidate) -> dict[str, int] | None:
         """Cached {login: commits} for a repo, or None if it couldn't be fetched."""
         key = candidate.name_with_owner
