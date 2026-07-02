@@ -168,11 +168,13 @@ def collect(
         config,
         cache=http_cache if http_cache is not None else local_cache(),
         progress_cb=progress,
-        # The reverse-index (#59) rides the SHARED cache (rcache = Redis), not the
-        # ephemeral local http cache — so it persists across reboots and is
-        # collaborative across sessions, and so the org seeder (which writes to
-        # the same shared cache) is effective for the web app (#65).
+        # The reverse-index (#59) rides the SHARED cache (rcache = Redis), so the
+        # app READS what the org seeder (#65) populated. But we do NOT write it
+        # per interactive scan: that's a per-login write storm on Redis — slow
+        # (the "quiet hang" after scanning) and command-expensive. Seeding is the
+        # controlled population path.
         index_cache=rcache,
+        populate_index=False,
     )
     # Only cache COMPLETE scans — a partial result (rate limit hit mid-scan)
     # must not be frozen for the cache TTL; let a later retry get the full data.
