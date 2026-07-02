@@ -67,3 +67,57 @@ def test_rate_limit_stops_with_reset(monkeypatch):
         return [Evidence("fake", MAINTAINER, cand.url, 0.9, "")]
     records, reset_in = _run(monkeypatch, ev, n=30, jobs=4)
     assert reset_in == 42  # partial run signalled with the reset time
+
+
+# -- scoped --refresh (speculative org-membership repos ride the cache) --------
+
+def _cand(name, *sources):
+    c = Candidate(name)
+    c.sources.update(sources)
+    return c
+
+
+def test_is_speculative_only_when_no_person_side_source():
+    assert pipeline._is_speculative(_cand("o/r", "org-repo"))
+    assert pipeline._is_speculative(_cand("o/r", "org-repo", "registry"))
+    assert pipeline._is_speculative(_cand("py/peps", "registry"))
+    # any person-side signal makes it anchored
+    assert not pipeline._is_speculative(_cand("o/r", "org-repo", "contributed"))
+    assert not pipeline._is_speculative(_cand("u/own", "owned"))
+    assert not pipeline._is_speculative(_cand("o/r", "manual"))
+    assert not pipeline._is_speculative(_cand("o/r"))  # no sources -> not speculative
+
+
+def test_refresh_scopes_speculative_repos_to_cache(monkeypatch, tmp_path):
+    from praiser.cache import Cache
+
+    anchored = [_cand("a/owned", "owned"), _cand("a/contrib", "contributed")]
+    speculative = [_cand("o/r1", "org-repo"), _cand("o/r2", "org-repo"),
+                   _cand("py/peps", "registry")]
+    monkeypatch.setattr(pipeline, "discover",
+                        lambda *a, **k: anchored + speculative)
+    monkeypatch.setattr(pipeline, "org_logins", lambda *a, **k: set())
+    monkeypatch.setattr(pipeline, "enrich_stars", lambda *a, **k: None)
+
+    cache = Cache(str(tmp_path), refresh=True)
+    calls = []  # (cache.refresh seen during the call, sorted candidate names)
+
+    def fake_attr(config, cands, ctx, progress):
+        calls.append((cache.refresh,
+                      sorted(c.name_with_owner for c in cands)))
+        return [], None
+    monkeypatch.setattr(pipeline, "_attribute", fake_attr)
+
+    forge = _StubForge()
+    forge.name = "github"
+    cfg = Config(username="u", refresh=True, use_package_registries=False)
+    pipeline._scan_forge(
+        forge, "u", Identity(primary_login="u"), cfg,
+        KnownProjects(projects={}), None, Progress(enabled=False),
+        is_anchor=True, index=None, cache=cache,
+    )
+
+    # anchored batch runs with refresh forced ON; speculative batch with it OFF
+    assert calls[0] == (True, ["a/contrib", "a/owned"])
+    assert calls[1] == (False, ["o/r1", "o/r2", "py/peps"])
+    assert cache.refresh is True   # restored afterwards

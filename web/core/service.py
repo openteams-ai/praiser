@@ -121,6 +121,7 @@ def collect(
     wikidata: bool = True,
     package_registries: bool = True,
     cross_forge: bool = False,
+    refresh: bool = False,          # re-scan: bypass caches for person-anchored fetches
     token: str | None = None,       # explicit token (e.g. a signed-in user's) — overrides env
     http_cache=None,
     result_cache=None,
@@ -144,7 +145,7 @@ def collect(
         "result", CACHE_VERSION, username, forge, forge_url or None,
         discover_roles, wikidata, package_registries, cross_forge,
     )
-    if rcache is not None:
+    if rcache is not None and not refresh:      # refresh forces a re-scan
         blob = rcache.get(rkey)
         if blob is not None:
             try:
@@ -163,12 +164,13 @@ def collect(
         use_wikidata=wikidata,
         use_package_registries=package_registries,
         cross_forge=cross_forge,
+        refresh=refresh,                 # scoped in the pipeline: anchored repos only
         quiet=True,
         save_registry=False,             # a shared service shouldn't mutate the registry
     )
     result = run(
         config,
-        cache=http_cache if http_cache is not None else local_cache(),
+        cache=http_cache if http_cache is not None else local_cache(refresh=refresh),
         progress_cb=progress,
         # The reverse-index (#59) rides the SHARED cache (rcache = Redis), so the
         # app READS what the org seeder (#65) populated. But we do NOT write it
@@ -206,6 +208,7 @@ def scan_with_fallback(username, token_options, *, data_opts, exhausted, now,
     fresh quota usually completes."""
     soonest = None
     partial = None  # (result, label) — best-effort if nothing completes
+    attempted = False  # has any token actually run a scan yet?
 
     def _mark(label, reset_epoch):
         nonlocal soonest
@@ -216,8 +219,15 @@ def scan_with_fallback(username, token_options, *, data_opts, exhausted, now,
         if exhausted.get(label, 0) > now:            # still cooling down — skip
             soonest = exhausted[label] if soonest is None else min(soonest, exhausted[label])
             continue
+        # A --refresh applies to the FIRST token that runs; a fallback token then
+        # resumes from the now-warm cache (refresh=False) instead of re-fetching
+        # everything again — else a rate-limited refresh burns the backup quota too.
+        opts = data_opts
+        if attempted and data_opts.get("refresh"):
+            opts = {**data_opts, "refresh": False}
+        attempted = True
         try:
-            result = collect_fn(username, token=token, **data_opts)
+            result = collect_fn(username, token=token, **opts)
         except RateLimitError as exc:
             _mark(label, now + (exc.reset_in or 60))
             continue

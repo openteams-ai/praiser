@@ -193,3 +193,20 @@ def test_scan_fallback_skips_cooling_down_token():
         "u", [("user","T1"),("bot","T2")], data_opts={},
         exhausted={"user": 5000}, now=1000, collect_fn=fake)
     assert label == "bot" and calls == ["T2"]
+
+
+def test_scan_fallback_refresh_only_on_first_attempt():
+    # A --refresh scan that hits the limit on the first token must NOT re-fetch
+    # everything again on the fallback token (the first pass warmed the cache).
+    from praiser.pipeline import RunResult
+    from praiser.github_client import RateLimitError
+    seen = []
+    def fake(u, token=None, refresh=False, **k):
+        seen.append((token, refresh))
+        if token == "T1": raise RateLimitError("x", reset_in=1800)
+        return RunResult(records=[_rec("a/b", 100)], secondary=[])
+    result, label, soonest = service.scan_with_fallback(
+        "u", [("user", "T1"), ("bot", "T2")], data_opts={"refresh": True},
+        exhausted={}, now=1000, collect_fn=fake)
+    assert label == "bot" and result is not None
+    assert seen == [("T1", True), ("T2", False)]  # refresh only on the first token
