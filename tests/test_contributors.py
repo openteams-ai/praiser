@@ -149,9 +149,19 @@ Many thanks to all contributors.
 
 def test_classify_elevation_tiers():
     assert classify(500, 3) == 0.8      # huge volume
-    assert classify(5, 7) == 0.8        # very high rank
-    assert classify(30, 25) == 0.6      # solid contributor
+    assert classify(30, 25) == 0.6      # solid volume
+    assert classify(15, 7) == 0.8       # top rank + real work
+    assert classify(12, 25) == 0.6      # good rank + real work
     assert classify(3, 200) is None     # a few commits -> not elevated
+
+
+def test_classify_rank_needs_real_work_not_a_few_prs():
+    # The ngoldbaum false-positive class: 1-8 commits ranking top-10 on a
+    # small-team repo must NOT read as core (a few PRs != core contributor).
+    assert classify(2, 2) is None       # openai/tiktoken: 2 commits, rank #2
+    assert classify(8, 5) is None       # pyca/bcrypt: 8 commits, rank #5
+    assert classify(1, 7) is None       # httptools: 1 commit, rank #7
+    assert classify(4, 7) is None       # safetensors: 4 commits, rank #7
 
 
 def test_find_credit_name_match():

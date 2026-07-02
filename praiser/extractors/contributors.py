@@ -19,14 +19,28 @@ from .base import Extractor, ExtractContext
 WIDELY_USED_FORKS = 25
 # Only spend a search-API call on the merged-PR rescue for notable repos.
 PR_RESCUE_MIN_STARS = 1000
+# A high rank only means "core" with a real amount of work behind it. On a repo
+# with few contributors, 1-2 commits can rank top-10 — that's a drive-by, not a
+# core contributor. So the rank shortcut requires at least this many commits/PRs.
+MIN_RANKED_CONTRIBUTIONS = 10
 
 
 def classify(count: int, rank: int) -> float | None:
-    """Confidence for a contributor, or None if too minor to count as elevated."""
-    if count >= 100 or rank <= 10:
+    """Confidence for a contributor, or None if too minor to count as elevated.
+
+    ``count`` is commits (or merged PRs, via the rescue). Two ways to qualify:
+    absolute volume, or a top rank *backed by* a non-trivial contribution — the
+    latter guard stops a couple of commits on a small-team repo from reading as
+    "core" (a real false-positive class, e.g. a few free-threading PRs)."""
+    if count >= 100:
         return 0.8
-    if count >= 25 or rank <= 30:
+    if count >= 25:
         return 0.6
+    if count >= MIN_RANKED_CONTRIBUTIONS:   # rank only counts with real work behind it
+        if rank <= 10:
+            return 0.8
+        if rank <= 30:
+            return 0.6
     return None  # a handful of commits is a plain contributor — skip
 
 
