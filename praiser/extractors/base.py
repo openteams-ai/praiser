@@ -77,6 +77,29 @@ class ExtractContext:
                 }
         return self._contrib_cache[key]
 
+    def contributor_total(self, candidate, fetched: int) -> tuple[int, bool, bool]:
+        """``(total_contributors, capped, approx)`` for the ``#R/N`` display.
+
+        Priority: (1) a curated/cached **registry snapshot** — stable, offline,
+        and authoritative for big projects, but *approximate* (frozen); (2) if
+        the fetched contributor list did NOT hit our page cap, the fetched length
+        is *exact*; (3) otherwise the list was truncated, so ask the forge for the
+        true total in one request (uncapped identity count) — *approximate* (it
+        drifts daily). Only if that's unavailable do we return the fetched length
+        as a lower bound (``capped=True`` → rendered ``N+``).
+
+        ``approx=True`` (snapshot or resolved total) renders rounded, e.g. ``~6800``.
+        """
+        snap = self.registry.contributor_count(candidate.name_with_owner)
+        if snap:
+            return snap, False, True                 # snapshot: approximate
+        if fetched < max(1, self.contributor_pages) * 100:
+            return fetched, False, False             # fetched everyone: exact
+        total = self.forge.repo_contributor_count(candidate.owner, candidate.repo)
+        if total and total >= fetched:
+            return total, False, True                # real total: approximate
+        return fetched, True, False                  # lower bound -> "N+"
+
     def trust_role_file(self, candidate) -> bool:
         """Whether a CODEOWNERS/AUTHORS match here is trustworthy vs inherited.
 

@@ -319,6 +319,11 @@ class GitHubForge(Forge):
             for c in raw if c.get("login")
         ]
 
+    def repo_contributor_count(
+        self, owner: str, repo: str, anon: bool = True
+    ) -> int | None:
+        return self._client.repo_contributor_count(owner, repo, anon=anon)
+
     # -- generic HTTP + housekeeping ----------------------------------------
     def get_url(
         self, url: str, accept: str = "text/html,application/xhtml+xml"

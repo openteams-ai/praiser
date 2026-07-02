@@ -51,6 +51,28 @@ def test_highlight_line_marks_capped_contributor_count():
     assert line == "- a/b (1k★) — Core contributor (#64/200+)"
 
 
+def test_highlight_line_shows_approx_total_rounded():
+    # A snapshot / uncapped estimate is shown rounded with a "~".
+    rec = ProjectRecord(
+        name_with_owner="pytorch/pytorch", url="https://github.com/pytorch/pytorch",
+        stars=101000,
+        evidence=[Evidence("contributors", CORE_CONTRIBUTOR, "u", 0.8, "",
+                           rank=88, n_contributors=6835, contributors_approx=True)],
+    )
+    line = render_highlights("u", [rec], 8).splitlines()[1]
+    assert line == "- pytorch/pytorch (101k★) — Core contributor (#88/~6800)"
+
+
+def test_approx_count_rounds_to_two_significant_figures():
+    from praiser.render import _approx_count
+    assert _approx_count(6835) == "~6800"
+    assert _approx_count(2097) == "~2100"
+    assert _approx_count(637) == "~640"
+    assert _approx_count(251) == "~250"
+    assert _approx_count(5778) == "~5800"
+    assert _approx_count(42) == "~42"      # too small to round meaningfully
+
+
 def test_highlight_link_repos_makes_markdown_link():
     rec = _r("numpy/numpy", CODE_OWNER, 32000)
     out = render_highlights("u", [rec], 8, link_repos=True)
