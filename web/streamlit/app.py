@@ -147,7 +147,11 @@ def _run_scan(username, data_opts):
     if state.get("rate_limited"):
         st.warning(
             f"⏳ The forge's API rate limit was reached (shared across all users "
-            f"of this demo). Please try again in {state['rate_limited']}."
+            f"of this demo). Please try again in {state['rate_limited']}.\n\n"
+            f"Tip: run praiser locally with your own token to get an independent "
+            f"rate limit — `pip install praiser`, then `praiser <username>` "
+            f"(with `GITHUB_TOKEN` set or after `gh auth login`). "
+            f"See {REPO_URL}."
         )
         st.stop()
     if state["error"]:
@@ -194,7 +198,9 @@ if submitted:
             st.warning(
                 "⚠️ Partial results — the forge's API rate limit was reached "
                 "mid-scan, so some projects may be missing. Re-scan in "
-                f"{humanize_wait(result.partial_reset_in)} for the full record."
+                f"{humanize_wait(result.partial_reset_in)} for the full record, "
+                f"or run praiser locally with your own token for an independent "
+                f"limit (`pip install praiser`; see {REPO_URL})."
             )
             _show(result, uname)
             st.stop()
