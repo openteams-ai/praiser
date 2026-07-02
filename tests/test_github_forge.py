@@ -28,13 +28,15 @@ class _FakeClient:
         self.search_queries = []
 
     def graphql(self, query, variables):
-        if "organizations" in query:                      # DISCOVERY_QUERY
+        if "repositoriesContributedTo" in query:          # DISCOVERY_QUERY
             return {"user": {
                 "login": "pearu", "name": "Pearu Peterson",
-                "organizations": {"nodes": [{"login": "numpy"}, {"login": None}]},
                 "repositories": {"nodes": [_node("pearu/pylibtiff", 140)]},
                 "repositoriesContributedTo": {"nodes": [_node("numpy/numpy", 32000)]},
             }}
+        if "organizations(first" in query:                # ORGS_QUERY (separate)
+            return {"user": {
+                "organizations": {"nodes": [{"login": "numpy"}, {"login": None}]}}}
         if "createdAt" in query:
             return {"user": {"createdAt": "2014-06-01T00:00:00Z"}}
         if "contributionsCollection" in query:            # HISTORY_QUERY
@@ -92,6 +94,22 @@ def test_user_repositories_and_contributed_and_orgs():
                                                      pushed_at="2024-01-01T00:00:00Z")]
     assert f.user_contributed_repositories("pearu")[0].name_with_owner == "numpy/numpy"
     assert f.user_organizations("pearu") == ["numpy"]  # None login dropped
+
+
+def test_user_organizations_degrades_on_insufficient_scope():
+    # A no-scope token (e.g. an OAuth user token) can't read org memberships;
+    # reading them must degrade to [] rather than fail the whole scan.
+    from praiser.github_client import GitHubError
+    f = _forge()
+    inner = f._client.graphql
+    def boom(query, variables):
+        if "organizations(first" in query:
+            raise GitHubError("INSUFFICIENT_SCOPES")
+        return inner(query, variables)
+    f._client.graphql = boom
+    assert f.user_organizations("pearu") == []          # graceful, no raise
+    # discovery repos still work (separate query, unaffected)
+    assert f.user_contributed_repositories("pearu")[0].name_with_owner == "numpy/numpy"
 
 
 def test_organization_repositories():

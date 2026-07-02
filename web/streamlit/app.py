@@ -97,8 +97,11 @@ def github_account():
             st.secrets["GITHUB_OAUTH_CLIENT_SECRET"],
             "https://github.com/login/oauth/authorize",
             "https://github.com/login/oauth/access_token")
+        # read:org lets discovery read the user's org memberships (org-repo
+        # discovery + affiliation). Public repo reads need no scope; without
+        # read:org the scan still works but org features degrade gracefully.
         result = oauth.authorize_button("Sign in with GitHub", redirect,
-                                        scope="", key="gh_oauth")
+                                        scope="read:org", key="gh_oauth")
         if result and "token" in result:
             t = result["token"]["access_token"]
             st.session_state["gh_user_token"] = t
