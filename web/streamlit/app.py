@@ -158,6 +158,12 @@ with st.form("q"):
     cross_forge = c3.checkbox("Cross-forge (follow profile links)", value=False)
     discover_roles = c4.checkbox("LLM founder/role discovery (slower, costs)",
                                  value=False)
+    refresh = c3.checkbox(
+        "Refresh (ignore cache, re-scan)", value=False,
+        help="Force a fresh scan instead of returning a cached result. Only the "
+             "repos you're actually connected to are re-fetched; repos surfaced "
+             "solely by org membership keep using the cache, so a refresh won't "
+             "exhaust the API rate limit.")
     submitted = st.form_submit_button(
         "🌟 Praise", type="primary", use_container_width=True)
 
@@ -252,17 +258,25 @@ if submitted:
         "forge": forge, "forge_url": forge_url.strip(),
         "discover_roles": discover_roles, "wikidata": wikidata,
         "package_registries": package_registries, "cross_forge": cross_forge,
+        # Not a cache-key discriminator (not in DATA_OPTIONS) — a refreshed result
+        # is the same result, just recomputed. It reaches collect() to bypass the
+        # caches for person-anchored fetches.
+        "refresh": refresh,
     }
     # Cache key excludes the display options (view/highlights) on purpose.
     key = (uname, *(data_opts[k] for k in service.DATA_OPTIONS))
-    if cache.get(key) is not None:
+    if not refresh and cache.get(key) is not None:
         st.success("✅ Showing cached results — change the username, forge, or a "
-                   "scan option to re-scan.")
+                   "scan option to re-scan (or tick Refresh to force one).")
     else:
         st.info(
-            "⏳ A first-time scan can take ~30 seconds to a few minutes — praiser "
-            "queries the forge across many repositories (longer with cross-forge "
-            "or LLM discovery on). Changing the view, top-N or min-stars is instant."
+            ("🔄 Refreshing — re-scanning the repos you're connected to; "
+             "org-membership repos ride the cache. "
+             if refresh else
+             "⏳ A first-time scan can take ~30 seconds to a few minutes — praiser "
+             "queries the forge across many repositories (longer with cross-forge "
+             "or LLM discovery on). ")
+            + "Changing the view, top-N or min-stars is instant."
         )
         # Token options: a signed-in user's own quota first, the shared bot token
         # behind it (GitHub only — the OAuth token is a GitHub token). Other forges

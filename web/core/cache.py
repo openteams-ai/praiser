@@ -83,10 +83,14 @@ class RedisCache:
             pass
 
 
-def local_cache(ttl: int = 86_400):
-    """Local file cache for praiser's HTTP layer (free, fast, per-instance)."""
+def local_cache(ttl: int = 86_400, refresh: bool = False):
+    """Local file cache for praiser's HTTP layer (free, fast, per-instance).
+
+    ``refresh=True`` forces the (person-anchored) fetches to re-run this scan —
+    the pipeline still serves speculative org-membership repos from cache to
+    avoid exhausting the API rate limit (see ``pipeline._scan_forge``)."""
     directory = os.environ.get("PRAISER_CACHE_DIR", "/tmp/praiser-cache")
-    return Cache(Path(directory), ttl=ttl)
+    return Cache(Path(directory), ttl=ttl, refresh=refresh)
 
 
 # How long a collected result stays cached. A person's elevated roles change

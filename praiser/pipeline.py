@@ -96,9 +96,24 @@ def _dedupe(records: list[ProjectRecord]) -> list[ProjectRecord]:
     return out
 
 
+# Discovery sources that carry NO person-side signal — the repo is a candidate
+# only because the user belongs to its org (top-starred org repos) or it is a
+# curated registry seed. A candidate sourced *only* from these is "speculative":
+# scanned in case a CODEOWNERS/AUTHORS entry names the user, but we don't force a
+# --refresh to re-fetch it (that's the org-membership over-collection that blows
+# the rate limit — a user in ~30 orgs pulls ~30×30 such repos they never touched).
+_SPECULATIVE_SOURCES = {"org-repo", "registry"}
+
+
+def _is_speculative(cand) -> bool:
+    """True when the candidate has no person-side discovery signal (org
+    membership / registry seed only) — see ``_SPECULATIVE_SOURCES``."""
+    return bool(cand.sources) and set(cand.sources) <= _SPECULATIVE_SOURCES
+
+
 def _scan_forge(
     forge, forge_login, base_identity, config, registry, llm, progress,
-    *, is_anchor, label="", index=None, populate_index=True,
+    *, is_anchor, label="", index=None, populate_index=True, cache=None,
 ) -> tuple[list[ProjectRecord], list[ProjectRecord], int | None]:
     """Discover + attribute + popularity-filter one forge for one login, using
     the shared (possibly cross-forge-merged) identity for handle/name matching."""
@@ -153,7 +168,28 @@ def _scan_forge(
         manual_subcomponents=config.extra_subcomponents if is_anchor else {},
         package_index=index_by_repo(package_refs),
     )
-    records, reset_in = _attribute(config, candidates, ctx, progress)
+    # On --refresh, only force a re-fetch for repos the user is actually
+    # connected to (a person-side discovery source). Speculative org-membership /
+    # registry repos keep using the existing cache: they're the bulk of the
+    # candidates but rarely earn a role, and re-scanning all of them is what
+    # exhausts the API rate limit. Normal (non-refresh) runs are unchanged.
+    if config.refresh and cache is not None:
+        anchored = [c for c in candidates if not _is_speculative(c)]
+        speculative = [c for c in candidates if _is_speculative(c)]
+        records, reset_in = _attribute(config, anchored, ctx, progress)
+        if speculative and reset_in is None:
+            _log(config, f"{label}{len(speculative)} speculative repo(s) served "
+                         "from cache (not refreshed)")
+            orig_refresh = cache.refresh
+            cache.refresh = False
+            try:
+                spec_records, reset_in = _attribute(
+                    config, speculative, ctx, progress)
+            finally:
+                cache.refresh = orig_refresh
+            records += spec_records
+    else:
+        records, reset_in = _attribute(config, candidates, ctx, progress)
     _log(config, f"{label}{len(records)} repos with elevated-role evidence")
 
     # Feed the reverse-index with the rosters we just fetched, so future scans
@@ -246,6 +282,7 @@ def run(config: Config, cache=None, progress_cb=None, index_cache=None,
                 forge, login, identity, config, registry, llm, progress,
                 is_anchor=(fname == config.forge and login == config.username),
                 label=label, index=index, populate_index=populate_index,
+                cache=cache,
             )
             all_records += recs
             all_secondary += sec
