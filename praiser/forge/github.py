@@ -17,7 +17,8 @@ from ._http import extract_urls
 from .base import ContributorCount, DirEntry, FileHit, Forge, RepoMeta, UserRef
 
 # Repo fields we ask for everywhere a GraphQL node is returned.
-_REPO_FIELDS = "nameWithOwner stargazerCount forkCount isFork isPrivate pushedAt"
+_REPO_FIELDS = ("nameWithOwner stargazerCount forkCount isFork isPrivate pushedAt "
+                "parent{ nameWithOwner }")
 
 _USER_QUERY = """
 query($login:String!) { user(login:$login) { login name } }
@@ -78,6 +79,7 @@ def _meta_from_node(node: dict | None) -> RepoMeta | None:
         is_fork=bool(node.get("isFork")),
         is_private=bool(node.get("isPrivate")),
         pushed_at=node.get("pushedAt"),
+        parent=(node.get("parent") or {}).get("nameWithOwner"),
     )
 
 
