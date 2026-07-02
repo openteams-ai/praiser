@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root
 
 from praiser.contribindex import ContributorIndex  # noqa: E402
 from praiser.pipeline import FORGES  # noqa: E402
-from praiser.seed import seed_org  # noqa: E402
+from praiser.seed import seed_one, seed_org  # noqa: E402
 from web.core.cache import local_cache, make_result_cache  # noqa: E402
 
 # Forge-aware interface so URLs like ?seed=github/numpy never need to change, but
@@ -30,14 +30,23 @@ from web.core.cache import local_cache, make_result_cache  # noqa: E402
 SEEDABLE_FORGES = ("github",)
 
 
-def parse_seed_target(target: str, default_forge: str = "github") -> tuple[str, str]:
-    """Parse a seed target into (forge, org). Accepts 'org' (uses default_forge)
-    or 'forge/org' (e.g. 'github/numpy'), matching the ?seed= URL form."""
-    target = (target or "").strip().strip("/")
-    if "/" in target:
-        forge, _, org = target.partition("/")
-        return forge.strip().lower(), org.strip()
-    return default_forge, target
+def parse_seed_target(target: str, default_forge: str = "github") -> tuple[str, str, str]:
+    """Parse a ?seed= target into (forge, kind, name).
+
+    An optional leading segment is the forge iff it's a known forge name; the
+    remaining 1 segment is an org, 2 segments are a single owner/repo:
+      numpy                     -> (github, "org",  "numpy")
+      github/numpy              -> (github, "org",  "numpy")
+      github/pytorch/pytorch    -> (github, "repo", "pytorch/pytorch")
+      pytorch/pytorch           -> (github, "repo", "pytorch/pytorch")
+    """
+    parts = [p for p in (target or "").strip().strip("/").split("/") if p]
+    forge = default_forge
+    if parts and parts[0].lower() in FORGES:
+        forge = parts.pop(0).lower()
+    if len(parts) >= 2:
+        return forge, "repo", "/".join(parts[:2])
+    return forge, "org", (parts[0] if parts else "")
 
 
 def _token(forge: str) -> str | None:
@@ -49,21 +58,25 @@ def _token(forge: str) -> str | None:
     return None
 
 
-def run_seed(org: str, forge: str = "github", budget: int = 30,
-             log=lambda m: None) -> dict:
-    """Seed the SHARED reverse-index from ``org``'s repos on ``forge``. Roster
+def run_seed(name: str, forge: str = "github", budget: int = 30,
+             kind: str = "org", log=lambda m: None) -> dict:
+    """Seed the SHARED reverse-index from a target on ``forge``. ``kind`` is
+    "org" (seed the org's repos) or "repo" (seed a single owner/repo). Roster
     fetches use an ephemeral local http cache; the index + per-repo seed markers
     live in the shared cache (Redis when configured) that the app reads."""
     if forge not in FORGES:
-        return {"org": org, "forge": forge, "seeded": 0,
+        return {"target": name, "forge": forge, "seeded": 0,
                 "contributors_indexed": 0, "repos_available": 0,
                 "stopped": f"unknown forge '{forge}'"}
     shared = make_result_cache()                 # shared Redis (or local fallback)
     f = FORGES[forge](_token(forge), local_cache())  # ephemeral http cache
     index = ContributorIndex(shared)
     try:
-        res = seed_org(org, forge=f, index=index, cache=shared,
-                       budget=budget, log=log)
+        if kind == "repo":
+            res = seed_one(name, forge=f, index=index, cache=shared, log=log)
+        else:
+            res = seed_org(name, forge=f, index=index, cache=shared,
+                           budget=budget, log=log)
     finally:
         f.close()
     res["forge"] = forge
@@ -77,16 +90,16 @@ def main(argv=None) -> int:
         prog="web.seed",
         description="Seed the web app's SHARED reverse-index from an org's repos "
                     "(run with the deployment's Upstash + bot-token env).")
-    p.add_argument("org", help="organization login (e.g. numpy), or forge/org "
-                                "(e.g. github/numpy)")
+    p.add_argument("target", help="an org (numpy | github/numpy) or a single "
+                                   "repo (github/pytorch/pytorch | pytorch/pytorch)")
     p.add_argument("--forge", default="github",
-                   help="forge to seed from (default: github; only github is "
-                        "functional today)")
+                   help="default forge when the target omits one (default: "
+                        "github; only github is functional today)")
     p.add_argument("--budget", type=int, default=30, metavar="N",
-                   help="max repos to seed this run (default: 30)")
+                   help="max repos to seed for an org target (default: 30)")
     args = p.parse_args(argv)
-    forge, org = parse_seed_target(args.org, args.forge)
-    res = run_seed(org, forge, args.budget, log=lambda m: print(f"[seed] {m}"))
+    forge, kind, name = parse_seed_target(args.target, args.forge)
+    res = run_seed(name, forge, args.budget, kind, log=lambda m: print(f"[seed] {m}"))
     print(f"[seed] {res}")
     return 0
 

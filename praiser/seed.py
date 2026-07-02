@@ -33,6 +33,39 @@ def _rest_remaining(forge) -> int | None:
     return int(m.group(1)) if m else None
 
 
+def seed_repo(name_with_owner, *, forge, index, cache, force=False) -> int | None:
+    """Seed one repo's contributor roster into the index. Returns the number of
+    contributors indexed, or None if skipped (already seeded within SEED_TTL).
+    Raises RateLimitError to let the caller stop."""
+    marker = Cache.key("roster-seeded", name_with_owner)
+    if not force and cache.has(marker):
+        return None  # seeded within SEED_TTL — skip (re-seeds once it expires)
+    owner, _, repo = name_with_owner.partition("/")
+    contribs = forge.repo_contributors(owner, repo, max_pages=SEED_PAGES)
+    n = 0
+    if contribs:
+        roster = {c.login.lower(): c.contributions for c in contribs if c.login}
+        index.record_rosters({name_with_owner: roster})
+        n = len(roster)
+    cache.set(marker, True)
+    return n
+
+
+def seed_one(name_with_owner, *, forge, index, cache, log=lambda m: None) -> dict:
+    """Seed a single specified repo (for when only one repo is of interest)."""
+    try:
+        n = seed_repo(name_with_owner, forge=forge, index=index, cache=cache)
+    except RateLimitError as exc:
+        return {"repo": name_with_owner, "seeded": 0, "contributors_indexed": 0,
+                "repos_available": 1, "stopped": f"rate limit ({exc.reset_in}s)"}
+    if n is None:
+        return {"repo": name_with_owner, "seeded": 0, "contributors_indexed": 0,
+                "repos_available": 1, "stopped": "already seeded (within 30 days)"}
+    log(f"seeded {name_with_owner} ({n} contributors)")
+    return {"repo": name_with_owner, "seeded": 1, "contributors_indexed": n,
+            "repos_available": 1, "stopped": "all repos seeded"}
+
+
 def seed_org(org, *, forge, index, cache, budget=50, log=lambda m: None) -> dict:
     """Seed the reverse-index from ``org``'s repos. Returns a small summary.
 
@@ -54,22 +87,16 @@ def seed_org(org, *, forge, index, cache, budget=50, log=lambda m: None) -> dict
         if rem is not None and rem < MIN_REST:
             stopped = f"low REST quota ({rem})"
             break
-        marker = Cache.key("roster-seeded", meta.name_with_owner)
-        if cache.has(marker):
-            continue  # seeded within SEED_TTL — skip (re-seeds once it expires)
-        owner, _, repo = meta.name_with_owner.partition("/")
         try:
-            contribs = forge.repo_contributors(owner, repo, max_pages=SEED_PAGES)
+            n = seed_repo(meta.name_with_owner, forge=forge, index=index, cache=cache)
         except RateLimitError as exc:
             stopped = f"rate limit ({exc.reset_in}s)"
             break
-        if contribs:
-            roster = {c.login.lower(): c.contributions for c in contribs if c.login}
-            index.record_rosters({meta.name_with_owner: roster})
-            indexed_contributors += len(roster)
-        cache.set(marker, True)
+        if n is None:
+            continue  # already seeded within SEED_TTL
+        indexed_contributors += n
         seeded += 1
-        log(f"seeded {meta.name_with_owner} ({len(contribs or [])} contributors)")
+        log(f"seeded {meta.name_with_owner} ({n} contributors)")
     return {"org": org, "seeded": seeded,
             "contributors_indexed": indexed_contributors,
             "repos_available": len(repos),
