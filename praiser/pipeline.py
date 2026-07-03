@@ -114,6 +114,7 @@ def _is_speculative(cand) -> bool:
 def _scan_forge(
     forge, forge_login, base_identity, config, registry, llm, progress,
     *, is_anchor, label="", index=None, populate_index=True, cache=None,
+    founder_cache=None,
 ) -> tuple[list[ProjectRecord], list[ProjectRecord], int | None]:
     """Discover + attribute + popularity-filter one forge for one login, using
     the shared (possibly cross-forge-merged) identity for handle/name matching."""
@@ -164,6 +165,7 @@ def _scan_forge(
         contributor_pages=config.contributor_pages,
         auto_discover_roles=config.discover_roles and llm is not None,
         use_wikidata=config.use_wikidata,
+        founder_cache=founder_cache,
         manual_repos=set(config.extra_repos) if is_anchor else set(),
         manual_subcomponents=config.extra_subcomponents if is_anchor else {},
         package_index=index_by_repo(package_refs),
@@ -244,6 +246,10 @@ def run(config: Config, cache=None, progress_cb=None, index_cache=None,
     # can inject a different backend (e.g. the web app's shared Redis) via
     # index_cache; defaults to the run cache.
     index = ContributorIndex(index_cache if index_cache is not None else cache)
+    # The durable/shared cache also backs the per-repo founder cache (#108): the
+    # web app's Redis (shared across instances) or, on the CLI, the on-disk cache
+    # (durable across runs).
+    founder_cache = index_cache if index_cache is not None else cache
     registry = KnownProjects.load(config.registry_path)
     llm = LLM.maybe(cache, enabled=config.use_llm)
     _log(config, f"LLM fallback {'enabled' if llm else 'disabled'}")
@@ -290,7 +296,7 @@ def run(config: Config, cache=None, progress_cb=None, index_cache=None,
                 forge, login, identity, config, registry, llm, progress,
                 is_anchor=(fname == config.forge and login == config.username),
                 label=label, index=index, populate_index=populate_index,
-                cache=cache,
+                cache=cache, founder_cache=founder_cache,
             )
             all_records += recs
             all_secondary += sec

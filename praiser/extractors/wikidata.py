@@ -21,6 +21,7 @@ import json
 import re
 import urllib.parse
 
+from ..cache import Cache
 from ..models import AUTHOR, MAINTAINER, Evidence
 from . import register
 from .base import Extractor, ExtractContext
@@ -69,17 +70,36 @@ class WikidataExtractor(Extractor):
         return (ctx.use_wikidata
                 and candidate.stars >= ctx.role_discovery_floor)
 
-    def extract(self, candidate, ctx: ExtractContext) -> list[Evidence]:
+    def _people(self, candidate, ctx: ExtractContext):
+        """Repo-level Wikidata people ``[(handle, prop, item)]`` — cached in the
+        shared/durable founder cache (a repo's creators are user-independent and
+        time-independent), so it's resolved once and reused across scans instead
+        of hitting the throttled WDQS every time (#108). Returns None on a fetch
+        failure (transient — NOT cached, retried next scan)."""
+        fc = ctx.founder_cache
+        ck = Cache.key("wikidata-people", candidate.name_with_owner)
+        if fc is not None:
+            cached = fc.get(ck, default=None)
+            if cached is not None:
+                return [tuple(p) for p in cached]     # JSON stored lists
         url = f"{_WDQS}?format=json&query={urllib.parse.quote(build_sparql(candidate.url))}"
         page = ctx.forge.get_url(url, accept="application/sparql-results+json")
         if not page:
-            return []
+            return None                                # transient — don't cache
         try:
-            resp = json.loads(page)
+            people = parse_people(json.loads(page))
         except ValueError:
+            return None
+        if fc is not None:
+            fc.set(ck, [list(p) for p in people])      # incl. empty (real "no claims")
+        return people
+
+    def extract(self, candidate, ctx: ExtractContext) -> list[Evidence]:
+        people = self._people(candidate, ctx)
+        if people is None:
             return []
         out: list[Evidence] = []
-        for handle, prop, item in parse_people(resp):
+        for handle, prop, item in people:
             if not ctx.identity.matches_handle(handle):
                 continue
             role, label, conf = _CLAIM.get(prop, (None, None, 0.0))

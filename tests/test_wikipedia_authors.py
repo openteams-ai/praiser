@@ -73,11 +73,18 @@ class _WikiForge:
         return None
 
 
-def _ctx(forge, name="Pearu Peterson", use_wikidata=True, floor=1000):
+def _ctx(forge, name="Pearu Peterson", use_wikidata=True, floor=1000, founder_cache=None):
     return ExtractContext(
         identity=Identity(primary_login="pearu", names={name}),
         forge=forge, registry=KnownProjects(projects={}),
-        use_wikidata=use_wikidata, role_discovery_floor=floor)
+        use_wikidata=use_wikidata, role_discovery_floor=floor,
+        founder_cache=founder_cache)
+
+
+class _MemCache:
+    def __init__(self): self.d = {}
+    def get(self, k, default=None): return self.d.get(k, default)
+    def set(self, k, v, ttl=None): self.d[k] = v
 
 
 def _extract(ctx, cand):
@@ -126,3 +133,38 @@ def test_no_wikipedia_article_is_a_clean_miss():
     forge = NoArticle()
     ev = _extract(_ctx(forge), Candidate("obscure/repo", stars=15000))
     assert ev == [] and len(forge.calls) == 1     # stops after the empty SPARQL
+
+
+def test_founder_cache_avoids_second_wdqs_fetch():
+    # #108: once a repo's authors are resolved, they're cached in the shared
+    # cache and reused — no more WDQS/Wikipedia calls (which throttle cloud IPs).
+    cache = _MemCache()
+    forge = _WikiForge()
+    cand = Candidate("scipy/scipy", stars=15000)
+    ev1 = _extract(_ctx(forge, founder_cache=cache), cand)
+    assert ev1 and ev1[0].role == AUTHOR
+    n_after_first = len(forge.calls)
+    # a DIFFERENT user scanning the same repo reuses the cache — zero new fetches
+    ev2 = _extract(_ctx(_reuse := forge, name="Travis Oliphant", founder_cache=cache), cand)
+    assert ev2 and ev2[0].role == AUTHOR
+    assert len(forge.calls) == n_after_first          # served from founder cache
+
+
+def test_fetch_failure_is_not_cached():
+    # A throttled WDQS (get_url -> None) must NOT be cached as a permanent miss;
+    # the next scan retries (and can succeed once the throttle lifts).
+    cache = _MemCache()
+
+    class Flaky(_WikiForge):
+        def __init__(self): super().__init__(); self.fail = True
+        def get_url(self, url, accept="text/html"):
+            if self.fail and "query.wikidata.org" in url:
+                self.calls.append(url); return None   # throttled
+            return super().get_url(url, accept)
+    forge = Flaky()
+    cand = Candidate("scipy/scipy", stars=15000)
+    assert _extract(_ctx(forge, founder_cache=cache), cand) == []   # failed, no cache
+    assert cache.d == {}                                            # nothing cached
+    forge.fail = False                                              # throttle lifts
+    ev = _extract(_ctx(forge, founder_cache=cache), cand)
+    assert ev and ev[0].role == AUTHOR                              # retried, succeeded
