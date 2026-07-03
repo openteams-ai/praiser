@@ -259,6 +259,14 @@ class Forge(ABC):
         capped ``N+`` estimate with the real total. Default None."""
         return None
 
+    def repo_release_authors(
+        self, owner: str, repo: str, max_releases: int = 100
+    ) -> list[str] | None:
+        """Author logins of the most recent releases (who published each), or None
+        if the forge doesn't expose releases cheaply. Used to credit release
+        managers. Default None."""
+        return None
+
     # -- generic HTTP + housekeeping ----------------------------------------
     @abstractmethod
     def get_url(self, url: str, accept: str = "text/html,application/xhtml+xml") -> str | None:

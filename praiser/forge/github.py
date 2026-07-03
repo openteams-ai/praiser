@@ -324,6 +324,11 @@ class GitHubForge(Forge):
     ) -> int | None:
         return self._client.repo_contributor_count(owner, repo, anon=anon)
 
+    def repo_release_authors(
+        self, owner: str, repo: str, max_releases: int = 100
+    ) -> list[str] | None:
+        return self._client.repo_release_authors(owner, repo, max_releases=max_releases)
+
     # -- generic HTTP + housekeeping ----------------------------------------
     def get_url(
         self, url: str, accept: str = "text/html,application/xhtml+xml"
