@@ -375,7 +375,11 @@ if "diag" in st.query_params:
     st.write(f"- registry title: `{f['registry_title']}`")
     st.write(f"- shared cache entry: `{f['shared_cache_entry']}`")
     st.write(f"- live resolved (title, authors): `{f['live_resolved']}`")
-    st.write(f"- live roles for {f['name']}: `{f['live_roles']}`")
+    st.write(f"- live roles for {f['name']} (control): `{f['live_roles']}`")
+    st.write(f"- **resolved identity names for `{f['resolved_identity_login']}`: "
+             f"`{f['resolved_identity_names']}`**")
+    st.write(f"- **roles with the resolved identity (what the scan gets): "
+             f"`{f['roles_with_resolved_identity']}`**")
 
 
 # --- Seed the shared reverse-index (#65) --------------------------------------

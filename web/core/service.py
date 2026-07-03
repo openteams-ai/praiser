@@ -77,9 +77,8 @@ def diagnose_founder(repo: str = "scipy/scipy", name: str = "Pearu Peterson") ->
     hint, the entry currently in the shared founder cache (which shadows a fix and
     survives Refresh), and a LIVE re-resolution (founder cache bypassed) with the
     roles it yields for ``name``."""
-    import tempfile
-
     from praiser.forge import GitHubForge
+    from praiser.identity import resolve_identity
     from praiser.models import Candidate, Identity
     from praiser.extractors.base import ExtractContext
     from praiser.extractors.wikipedia import WikipediaFoundersExtractor
@@ -92,23 +91,37 @@ def diagnose_founder(repo: str = "scipy/scipy", name: str = "Pearu Peterson") ->
     forge = GitHubForge(_token_for("github"), local_cache())
     ext = WikipediaFoundersExtractor()
     cand = Candidate(repo, stars=15000)
-    ctx = ExtractContext(
-        identity=Identity(primary_login="_diag", names={name}),
-        forge=forge, registry=reg, use_wikidata=True,
-        role_discovery_floor=1000, founder_cache=None)   # bypass cache → LIVE
+    login = repo.split("/", 1)[0]                        # scipy → "scipy" (a real login)
+    login = "pearu"                                      # the reported user
+
+    def _roles_for(identity):
+        ctx = ExtractContext(identity=identity, forge=forge, registry=reg,
+                             use_wikidata=True, role_discovery_floor=1000,
+                             founder_cache=None)          # bypass cache → LIVE
+        return ext._authors(cand, ctx), [e.role for e in ext.extract(cand, ctx)]
+
     try:
-        resolved = ext._authors(cand, ctx)               # (title, authors) or None
-        roles = [e.role for e in ext.extract(cand, ctx)]
+        # (1) control: hardcoded name — proves the extractor path works.
+        resolved, roles = _roles_for(Identity(primary_login="_diag", names={name}))
+        # (2) the REAL thing: resolve the scanned user's identity like a scan does,
+        # and see whether it carries the name the extractor matches on.
+        real = resolve_identity(forge, login)
+        real_names = sorted(real.names)
+        _, real_roles = _roles_for(real)
     except Exception as exc:                             # noqa: BLE001
-        resolved, roles = f"EXC {type(exc).__name__}: {exc}", []
+        resolved, roles, real_names, real_roles = (
+            f"EXC {type(exc).__name__}: {exc}", [], [], [])
     finally:
         forge.close()
     return {
         "repo": repo, "name": name,
         "registry_title": reg.wikipedia_title(repo),
-        "shared_cache_entry": cached,      # what's stored (shadows fixes; Refresh won't clear)
+        "shared_cache_entry": cached,      # shadows fixes; Refresh won't clear
         "live_resolved": resolved,         # (title, [authors]) resolved now, cache bypassed
-        "live_roles": roles,               # roles the extractor yields for `name` now
+        "live_roles": roles,               # roles for the hardcoded `name` (control)
+        "resolved_identity_login": login,
+        "resolved_identity_names": real_names,   # what resolve_identity gives the scan
+        "roles_with_resolved_identity": real_roles,   # what the SCAN would get
     }
 
 
