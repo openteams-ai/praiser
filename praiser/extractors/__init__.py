@@ -23,6 +23,8 @@ _BUILTIN_MODULES = [
     "packages",
     "curated",
     "wikidata",
+    "wikipedia",
+    "releases",
     "llm_founders",
 ]
 
