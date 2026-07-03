@@ -272,3 +272,18 @@ def test_scan_fallback_refresh_only_on_first_attempt():
         exhausted={}, now=1000, collect_fn=fake)
     assert label == "bot" and result is not None
     assert seen == [("T1", True), ("T2", False)]  # refresh only on the first token
+
+
+def test_diagnose_external_sources_maps_status():
+    # Injected fetch: WDQS 200, Wikipedia 429 (throttled), GitHub timeout.
+    def fake_fetch(url, accept):
+        if "wikidata" in url:  return 200, None
+        if "wikipedia" in url: return 429, "Too Many Requests"
+        return None, "TimeoutError: timed out"
+    diag = service.diagnose_external_sources(fetch=fake_fetch)
+    by = {c["name"]: c for c in diag["checks"]}
+    assert by["Wikidata Query Service"]["ok"] is True
+    assert by["Wikipedia API"]["ok"] is False and "429" in by["Wikipedia API"]["detail"]
+    assert by["GitHub API (baseline)"]["ok"] is False
+    assert "TimeoutError" in by["GitHub API (baseline)"]["detail"]
+    assert diag["user_agent"]                       # praiser's UA is reported
