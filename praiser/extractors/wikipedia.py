@@ -96,13 +96,8 @@ class WikipediaFoundersExtractor(Extractor):
 
     def applicable(self, candidate, ctx: ExtractContext) -> bool:
         # Rides the Wikidata toggle; NOT gated on the LLM flag, so it surfaces
-        # founders in a default scan. Notable = popular by live stars OR curated
-        # in the registry — the latter matters because candidate.stars is set at
-        # discovery and can be 0 at attribution time (star enrichment runs later),
-        # which would otherwise skip a known-notable repo like scipy (#108).
-        notable = (candidate.stars >= ctx.role_discovery_floor
-                   or ctx.known(candidate.name_with_owner) is not None)
-        return ctx.use_wikidata and notable and bool(ctx.identity.names)
+        # founders in a default scan. Name-match extractor, so needs identity names.
+        return ctx.use_wikidata and ctx.is_notable(candidate) and bool(ctx.identity.names)
 
     def _fetch_json(self, ctx, url, accept):
         page = ctx.forge.get_url(url, accept=accept)

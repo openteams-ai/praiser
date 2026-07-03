@@ -91,3 +91,20 @@ def test_disabled_when_use_wikidata_false():
     forge = _Forge(_sparql_json([("Q1", "P170", "someone")]))
     ctx = _ctx("someone", forge, use_wikidata=False)
     assert WikidataExtractor().applicable(Candidate("a/b", stars=5000), ctx) is False
+
+
+def test_is_notable_accepts_stars_forks_or_curated():
+    from praiser.extractors.base import ExtractContext
+    from praiser.registry import KnownProject, KnownProjects
+    from praiser.models import Candidate, Identity
+
+    class F: pass
+    reg = KnownProjects(projects={"a/curated": KnownProject("a/curated")})
+    ctx = ExtractContext(identity=Identity(primary_login="u"), forge=F(),
+                         registry=reg, role_discovery_floor=1000, canonical_forks=100)
+    assert ctx.is_notable(Candidate("a/b", stars=1500)) is True        # by stars
+    assert ctx.is_notable(Candidate("a/b", stars=0, forks=150)) is True  # by forks
+    assert ctx.is_notable(Candidate("a/curated", stars=0, forks=0)) is True  # curated
+    # none of the three → not notable (stars can be 0 at attribution; that's fine
+    # for a genuinely small, uncurated repo)
+    assert ctx.is_notable(Candidate("x/small", stars=0, forks=0)) is False

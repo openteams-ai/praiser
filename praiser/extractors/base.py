@@ -128,6 +128,22 @@ class ExtractContext:
             or candidate.forks >= self.canonical_forks
         )
 
+    def is_notable(self, candidate) -> bool:
+        """Whether a repo is notable enough for external role discovery
+        (Wikidata / Wikipedia founders, LLM, web team pages, releases).
+
+        Uses ANY reliable popularity signal, not stars alone: ``candidate.stars``
+        is set at discovery and can be 0 at attribution time for some discovery
+        paths (star enrichment lags), so gating solely on it silently skips
+        known-notable repos (#108). Notable if popular by stars OR forks, or
+        curated in the registry.
+        """
+        return (
+            candidate.stars >= self.role_discovery_floor
+            or candidate.forks >= self.canonical_forks
+            or self.known(candidate.name_with_owner) is not None
+        )
+
 
 class Extractor(ABC):
     name: str = "base"

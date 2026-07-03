@@ -64,8 +64,7 @@ class ReleaseManagerExtractor(Extractor):
 
     def applicable(self, candidate, ctx: ExtractContext) -> bool:
         # Notable projects only (bounds the extra call; matches "large project").
-        return (candidate.stars >= ctx.role_discovery_floor
-                and bool(ctx.identity.logins))
+        return ctx.is_notable(candidate) and bool(ctx.identity.logins)
 
     def extract(self, candidate, ctx: ExtractContext) -> list[Evidence]:
         authors = ctx.forge.repo_release_authors(candidate.owner, candidate.repo)

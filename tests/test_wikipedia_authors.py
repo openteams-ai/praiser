@@ -193,17 +193,35 @@ def test_registry_title_skips_wdqs():
     assert all("query.wikidata.org" not in u for u in forge.calls)   # WDQS-free
 
 
-def test_curated_repo_runs_even_with_low_attribution_stars():
-    # #108: candidate.stars can be 0 at attribution (enrichment runs later). A
-    # registry-curated repo must still run the founder extractor.
+def test_zero_star_notable_repo_still_yields_founder_role_108_regression():
+    # Reproduces #108 at the gate: scipy was discovered with stars=0 at
+    # ATTRIBUTION time (star enrichment lags), so the founder extractor's
+    # stars-only gate skipped it and pearu's Author role was lost. A notable repo
+    # with stars=0 must still PRODUCE the Author role — fails if the gate reverts
+    # to `candidate.stars >= floor` alone.
     from praiser.registry import KnownProject, KnownProjects
     from praiser.extractors.wikipedia import WikipediaFoundersExtractor
-    reg = KnownProjects(projects={"scipy/scipy": KnownProject("scipy/scipy", wikipedia="SciPy")})
+    ext = WikipediaFoundersExtractor()
+    ident = Identity(primary_login="pearu", names={"Pearu Peterson"})
+
+    def role(cand, reg):
+        ctx = ExtractContext(identity=ident, forge=_WikiForge(), registry=reg,
+                             use_wikidata=True, role_discovery_floor=1000,
+                             canonical_forks=100)
+        return [e.role for e in ext.extract(cand, ctx)] if ext.applicable(cand, ctx) else []
+
+    # (a) notable by CURATION, stars=0 and forks=0 (the exact scipy condition)
+    curated = KnownProjects(projects={"scipy/scipy": KnownProject("scipy/scipy", wikipedia="SciPy")})
+    assert role(Candidate("scipy/scipy", stars=0, forks=0), curated) == [AUTHOR]
+    # (b) notable by FORKS, stars=0, uncurated (title resolved via WDQS fallback)
+    assert role(Candidate("scipy/scipy", stars=0, forks=500), KnownProjects(projects={})) == [AUTHOR]
+
+
+def test_uncurated_unpopular_repo_is_skipped():
+    from praiser.extractors.wikipedia import WikipediaFoundersExtractor
     ext = WikipediaFoundersExtractor()
     ctx = ExtractContext(identity=Identity(primary_login="pearu", names={"Pearu Peterson"}),
-                         forge=_WikiForge(), registry=reg, use_wikidata=True,
-                         role_discovery_floor=1000)
-    low = Candidate("scipy/scipy", stars=0)      # not yet enriched
-    assert ext.applicable(low, ctx) is True      # curated → runs despite 0 stars
+                         forge=_WikiForge(), registry=KnownProjects(projects={}),
+                         use_wikidata=True, role_discovery_floor=1000, canonical_forks=100)
     uncurated = Candidate("random/repo", stars=0)
-    assert ext.applicable(uncurated, ctx) is False   # uncurated + low stars → skipped
+    assert ext.applicable(uncurated, ctx) is False   # uncurated + low stars/forks → skipped

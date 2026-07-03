@@ -367,22 +367,6 @@ if "diag" in st.query_params:
     for c in diag["checks"]:
         st.write(f"{'✅' if c['ok'] else '❌'} **{c['name']}** — {c['detail']}")
 
-    st.subheader("🔎 Founder resolution — scipy/scipy")
-    f = service.diagnose_founder()
-    st.caption("Traces why an expected Author may be missing. `shared cache entry` "
-               "is what's stored (it shadows fixes and survives Refresh); "
-               "`live` re-resolves with the cache bypassed.")
-    st.write(f"- registry title: `{f['registry_title']}`")
-    st.write(f"- shared cache entry: `{f['shared_cache_entry']}`")
-    st.write(f"- live resolved (title, authors): `{f['live_resolved']}`")
-    st.write(f"- live roles for {f['name']} (control): `{f['live_roles']}`")
-    st.write(f"- **resolved identity names for `{f['resolved_identity_login']}`: "
-             f"`{f['resolved_identity_names']}`**")
-    st.write(f"- **roles with the resolved identity (what the scan gets): "
-             f"`{f['roles_with_resolved_identity']}`**")
-    st.write(f"- **discovered stars (gate sees at attribution; floor 1000): "
-             f"`{f['discovered_stars']}`**")
-
 
 # --- Seed the shared reverse-index (#65) --------------------------------------
 # Shown ONLY when the URL has `?seed` AND the deployer opted in (SEED_ENABLED in
