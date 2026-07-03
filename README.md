@@ -304,6 +304,24 @@ are handled by **one** extractor parameterized by `(path, header_format)`, which
 also **auto-detects** the pattern when a repo has a directory of numbered
 `*.rst`/`*.md` files with author metadata.
 
+## Issues & feedback
+
+Feedback is very welcome — the web demo's buttons and the issue tracker both open
+GitHub issues. Since praiser is itself built with an AI agent, here's how
+interactions work, so you know who you're talking to:
+
+- **Issues are triaged with an AI agent** (Claude Code). When it comments it posts
+  under the maintainer's account, always with a note saying which kind of message
+  it is: _"generated without human review"_ (an agent draft the maintainer hasn't
+  vetted yet) or _"reviewed & approved by @pearu"_ (the maintainer read it and
+  stands behind it).
+- **A human is in the loop.** Pearu reads the issues and reviews the agent's work
+  — you're not shouting into a void.
+- **No response-time promise.** This is a for-fun project maintained in spare
+  time, so issues are handled best-effort — sometimes slowly, sometimes not at
+  all. That's honesty, not a brush-off: genuine reports (especially false
+  positives/negatives on your own handle) are exactly what make praiser better.
+
 ## Development
 
 ```bash
