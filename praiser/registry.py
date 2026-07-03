@@ -144,6 +144,11 @@ class KnownProject:
     curated_roles: list[CuratedRole] = field(default_factory=list)
     subcomponents: list[Subcomponent] = field(default_factory=list)
     popularity: dict[str, Any] = field(default_factory=dict)
+    # English Wikipedia article title, when known. Lets the wikipedia-authors
+    # extractor skip the Wikidata Query Service (which throttles cloud IPs, #108)
+    # for the repo→page mapping and read the infobox straight from the reachable
+    # Wikipedia API. A stable, factual repo→page fact (not per-person data).
+    wikipedia: str = ""
     notes: str = ""
 
     @property
@@ -178,6 +183,7 @@ class KnownProject:
                 Subcomponent.from_dict(s) for s in d.get("subcomponents", [])
             ],
             popularity=dict(d.get("popularity", {})),
+            wikipedia=d.get("wikipedia", ""),
             notes=d.get("notes", ""),
         )
 
@@ -197,6 +203,8 @@ class KnownProject:
             out["subcomponents"] = [s.to_dict() for s in self.subcomponents]
         if self.popularity:
             out["popularity"] = self.popularity
+        if self.wikipedia:
+            out["wikipedia"] = self.wikipedia
         if self.notes:
             out["notes"] = self.notes
         return out
@@ -294,6 +302,11 @@ class KnownProjects:
         """Curated/cached total-contributors snapshot for a project, if any."""
         proj = self.get(name_with_owner)
         return proj.contributor_count if proj else None
+
+    def wikipedia_title(self, name_with_owner: str) -> str | None:
+        """Curated English Wikipedia article title for a project, if any."""
+        proj = self.get(name_with_owner)
+        return (proj.wikipedia or None) if proj else None
 
     def add_role_sources(
         self, name_with_owner: str, sources: list[dict[str, Any]]

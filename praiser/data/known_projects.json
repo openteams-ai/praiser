@@ -42,7 +42,14 @@
         { "path": "numpy/f2py", "role": "author", "label": "f2py" }
       ],
       "popularity": { "contributors": 2097 },
+      "wikipedia": "NumPy",
       "notes": "NEPs under doc/neps (RST); authoritative roles on numpy.org."
+    },
+    "scipy/scipy": {
+      "importance": "critical",
+      "popularity": { "contributors": 1929 },
+      "wikipedia": "SciPy",
+      "notes": "Founders/creators are in the Wikipedia infobox (WDQS-free path); SciPy 1.0 paper authors."
     },
     "pytorch/pytorch": {
       "importance": "critical",
@@ -58,6 +65,7 @@
         { "path": "torch/sparse", "role": "maintainer", "label": "sparse tensors" }
       ],
       "popularity": { "contributors": 6683 },
+      "wikipedia": "PyTorch",
       "notes": "Module maintainers listed on the Persons of Interest page; the repo also has a CODEOWNERS."
     },
     "scientific-python/specs": {
@@ -92,6 +100,7 @@
         { "extractor": "maintainers", "role": "maintainer", "path": "OWNERS" }
       ],
       "popularity": { "contributors": 5778 },
+      "wikipedia": "Kubernetes",
       "notes": "Uses Kubernetes OWNERS (YAML) files with approvers/reviewers."
     }
   }

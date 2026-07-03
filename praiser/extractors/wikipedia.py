@@ -123,13 +123,21 @@ class WikipediaFoundersExtractor(Extractor):
             cached = fc.get(ck, default=None)
             if cached is not None:
                 return cached[0], list(cached[1])      # (title, authors)
-        sparql = build_title_sparql(candidate.url)
-        resp = self._fetch_json(
-            ctx, f"{_WDQS}?format=json&query={urllib.parse.quote(sparql)}",
-            "application/sparql-results+json")
-        if resp is None:
-            return None                                # transient — don't cache
-        title = parse_article_title(resp)
+        # Resolve repo → article title. Prefer the registry's curated title: it
+        # skips the Wikidata Query Service (WDQS), which throttles cloud IPs to
+        # ~1 req/min and starves a scan's founder lookups (#108). The Wikipedia
+        # API itself stays reachable, so a curated title makes the whole path
+        # WDQS-free. Fall back to WDQS resolution for uncurated repos.
+        known = ctx.known(candidate.name_with_owner)
+        title = known.wikipedia if (known and known.wikipedia) else None
+        if not title:
+            sparql = build_title_sparql(candidate.url)
+            resp = self._fetch_json(
+                ctx, f"{_WDQS}?format=json&query={urllib.parse.quote(sparql)}",
+                "application/sparql-results+json")
+            if resp is None:
+                return None                            # transient — don't cache
+            title = parse_article_title(resp)
         if not title:
             if fc is not None:
                 fc.set(ck, ["", []])                   # no enwiki article: real empty

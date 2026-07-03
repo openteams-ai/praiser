@@ -168,3 +168,26 @@ def test_fetch_failure_is_not_cached():
     forge.fail = False                                              # throttle lifts
     ev = _extract(_ctx(forge, founder_cache=cache), cand)
     assert ev and ev[0].role == AUTHOR                              # retried, succeeded
+
+
+def test_registry_title_skips_wdqs():
+    # #108: with a curated Wikipedia title, the extractor never calls WDQS
+    # (which throttles cloud IPs) — it goes straight to the reachable Wikipedia API.
+    from praiser.registry import KnownProject, KnownProjects
+    from praiser.extractors.wikipedia import WikipediaFoundersExtractor
+
+    class WikiOnly(_WikiForge):
+        def get_url(self, url, accept="text/html"):
+            self.calls.append(url)
+            if "query.wikidata.org" in url:
+                raise AssertionError("WDQS must not be called when a title is curated")
+            if "api.php" in url:
+                return json.dumps({"parse": {"wikitext": {"*": self.wikitext}}})
+            return None
+    reg = KnownProjects(projects={"scipy/scipy": KnownProject("scipy/scipy", wikipedia="SciPy")})
+    forge = WikiOnly()
+    ctx = ExtractContext(identity=Identity(primary_login="pearu", names={"Pearu Peterson"}),
+                         forge=forge, registry=reg, use_wikidata=True, role_discovery_floor=1000)
+    ev = WikipediaFoundersExtractor().extract(Candidate("scipy/scipy", stars=15000), ctx)
+    assert ev and ev[0].role == AUTHOR
+    assert all("query.wikidata.org" not in u for u in forge.calls)   # WDQS-free
