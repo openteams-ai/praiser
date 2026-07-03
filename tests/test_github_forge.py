@@ -88,6 +88,42 @@ def test_resolve_user():
     assert _forge().resolve_user("pearu") == UserRef(login="pearu", name="Pearu Peterson")
 
 
+def test_resolve_user_falls_back_to_discovery_name_when_profile_name_null():
+    # #124: the dedicated profile query returns `User.name` (nullable), which can
+    # come back null under service pressure — silently emptying identity.names and
+    # disabling name-based authorship detection. The discovery query fetches the
+    # same name independently, so fall back to it rather than trust the null.
+    class _NullName(_FakeClient):
+        def graphql(self, query, variables):
+            if "repositoriesContributedTo" in query:          # DISCOVERY has the name
+                return {"user": {"login": "pearu", "name": "Pearu Peterson",
+                                 "repositories": {"nodes": []},
+                                 "repositoriesContributedTo": {"nodes": []}}}
+            return {"user": {"login": "pearu", "name": None}}  # USER_QUERY: name-less
+    assert _forge(_NullName()).resolve_user("pearu") == UserRef(
+        login="pearu", name="Pearu Peterson")
+
+
+def test_resolve_user_falls_back_when_profile_query_returns_no_user():
+    # USER_QUERY degraded to no user at all → still resolve login+name via discovery.
+    class _NoUser(_FakeClient):
+        def graphql(self, query, variables):
+            if "repositoriesContributedTo" in query:
+                return {"user": {"login": "pearu", "name": "Pearu Peterson",
+                                 "repositories": {"nodes": []},
+                                 "repositoriesContributedTo": {"nodes": []}}}
+            return {"user": None}
+    assert _forge(_NoUser()).resolve_user("pearu") == UserRef(
+        login="pearu", name="Pearu Peterson")
+
+
+def test_resolve_user_none_when_both_sources_empty():
+    class _AllNull(_FakeClient):
+        def graphql(self, query, variables):
+            return {"user": None}
+    assert _forge(_AllNull()).resolve_user("ghost") is None
+
+
 def test_user_repositories_and_contributed_and_orgs():
     f = _forge()
     assert f.user_repositories("pearu") == [RepoMeta("pearu/pylibtiff", stars=140,

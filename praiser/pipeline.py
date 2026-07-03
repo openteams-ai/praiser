@@ -48,6 +48,10 @@ class RunResult:
     secondary: list[ProjectRecord] = field(default_factory=list)
     # Seconds until the rate limit resets if the run was cut short, else None.
     partial_reset_in: int | None = None
+    # The resolved identity this scan matched against (logins/names/emails). Kept
+    # so a stored result is self-describing — e.g. an empty ``names`` explains a
+    # missing name-based role like a Wikipedia-infobox author (#124).
+    identity: Identity | None = None
 
 
 def _log(config: Config, msg: str) -> None:
@@ -319,7 +323,8 @@ def run(config: Config, cache=None, progress_cb=None, index_cache=None,
         records.sort(key=lambda r: r.score, reverse=True)
         secondary.sort(key=lambda r: r.score, reverse=True)
         return RunResult(
-            records=records, secondary=secondary, partial_reset_in=reset_in
+            records=records, secondary=secondary, partial_reset_in=reset_in,
+            identity=identity,
         )
     finally:
         for f in open_forges.values():
