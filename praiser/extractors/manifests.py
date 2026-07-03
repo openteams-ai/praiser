@@ -163,22 +163,45 @@ class ManifestsExtractor(Extractor):
                     evidence.append(ev)
         return evidence
 
+    def _is_committer(self, candidate, ctx) -> bool:
+        """Whether the scanned identity is an attributed committer to this repo.
+        A manifest author/maintainer field is fakeable, but committer attribution
+        is not — so a match that is ALSO a committer is strong evidence (#123)."""
+        try:
+            contribs = ctx.contributors(candidate) or {}
+        except Exception:
+            return False
+        return any(h in contribs for h in ctx.identity.logins)
+
     def _match(self, candidate, ctx, path, people, role) -> Evidence | None:
         url = f"{candidate.url}/blob/HEAD/{path}"
         label = "author" if role == AUTHOR else "maintainer"
+        how = None
         for p in people:
             if ctx.identity.matches_email(p.email):
-                return Evidence(
-                    source=self.name, role=role, url=url, confidence=0.75,
-                    detail=f"{label} email in {path}",
-                )
-        for p in people:
-            if ctx.identity.matches_name(p.name):
-                return Evidence(
-                    source=self.name, role=role, url=url, confidence=0.45,
-                    detail=f"{label} name in {path}",
-                )
-        return None
+                how = "email"
+                break
+        if how is None:
+            for p in people:
+                if ctx.identity.matches_name(p.name):
+                    how = "name"
+                    break
+        if how is None:
+            return None
+        base = 0.75 if how == "email" else 0.45
+        # Corroborate a fakeable manifest field with non-fakeable committer
+        # attribution: if the matched person also commits to the repo, it's strong
+        # evidence, not a soft one (#123). Committer check is lazy — only after a
+        # match — so it doesn't fetch rosters for unrelated repos.
+        if self._is_committer(candidate, ctx):
+            return Evidence(
+                source=self.name, role=role, url=url, confidence=0.8,
+                detail=f"{label} {how} in {path}, corroborated by commits",
+            )
+        return Evidence(
+            source=self.name, role=role, url=url, confidence=base,
+            detail=f"{label} {how} in {path}",
+        )
 
 
 register(ManifestsExtractor())
