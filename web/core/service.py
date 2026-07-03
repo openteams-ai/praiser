@@ -59,11 +59,33 @@ def _http_status(url: str, accept: str, timeout: float = 15.0):
         return None, f"{type(exc).__name__}: {exc}"
 
 
-def diagnose_external_sources(fetch=_http_status):
-    """Probe the external data sources from THIS host with praiser's User-Agent,
-    so the deployed app can show whether WDQS/Wikipedia are reachable (they
-    throttle cloud IPs). Returns ``{"user_agent", "checks": [{name, url, ok,
-    detail, ms}]}``. ``fetch`` is injectable for tests."""
+def _praiser_geturl_probe(url: str, accept: str):
+    """Fetch via praiser's REAL client path (httpx when installed, else urllib) —
+    what the extractors actually use. Returns (ok, detail). This is the faithful
+    check: raw-urllib reaching a source doesn't prove praiser's httpx client does
+    (proxy/TLS/HTTP2 env differences on a host can diverge)."""
+    import tempfile
+
+    from praiser.forge import GitHubForge
+    from praiser.github_client import httpx as _httpx
+    client = "httpx" if _httpx is not None else "urllib"
+    forge = GitHubForge(None, Cache(tempfile.mkdtemp()))  # no auth (external URLs)
+    try:
+        body = forge.get_url(url, accept=accept)
+        return (body is not None), (f"{client}: {len(body)} bytes" if body
+                                    else f"{client}: None (fetch failed)")
+    except Exception as exc:
+        return False, f"{client}: {type(exc).__name__}: {exc}"
+    finally:
+        forge.close()
+
+
+def diagnose_external_sources(fetch=_http_status, geturl_probe=_praiser_geturl_probe):
+    """Probe the external data sources from THIS host, two ways per source: a raw
+    ``urllib`` GET (HTTP status) AND praiser's actual ``get_url`` (httpx) path that
+    the extractors use. A divergence (urllib 200 but httpx None) localizes the
+    failure to praiser's client on this host, not reachability. Both callables are
+    injectable for tests. Returns ``{"user_agent", "checks": [...]}``."""
     checks = []
     for name, url, accept in _DIAG_SOURCES:
         t0 = time.monotonic()
@@ -71,7 +93,9 @@ def diagnose_external_sources(fetch=_http_status):
         ms = round((time.monotonic() - t0) * 1000)
         ok = status == 200
         detail = f"HTTP {status}" + (f" — {err}" if err else "") if status else (err or "failed")
-        checks.append({"name": name, "url": url, "ok": ok, "detail": detail, "ms": ms})
+        probe_ok, probe_detail = geturl_probe(url, accept)
+        checks.append({"name": name, "url": url, "ok": ok, "detail": detail, "ms": ms,
+                       "praiser_ok": probe_ok, "praiser_detail": probe_detail})
     return {"user_agent": USER_AGENT, "checks": checks}
 
 
@@ -218,7 +242,13 @@ def _token_for(forge: str) -> str | None:
 # subcomponents-are-contribution fix (#47) + credit-based authorship (#48);
 # bumped to 3 for the discovery/attribution false-negative fixes (#57 #58 #59
 # #62 #63) so the web app recomputes with the improved recall.
-CACHE_VERSION = 5   # bumped so cached results recompute with contributor rank/N (#R/N)
+# v6: recompute for this session's extraction-logic changes that v5 predates —
+# Wikipedia-infobox authors (#94), release_manager role (#95/#99), score by
+# strongest-supported claim (#98), contributor totals #R/N (#87), sole-contributor
+# suppression (#106), and the transient-URL-cache fix (#105). Without this bump
+# the shared result cache kept serving pre-Author results (e.g. scipy missing
+# pearu's Author) for 30 days — the real cause of #108.
+CACHE_VERSION = 6
 
 # A small index of recently-scanned (forge, login) pairs — the cache keys are
 # hashed and can't be enumerated, so we track names separately for a UI picker.

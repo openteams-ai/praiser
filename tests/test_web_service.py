@@ -275,14 +275,20 @@ def test_scan_fallback_refresh_only_on_first_attempt():
 
 
 def test_diagnose_external_sources_maps_status():
-    # Injected fetch: WDQS 200, Wikipedia 429 (throttled), GitHub timeout.
+    # WDQS: urllib 200 but praiser/httpx None (the key divergence we're hunting);
+    # Wikipedia 429; GitHub timeout.
     def fake_fetch(url, accept):
         if "wikidata" in url:  return 200, None
         if "wikipedia" in url: return 429, "Too Many Requests"
         return None, "TimeoutError: timed out"
-    diag = service.diagnose_external_sources(fetch=fake_fetch)
+    def fake_probe(url, accept):
+        if "wikidata" in url:  return False, "httpx: None (fetch failed)"
+        return True, "httpx: 1234 bytes"
+    diag = service.diagnose_external_sources(fetch=fake_fetch, geturl_probe=fake_probe)
     by = {c["name"]: c for c in diag["checks"]}
-    assert by["Wikidata Query Service"]["ok"] is True
+    assert by["Wikidata Query Service"]["ok"] is True          # urllib reached it
+    assert by["Wikidata Query Service"]["praiser_ok"] is False  # praiser/httpx didn't
+    assert "None" in by["Wikidata Query Service"]["praiser_detail"]
     assert by["Wikipedia API"]["ok"] is False and "429" in by["Wikipedia API"]["detail"]
     assert by["GitHub API (baseline)"]["ok"] is False
     assert "TimeoutError" in by["GitHub API (baseline)"]["detail"]

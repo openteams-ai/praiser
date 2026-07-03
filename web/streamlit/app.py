@@ -360,12 +360,15 @@ if "diag" in st.query_params:
     st.subheader("🩺 External data-source reachability")
     diag = service.diagnose_external_sources()
     st.caption(f"Probed from this host with User-Agent `{diag['user_agent']}`. "
-               "Wikidata/Wikipedia feed the Author/founder roles; GitHub is the "
-               "baseline. ❌ on Wikidata/Wikipedia here (esp. 403/429/timeout) "
-               "explains a missing founder role on this deployment.")
+               "Each source is checked two ways: a raw `urllib` GET (HTTP status) "
+               "and **praiser's own `get_url` (httpx)** — the path the extractors "
+               "actually use. If urllib is ✅ but praiser/httpx is ❌, the failure "
+               "is praiser's client on this host, not reachability. Wikidata/"
+               "Wikipedia feed the Author/founder roles; GitHub is the baseline.")
     for c in diag["checks"]:
-        st.write(f"{'✅' if c['ok'] else '❌'} **{c['name']}** — {c['detail']} "
-                 f"· {c['ms']} ms")
+        st.write(f"**{c['name']}**")
+        st.write(f"&nbsp;&nbsp;{'✅' if c['ok'] else '❌'} raw urllib — {c['detail']} · {c['ms']} ms")
+        st.write(f"&nbsp;&nbsp;{'✅' if c['praiser_ok'] else '❌'} praiser get_url — {c['praiser_detail']}")
 
 
 # --- Seed the shared reverse-index (#65) --------------------------------------
