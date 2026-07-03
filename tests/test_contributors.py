@@ -16,8 +16,10 @@ class _RecordingForge:
 
 
 class _ContribForge:
+    # A realistic multi-contributor roster (pearu #1 among others) — these
+    # fixtures exercise TRUST/attribution, not the solo-repo suppression (#103).
     def repo_contributors(self, owner, repo, max_pages=2):
-        return [ContributorCount("pearu", 200)]
+        return [ContributorCount("pearu", 200), ContributorCount("codev", 60)]
 
 
 def _contrib_ctx():
@@ -186,6 +188,38 @@ def test_uncapped_list_is_exact_and_makes_no_extra_call():
         Candidate("small/repo", stars=9000), _capped_ctx(Small()))
     assert ev[0].n_contributors == 2 and ev[0].contributors_capped is False
     assert ev[0].contributors_approx is False       # full list -> exact
+
+
+def _solo_ctx():
+    class Solo:
+        def repo_contributors(self, o, r, max_pages=2):
+            return [ContributorCount("pearu", 40)]
+    return ExtractContext(identity=Identity(primary_login="pearu"), forge=Solo(),
+                          registry=KnownProjects(projects={}), popularity_floor=0)
+
+
+def test_sole_contributor_gets_no_core_role_regardless_of_owner():
+    # #103: "#1 of 1" isn't a ranking. Suppressed for an OWNED repo (Author
+    # covers it) AND for someone else's repo — ownership/stars are orthogonal.
+    from praiser.extractors.contributors import ContributorsExtractor
+    ext = ContributorsExtractor()
+    assert ext.extract(Candidate("pearu/parseonly", stars=0), _solo_ctx()) == []
+    others = Candidate("xnd-project/umem", stars=7, forks=30)  # not owned, widely-forked
+    others.is_fork = False
+    assert ext.extract(others, _solo_ctx()) == []
+
+
+def test_multi_contributor_repo_keeps_rank():
+    # More than one contributor -> a real ranking, kept (independent of stars).
+    from praiser.extractors.contributors import ContributorsExtractor
+
+    class Multi:
+        def repo_contributors(self, o, r, max_pages=2):
+            return [ContributorCount("pearu", 40), ContributorCount("other", 10)]
+    ctx = ExtractContext(identity=Identity(primary_login="pearu"), forge=Multi(),
+                         registry=KnownProjects(projects={}), popularity_floor=0)
+    ev = ContributorsExtractor().extract(Candidate("pearu/collab", stars=0), ctx)
+    assert ev and ev[0].n_contributors == 2
 
 
 def test_contributor_pages_cap_is_passed_through():
