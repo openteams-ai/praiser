@@ -31,6 +31,13 @@ class ExtractContext:
     auto_discover_roles: bool = False  # find role pages via LLM + web search
     use_wikidata: bool = False  # derive creator/developer roles from Wikidata
     role_discovery_floor: int = 1000   # floor for external role lookup (LLM/Wikidata)
+    # Shared/durable cache for repo-level, time-independent lookups (founder/
+    # creator resolution from Wikidata/Wikipedia). On the web it's the shared
+    # Redis; on the CLI the on-disk cache. Keyed per REPO (not per user), so a
+    # repo's founders are resolved once and reused by every scan — decoupling the
+    # founder roles from live WDQS reachability, which throttles cloud IPs (#108).
+    # Uses the cache's normal (finite) TTL so the keyspace stays bounded.
+    founder_cache: object | None = None
     manual_repos: set[str] = field(default_factory=set)  # user-vouched repos
     # user-vouched subcomponents: repo -> [paths]
     manual_subcomponents: dict[str, list[str]] = field(default_factory=dict)

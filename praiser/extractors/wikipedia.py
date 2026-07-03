@@ -24,6 +24,7 @@ import json
 import re
 import urllib.parse
 
+from ..cache import Cache
 from ..models import AUTHOR, Evidence
 from . import register
 from .base import Extractor, ExtractContext
@@ -110,21 +111,48 @@ class WikipediaFoundersExtractor(Extractor):
         except ValueError:
             return None
 
-    def extract(self, candidate, ctx: ExtractContext) -> list[Evidence]:
+    def _authors(self, candidate, ctx: ExtractContext):
+        """Repo-level ``(title, [author names])`` from the Wikipedia infobox —
+        cached in the shared/durable founder cache (a repo's original authors are
+        user- and time-independent), resolved once and reused so we don't re-hit
+        the throttled WDQS/Wikipedia each scan (#108). Returns None on a fetch
+        failure (transient — NOT cached, retried next scan)."""
+        fc = ctx.founder_cache
+        ck = Cache.key("wikipedia-authors", candidate.name_with_owner)
+        if fc is not None:
+            cached = fc.get(ck, default=None)
+            if cached is not None:
+                return cached[0], list(cached[1])      # (title, authors)
         sparql = build_title_sparql(candidate.url)
         resp = self._fetch_json(
             ctx, f"{_WDQS}?format=json&query={urllib.parse.quote(sparql)}",
             "application/sparql-results+json")
-        title = parse_article_title(resp) if resp else None
+        if resp is None:
+            return None                                # transient — don't cache
+        title = parse_article_title(resp)
         if not title:
-            return []
+            if fc is not None:
+                fc.set(ck, ["", []])                   # no enwiki article: real empty
+            return "", []
         api = (f"{_WIKI_API}?action=parse&prop=wikitext&section=0&format=json"
                f"&page={urllib.parse.quote(title)}")
         data = self._fetch_json(ctx, api, "application/json")
-        wikitext = (((data or {}).get("parse") or {}).get("wikitext") or {}).get("*")
-        if not wikitext:
+        if data is None:
+            return None                                # transient — don't cache
+        wikitext = ((data.get("parse") or {}).get("wikitext") or {}).get("*") or ""
+        authors = parse_infobox_authors(wikitext)
+        if fc is not None:
+            fc.set(ck, [title, authors])
+        return title, authors
+
+    def extract(self, candidate, ctx: ExtractContext) -> list[Evidence]:
+        resolved = self._authors(candidate, ctx)
+        if resolved is None:
             return []
-        for person in parse_infobox_authors(wikitext):
+        title, authors = resolved
+        if not title:
+            return []
+        for person in authors:
             if ctx.identity.matches_name(person):
                 page_url = f"https://en.wikipedia.org/wiki/{urllib.parse.quote(title.replace(' ', '_'))}"
                 return [Evidence(
