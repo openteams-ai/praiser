@@ -9,6 +9,7 @@ import base64
 import functools
 import os
 import pickle
+import urllib.parse
 
 from praiser.cache import Cache
 from praiser.config import Config
@@ -39,6 +40,86 @@ def _registry():
 
 FORGES = ["github", "gitlab", "codeberg", "gitee", "bitbucket", "cgit"]
 VIEWS = ["highlights", "markdown", "json"]
+
+# One-click feedback: buttons under a result that open a pre-filled praiser issue
+# (GitHub shows the form pre-filled for review — nothing is submitted until the
+# user clicks, so this never posts data on its own). The scan context makes a
+# report reproducible; the user still writes the "what's wrong" part.
+_ISSUES_NEW = "https://github.com/openteams-ai/praiser/issues/new"
+# GitHub's prefill is a GET request; keep the whole URL well under the ~8KB cap.
+_FEEDBACK_MAX_BODY = 5000
+FEEDBACK_KINDS = [
+    {
+        "key": "false-positive",
+        "button": "🚩 Wrong / over-credited role",
+        "labels": "false-positive",
+        "lead": "A role shown in this result looks wrong or over-credited.",
+        "prompt": "Which project and role is inaccurate, and why? (e.g. only a "
+                  "few drive-by PRs, a name collision, or a vendored/forked copy)",
+    },
+    {
+        "key": "false-negative",
+        "button": "🔍 Missing a role",
+        "labels": "false-negative",
+        "lead": "A real elevated role is missing from this result.",
+        "prompt": "Which project and role should appear? A link as evidence "
+                  "(CODEOWNERS, a release, a governance page) helps a lot.",
+    },
+    {
+        "key": "feedback",
+        "button": "🐛 Bug or 💡 idea",
+        "labels": "",          # maintainer triages (bug vs enhancement)
+        "lead": "Bug report or feature request.",
+        "prompt": "What happened (and what did you expect), or what would you "
+                  "like praiser to do?",
+    },
+]
+
+
+def _feedback_body(kind, username, forge, version, opts, result_text):
+    body = (
+        f"{kind['lead']}\n\n"
+        f"{kind['prompt']}\n\n"
+        "<!-- Scan context is pre-filled below to help reproduce. "
+        "Please review before submitting. -->\n\n"
+        "### Scan\n"
+        f"- forge: `{forge}`\n"
+        f"- username: `{username}`\n"
+        f"- praiser: `{version}`\n"
+        + (f"- options: `{opts}`\n" if opts else "")
+    )
+    if result_text:
+        budget = _FEEDBACK_MAX_BODY - len(body) - 40
+        if budget > 200:
+            snippet = (result_text if len(result_text) <= budget
+                       else result_text[:budget] + "\n… (truncated)")
+            body += "\n### Result\n```\n" + snippet + "\n```\n"
+    return body
+
+
+def feedback_links(username, *, forge, version, result_text="", data_opts=None):
+    """Pre-filled 'open a praiser issue' links for the feedback buttons.
+
+    Returns ``[{"label", "url"}]`` — one per :data:`FEEDBACK_KINDS`. Each URL
+    pre-fills the issue title, a body with the reproducible scan context + the
+    rendered result, and (for accuracy reports) a triage label."""
+    data_opts = data_opts or {}
+    opts = ", ".join(
+        f"{k}={data_opts[k]}"
+        for k in ("discover_roles", "wikidata", "package_registries", "cross_forge")
+        if k in data_opts
+    )
+    links = []
+    for kind in FEEDBACK_KINDS:
+        params = {
+            "title": f"[{kind['key']}] {username} ({forge})",
+            "body": _feedback_body(kind, username, forge, version, opts, result_text),
+        }
+        if kind["labels"]:
+            params["labels"] = kind["labels"]
+        links.append({"label": kind["button"],
+                      "url": f"{_ISSUES_NEW}?{urllib.parse.urlencode(params)}"})
+    return links
 
 # Per-forge token env vars (the anchor forge's token; praiser reads the rest of
 # discovery unauthenticated). Frontends set these from their secret store.

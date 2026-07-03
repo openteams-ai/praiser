@@ -135,6 +135,35 @@ def test_record_recent_is_case_insensitive(tmp_path):
     assert [(r["forge"], r["username"]) for r in recent] == [("github", "pearu")]
 
 
+def test_feedback_links_prefill_title_body_and_labels():
+    import urllib.parse
+    links = service.feedback_links(
+        "pearu", forge="github", version="0.3.0+gabc",
+        result_text="pearu — top 1 highlights:\n- numpy/numpy (32k★) — Maintainer",
+        data_opts={"cross_forge": True, "wikidata": True})
+    assert [ln["label"] for ln in links] == [k["button"] for k in service.FEEDBACK_KINDS]
+    fp = links[0]
+    assert fp["url"].startswith("https://github.com/openteams-ai/praiser/issues/new?")
+    q = urllib.parse.parse_qs(fp["url"].split("?", 1)[1])
+    assert q["title"] == ["[false-positive] pearu (github)"]
+    assert q["labels"] == ["false-positive"]                       # triage label
+    body = q["body"][0]
+    assert "forge: `github`" in body and "praiser: `0.3.0+gabc`" in body
+    assert "numpy/numpy" in body                                   # scan context embedded
+    assert "cross_forge=True" in body                              # options summarized
+    # the catch-all button carries no forced label (maintainer triages)
+    assert "labels" not in urllib.parse.parse_qs(links[2]["url"].split("?", 1)[1])
+
+
+def test_feedback_body_truncated_under_url_cap():
+    import urllib.parse
+    huge = "x" * 20000
+    links = service.feedback_links("u", forge="github", version="v", result_text=huge)
+    assert all(len(ln["url"]) < 8000 for ln in links)              # under GitHub's GET cap
+    body = urllib.parse.parse_qs(links[0]["url"].split("?", 1)[1])["body"][0]
+    assert "(truncated)" in body                                   # oversized result trimmed
+
+
 def test_recent_scans_collapses_preexisting_mixed_case(tmp_path):
     # An index written before the fix (mixed case + duplicate) collapses on read.
     rc = Cache(tmp_path)
