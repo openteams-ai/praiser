@@ -194,6 +194,11 @@ class Evidence:
     n_contributors: int | None = None
     contributors_capped: bool = False
     contributors_approx: bool = False
+    # Release-manager standing: releases this person published of the total in the
+    # window — display shows "Release manager (88/100)". Magnitude is reported
+    # rather than gated, so cutting even a couple of releases is credited (#79).
+    releases_authored: int | None = None
+    releases_total: int | None = None
 
     @property
     def weight(self) -> float:

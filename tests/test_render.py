@@ -94,6 +94,18 @@ def test_markdown_highlights_separate_list_from_footer_with_blank_lines():
     assert "\n\n" not in plain
 
 
+def test_release_manager_role_shows_count():
+    from praiser.models import RELEASE_MANAGER
+    rec = ProjectRecord(
+        name_with_owner="scipy/scipy", url="https://github.com/scipy/scipy", stars=15000,
+        evidence=[Evidence("release_manager", RELEASE_MANAGER, "u", 0.9,
+                           "published 88 of the last 100 releases",
+                           releases_authored=88, releases_total=100)],
+    )
+    assert _role_display(rec, RELEASE_MANAGER) == "Release manager (88/100)"
+    assert "Release manager (88/100)" in render_highlights("tyler", [rec], 8)
+
+
 def test_highlights_show_multiple_roles_without_confidence():
     rec = _multi("sympy/sympy", [AUTHOR, CORE_CONTRIBUTOR], stars=15000)
     out = render_highlights("certik", [rec], 8)
