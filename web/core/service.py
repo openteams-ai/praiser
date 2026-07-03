@@ -71,6 +71,47 @@ def diagnose_external_sources(probe=_praiser_geturl_probe):
     return {"user_agent": USER_AGENT, "checks": checks}
 
 
+def diagnose_founder(repo: str = "scipy/scipy", name: str = "Pearu Peterson") -> dict:
+    """Trace founder resolution for one repo FROM THIS HOST, to localize why a
+    known Author is missing on the deployment (#108). Reports: the registry title
+    hint, the entry currently in the shared founder cache (which shadows a fix and
+    survives Refresh), and a LIVE re-resolution (founder cache bypassed) with the
+    roles it yields for ``name``."""
+    import tempfile
+
+    from praiser.forge import GitHubForge
+    from praiser.models import Candidate, Identity
+    from praiser.extractors.base import ExtractContext
+    from praiser.extractors.wikipedia import WikipediaFoundersExtractor
+
+    reg = _registry()
+    shared = make_result_cache()
+    cache_key = Cache.key("wikipedia-authors", repo)
+    cached = shared.get(cache_key, default=None) if shared is not None else None
+
+    forge = GitHubForge(_token_for("github"), local_cache())
+    ext = WikipediaFoundersExtractor()
+    cand = Candidate(repo, stars=15000)
+    ctx = ExtractContext(
+        identity=Identity(primary_login="_diag", names={name}),
+        forge=forge, registry=reg, use_wikidata=True,
+        role_discovery_floor=1000, founder_cache=None)   # bypass cache → LIVE
+    try:
+        resolved = ext._authors(cand, ctx)               # (title, authors) or None
+        roles = [e.role for e in ext.extract(cand, ctx)]
+    except Exception as exc:                             # noqa: BLE001
+        resolved, roles = f"EXC {type(exc).__name__}: {exc}", []
+    finally:
+        forge.close()
+    return {
+        "repo": repo, "name": name,
+        "registry_title": reg.wikipedia_title(repo),
+        "shared_cache_entry": cached,      # what's stored (shadows fixes; Refresh won't clear)
+        "live_resolved": resolved,         # (title, [authors]) resolved now, cache bypassed
+        "live_roles": roles,               # roles the extractor yields for `name` now
+    }
+
+
 def _dumps(result) -> str:
     """Serialize a RunResult to a cache-safe string (base64 of pickle)."""
     return base64.b64encode(pickle.dumps(result)).decode("ascii")
