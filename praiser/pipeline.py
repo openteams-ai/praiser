@@ -180,11 +180,15 @@ def _scan_forge(
         if speculative and reset_in is None:
             _log(config, f"{label}{len(speculative)} speculative repo(s) served "
                          "from cache (not refreshed)")
+            progress.phase(f"{label}re-checking {len(speculative)} known "
+                           "seed/org repos…")
             orig_refresh = cache.refresh
             cache.refresh = False
             try:
+                # Don't name these repos in progress — a registry seed like
+                # kubernetes/kubernetes isn't a claim that this person is involved.
                 spec_records, reset_in = _attribute(
-                    config, speculative, ctx, progress)
+                    config, speculative, ctx, progress, name_candidates=False)
             finally:
                 cache.refresh = orig_refresh
             records += spec_records
@@ -335,13 +339,18 @@ def _scan_one(extractors, cand, ctx, config) -> list[Evidence]:
 
 
 def _attribute(
-    config, candidates, ctx, progress: Progress
+    config, candidates, ctx, progress: Progress, *, name_candidates: bool = True
 ) -> tuple[list[ProjectRecord], int | None]:
     """Attribute roles across candidates concurrently (I/O-bound network work).
 
     Returns (records, reset_in). ``reset_in`` is the seconds-until-reset when a
     rate limit cut the scan short (None otherwise). Workers only do network; the
     progress display and record list are updated solely on this thread.
+
+    ``name_candidates=False`` shows a generic progress line without the repo name
+    — used for the speculative seed/org-membership pass, where naming individual
+    repos (e.g. a registry seed like ``kubernetes/kubernetes``) wrongly implies
+    the scanned person is involved with them.
     """
     extractors = all_extractors()
     records: list[ProjectRecord] = []
@@ -360,10 +369,16 @@ def _attribute(
                 done += 1
                 rate = ctx.forge.rate_summary()
                 rate_str = f" | {rate}" if rate else ""
-                progress.status(
-                    f"scanned {done}/{total} ({len(records)} found){rate_str}: "
-                    f"{cand.name_with_owner}"
-                )
+                if name_candidates:
+                    progress.status(
+                        f"scanned {done}/{total} ({len(records)} found){rate_str}: "
+                        f"{cand.name_with_owner}"
+                    )
+                else:
+                    progress.status(
+                        f"re-checking {done}/{total} known seed/org repos "
+                        f"({len(records)} found){rate_str}"
+                    )
                 try:
                     evidence = fut.result()
                 except RateLimitError as exc:

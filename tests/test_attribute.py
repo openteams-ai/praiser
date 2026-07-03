@@ -60,6 +60,21 @@ def test_only_matching_candidates_become_records(monkeypatch):
     assert len(records) == 11
 
 
+def test_speculative_pass_progress_hides_repo_names(monkeypatch):
+    # The generic (name_candidates=False) pass must not name repos in progress —
+    # a seed like kubernetes/kubernetes isn't a claim the person is involved.
+    monkeypatch.setattr(pipeline, "all_extractors",
+                        lambda: [FakeExtractor(lambda c: [])])
+    msgs = []
+    prog = Progress(enabled=False, callback=msgs.append)
+    cands = [Candidate("kubernetes/kubernetes"), Candidate("someorg/repo")]
+    pipeline._attribute(Config(username="u", jobs=2), cands, _ctx(), prog,
+                        name_candidates=False)
+    joined = "\n".join(msgs)
+    assert "kubernetes" not in joined and "someorg" not in joined
+    assert "known seed/org repos" in joined      # generic label instead
+
+
 def test_rate_limit_stops_with_reset(monkeypatch):
     def ev(cand):
         if cand.name_with_owner == "org/repo5":
@@ -102,9 +117,9 @@ def test_refresh_scopes_speculative_repos_to_cache(monkeypatch, tmp_path):
     cache = Cache(str(tmp_path), refresh=True)
     calls = []  # (cache.refresh seen during the call, sorted candidate names)
 
-    def fake_attr(config, cands, ctx, progress):
+    def fake_attr(config, cands, ctx, progress, *, name_candidates=True):
         calls.append((cache.refresh,
-                      sorted(c.name_with_owner for c in cands)))
+                      sorted(c.name_with_owner for c in cands), name_candidates))
         return [], None
     monkeypatch.setattr(pipeline, "_attribute", fake_attr)
 
@@ -117,7 +132,8 @@ def test_refresh_scopes_speculative_repos_to_cache(monkeypatch, tmp_path):
         is_anchor=True, index=None, cache=cache,
     )
 
-    # anchored batch runs with refresh forced ON; speculative batch with it OFF
-    assert calls[0] == (True, ["a/contrib", "a/owned"])
-    assert calls[1] == (False, ["o/r1", "o/r2", "py/peps"])
+    # anchored batch runs with refresh forced ON + names repos; speculative batch
+    # with refresh OFF + generic progress (no per-repo names, e.g. no "kubernetes")
+    assert calls[0] == (True, ["a/contrib", "a/owned"], True)
+    assert calls[1] == (False, ["o/r1", "o/r2", "py/peps"], False)
     assert cache.refresh is True   # restored afterwards
