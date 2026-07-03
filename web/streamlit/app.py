@@ -186,6 +186,21 @@ def _show(result, uname):
         st.markdown(out)   # highlights (repos linked) + markdown both render here
 
 
+def _feedback_buttons(result, uname, forge, data_opts):
+    """One-click 'open a pre-filled praiser issue' buttons under a result, so a
+    user who spots a wrong/missing role (or a bug/idea) can report it with the
+    exact scan context attached. The highlights view is embedded regardless of the
+    displayed view — it's compact and the most useful context for accuracy reports."""
+    context = service.render_result(result, uname, view="highlights",
+                                    highlights=highlights, min_stars=min_stars)
+    links = service.feedback_links(uname, forge=forge, version=PRAISER_VERSION,
+                                   result_text=context, data_opts=data_opts)
+    st.caption("Spotted a wrong or missing role, a bug, or have an idea? "
+               "Open a pre-filled issue (you can review it before submitting):")
+    for col, ln in zip(st.columns(len(links)), links):
+        col.link_button(ln["label"], ln["url"], use_container_width=True)
+
+
 def _run_scan(username, data_opts, token_options, exhausted):
     """Scan in a worker thread (live progress bar on the main thread), trying the
     token options in order and falling back on rate limits (signed-in user's
@@ -315,17 +330,18 @@ if submitted:
         entry = {"forge": forge, "username": uname}
         st.session_state["recent"] = [entry] + [
             r for r in st.session_state.get("recent", []) if r != entry][:49]
-    st.session_state["active"] = (key, uname)
+    st.session_state["active"] = (key, uname, forge, data_opts)
 
 # Render the active result (from a fresh submit OR a display-only rerun).
 active = st.session_state.get("active")
 if active is not None:
-    key, uname = active
+    key, uname, a_forge, a_opts = active
     result = cache.get(key)
     if result is None:  # evicted from the LRU — ask for a re-scan
         st.info("Previous results expired — click Praise to scan again.")
     else:
         _show(result, uname)
+        _feedback_buttons(result, uname, a_forge, a_opts)
 
 # --- Seed the shared reverse-index (#65) --------------------------------------
 # Shown ONLY when the URL has `?seed` AND the deployer opted in (SEED_ENABLED in
