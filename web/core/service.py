@@ -85,7 +85,7 @@ FEEDBACK_KINDS = [
 ]
 
 
-def _feedback_body(kind, username, forge, version, opts, result_text):
+def _feedback_body(kind, username, forge, version, opts, result_text, reporter):
     body = (
         f"{kind['lead']}\n\n"
         f"{kind['prompt']}\n\n"
@@ -96,6 +96,10 @@ def _feedback_body(kind, username, forge, version, opts, result_text):
         f"- username: `{username}`\n"
         f"- praiser: `{version}`\n"
         + (f"- options: `{opts}`\n" if opts else "")
+        # The GitHub account that authors the issue is whoever is logged into
+        # github.com in the browser; this only records the app's signed-in user
+        # (usually the same person) so we know who to follow up with.
+        + (f"- reported by: @{reporter}\n" if reporter else "")
     )
     if result_text:
         budget = _FEEDBACK_MAX_BODY - len(body) - 40
@@ -106,12 +110,16 @@ def _feedback_body(kind, username, forge, version, opts, result_text):
     return body
 
 
-def feedback_links(username, *, forge, version, result_text="", data_opts=None):
+def feedback_links(username, *, forge, version, result_text="", data_opts=None,
+                   reporter=None):
     """Pre-filled 'open a praiser issue' links for the feedback buttons.
 
     Returns ``[{"label", "url"}]`` — one per :data:`FEEDBACK_KINDS`. Each URL
     pre-fills the issue title, a body with the reproducible scan context + the
-    rendered result, and (for accuracy reports) a triage label."""
+    rendered result, and (for accuracy reports) a triage label. ``reporter`` (the
+    app's signed-in GitHub login, when available) is recorded in the body for
+    follow-up — the issue's actual author is still whoever is logged into
+    github.com when they submit."""
     data_opts = data_opts or {}
     opts = ", ".join(
         f"{k}={data_opts[k]}"
@@ -122,7 +130,8 @@ def feedback_links(username, *, forge, version, result_text="", data_opts=None):
     for kind in FEEDBACK_KINDS:
         params = {
             "title": f"[{kind['key']}] {username} ({forge})",
-            "body": _feedback_body(kind, username, forge, version, opts, result_text),
+            "body": _feedback_body(kind, username, forge, version, opts,
+                                   result_text, reporter),
         }
         if kind["labels"]:
             params["labels"] = kind["labels"]
