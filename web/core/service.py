@@ -218,7 +218,13 @@ def _token_for(forge: str) -> str | None:
 # subcomponents-are-contribution fix (#47) + credit-based authorship (#48);
 # bumped to 3 for the discovery/attribution false-negative fixes (#57 #58 #59
 # #62 #63) so the web app recomputes with the improved recall.
-CACHE_VERSION = 5   # bumped so cached results recompute with contributor rank/N (#R/N)
+# v6: recompute for this session's extraction-logic changes that v5 predates —
+# Wikipedia-infobox authors (#94), release_manager role (#95/#99), score by
+# strongest-supported claim (#98), contributor totals #R/N (#87), sole-contributor
+# suppression (#106), and the transient-URL-cache fix (#105). Without this bump
+# the shared result cache kept serving pre-Author results (e.g. scipy missing
+# pearu's Author) for 30 days — the real cause of #108.
+CACHE_VERSION = 6
 
 # A small index of recently-scanned (forge, login) pairs — the cache keys are
 # hashed and can't be enumerated, so we track names separately for a UI picker.
