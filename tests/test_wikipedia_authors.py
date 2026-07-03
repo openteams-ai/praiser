@@ -72,6 +72,9 @@ class _WikiForge:
             return json.dumps({"parse": {"wikitext": {"*": self.wikitext}}})
         return None
 
+    def repo_contributors(self, o, r, max_pages=2):  # like a real Forge (default)
+        return []
+
 
 def _ctx(forge, name="Pearu Peterson", use_wikidata=True, floor=1000, founder_cache=None):
     return ExtractContext(
@@ -225,3 +228,37 @@ def test_uncurated_unpopular_repo_is_skipped():
                          use_wikidata=True, role_discovery_floor=1000, canonical_forks=100)
     uncurated = Candidate("random/repo", stars=0)
     assert ext.applicable(uncurated, ctx) is False   # uncurated + low stars/forks → skipped
+
+
+def test_relaxed_name_match_first_last_ignoring_middle():
+    from praiser.extractors.wikipedia import _relaxed_name_match
+    assert _relaxed_name_match("Travis Oliphant", {"travis e. oliphant"})   # middle initial
+    assert _relaxed_name_match("Travis E. Oliphant", {"travis oliphant"})
+    assert not _relaxed_name_match("Travis Smith", {"travis oliphant"})     # diff last
+    assert not _relaxed_name_match("Guido", {"guido van rossum"})           # single token → unsafe
+
+
+def test_relaxed_founder_match_needs_contribution_corroboration():
+    # #124: teoliphant ("Travis E. Oliphant") should be credited as SciPy author
+    # via relaxed match — but ONLY because he also contributes to scipy.
+    from praiser.registry import KnownProject, KnownProjects
+    from praiser.extractors.wikipedia import WikipediaFoundersExtractor
+    from praiser.forge import ContributorCount
+
+    class ForgeWithContribs(_WikiForge):
+        def __init__(self, contribs): super().__init__(); self._c = contribs
+        def repo_contributors(self, o, r, max_pages=2): return self._c
+
+    reg = KnownProjects(projects={"scipy/scipy": KnownProject("scipy/scipy", wikipedia="SciPy")})
+    ident = Identity(primary_login="teoliphant", names={"Travis E. Oliphant"})
+
+    def roles(forge):
+        ctx = ExtractContext(identity=ident, forge=forge, registry=reg,
+                             use_wikidata=True, role_discovery_floor=1000)
+        cand = Candidate("scipy/scipy", stars=15000)
+        return [e.role for e in WikipediaFoundersExtractor().extract(cand, ctx)]
+
+    # contributes to scipy → relaxed match allowed → Author
+    assert roles(ForgeWithContribs([ContributorCount("teoliphant", 200)])) == [AUTHOR]
+    # NOT a contributor and not exact name → no relaxed match, no false credit
+    assert roles(ForgeWithContribs([ContributorCount("someoneelse", 200)])) == []
