@@ -194,11 +194,18 @@ def _feedback_buttons(result, uname, forge, data_opts):
     context = service.render_result(result, uname, view="highlights",
                                     highlights=highlights, min_stars=min_stars)
     links = service.feedback_links(uname, forge=forge, version=PRAISER_VERSION,
-                                   result_text=context, data_opts=data_opts)
+                                   result_text=context, data_opts=data_opts,
+                                   reporter=USER_LOGIN)
     st.caption("Spotted a wrong or missing role, a bug, or have an idea? "
                "Open a pre-filled issue (you can review it before submitting):")
     for col, ln in zip(st.columns(len(links)), links):
         col.link_button(ln["label"], ln["url"], use_container_width=True)
+    # GitHub requires an account to create an issue. Only surface that caveat to
+    # users who aren't signed in via the app — for signed-in users it's just noise
+    # (praiser only pre-fills the form; GitHub authors the issue under their login).
+    if not USER_LOGIN:
+        st.caption("_Submitting requires a GitHub account — the buttons open a "
+                   "pre-filled issue you post under your own GitHub login._")
 
 
 def _run_scan(username, data_opts, token_options, exhausted):

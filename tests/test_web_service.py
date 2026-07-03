@@ -151,6 +151,7 @@ def test_feedback_links_prefill_title_body_and_labels():
     assert "forge: `github`" in body and "praiser: `0.3.0+gabc`" in body
     assert "numpy/numpy" in body                                   # scan context embedded
     assert "cross_forge=True" in body                              # options summarized
+    assert "reported by:" not in body                              # no reporter when signed out
     # EVERY feedback button queues the issue for triage (the catch-all with just
     # needs-triage, the accuracy ones with needs-triage + their sub-type).
     for ln in links:
@@ -158,6 +159,14 @@ def test_feedback_links_prefill_title_body_and_labels():
         assert labels.split(",")[0] == "needs-triage"
     assert urllib.parse.parse_qs(links[2]["url"].split("?", 1)[1])["labels"] == \
         ["needs-triage"]                                           # catch-all: queue only
+
+
+def test_feedback_links_record_reporter_when_signed_in():
+    import urllib.parse
+    links = service.feedback_links("pearu", forge="github", version="v",
+                                   reporter="alice")
+    body = urllib.parse.parse_qs(links[0]["url"].split("?", 1)[1])["body"][0]
+    assert "reported by: @alice" in body          # follow-up attribution
 
 
 def test_feedback_body_truncated_under_url_cap():
