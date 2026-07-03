@@ -39,6 +39,10 @@ class RepoMeta:
     is_private: bool = False
     pushed_at: str | None = None  # ISO-8601 of last push (maintenance signal)
     parent: str | None = None     # if a fork, the canonical upstream "owner/repo"
+    # False when the star/fork counts came back null/missing (a partial/degraded
+    # response — those fields are non-nullable, so null means a failed resolution,
+    # not a real 0). Lets discovery re-fetch instead of trusting a fabricated 0.
+    metrics_known: bool = True
 
 
 @dataclass

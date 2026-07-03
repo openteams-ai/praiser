@@ -83,10 +83,16 @@ def _meta_from_node(node: dict | None) -> RepoMeta | None:
     """Adapt a GraphQL repository node into a neutral RepoMeta."""
     if not node or not node.get("nameWithOwner"):
         return None
+    sc, fc = node.get("stargazerCount"), node.get("forkCount")
+    # stargazerCount/forkCount are non-nullable (Int!) — a null means a partial/
+    # degraded response, NOT a real 0. Flag it so discovery re-fetches rather than
+    # trusting a fabricated 0 (#120).
+    metrics_known = isinstance(sc, int) and isinstance(fc, int)
     return RepoMeta(
         name_with_owner=node["nameWithOwner"],
-        stars=node.get("stargazerCount", 0) or 0,
-        forks=node.get("forkCount", 0) or 0,
+        stars=sc if isinstance(sc, int) else 0,
+        forks=fc if isinstance(fc, int) else 0,
+        metrics_known=metrics_known,
         is_fork=bool(node.get("isFork")),
         is_private=bool(node.get("isPrivate")),
         pushed_at=node.get("pushedAt"),

@@ -72,6 +72,9 @@ def discover(
     # full metadata). Anything else (search/registry) is resolved before the
     # fork filter, since forks inherit upstream role files (false positives).
     has_meta: set[str] = set()
+    # Subset of has_meta whose star/fork counts were real (not a null from a
+    # partial/degraded response) — the rest get their metrics re-fetched (#120).
+    has_real_metrics: set[str] = set()
 
     web_host = getattr(forge, "web_base", None) or None
 
@@ -88,6 +91,8 @@ def discover(
         c.is_private = meta.is_private
         c.pushed_at = meta.pushed_at or c.pushed_at
         has_meta.add(meta.name_with_owner)
+        if meta.metrics_known:                 # got a trustworthy star/fork count
+            has_real_metrics.add(meta.name_with_owner)
 
     def add_name(name_with_owner: str, source: str) -> None:
         c = candidates.get(name_with_owner)
@@ -165,6 +170,21 @@ def discover(
         c.stars = max(c.stars, meta.stars)
         c.forks = max(c.forks, meta.forks)
         c.pushed_at = meta.pushed_at or c.pushed_at
+
+    # Re-fetch metrics for KNOWN-real (add_meta) candidates whose star/fork counts
+    # came back null from a partial/degraded discovery response (#120) — the
+    # discovery query and repositories_metadata are separate calls, so the retry
+    # can succeed. Metrics-only: never drop these (they are real repos), unlike
+    # the unresolved-search-hit handling above.
+    stale_metrics = [n for n in has_meta if n not in has_real_metrics]
+    if stale_metrics:
+        remetas = forge.repositories_metadata(stale_metrics)
+        for nwo in stale_metrics:
+            meta = remetas.get(nwo)
+            if meta is not None and meta.metrics_known:
+                c = candidates[nwo]
+                c.stars = max(c.stars, meta.stars)
+                c.forks = max(c.forks, meta.forks)
 
     # Drop forks and (by default) private repos unless they are registry seeds.
     return [
