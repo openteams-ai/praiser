@@ -81,6 +81,13 @@ class ContributorsExtractor(Extractor):
         count = max((contribs.get(h, 0) for h in ctx.identity.logins), default=0)
         if count <= 0:
             return []
+        # "Core contributor" is a RANKING among contributors — being the sole
+        # contributor (#1 of 1) ranks against no one, so it's not a meaningful
+        # core-contributor signal. Skip it whenever there's a single contributor,
+        # independent of stars AND ownership (all three are orthogonal). Genuine
+        # sole authorship is still captured by the Author role where it applies. (#103)
+        if len(contribs) == 1:
+            return []
         rank = 1 + sum(1 for v in contribs.values() if v > count)
         if rank_rescue and rank != 1:
             return []  # widely-forked but not the top contributor -> not trusted
