@@ -128,3 +128,32 @@ def test_setup_cfg_metadata_and_multiple_maintainers():
     assert a[0].name == "Pearu Peterson" and a[0].email == "pearu@x.org"
     assert {p.name for p in m} == {"Bob", "Carol"}
     assert {p.email for p in m} == {"bob@x.org", "carol@x.org"}
+
+
+def test_manifest_author_is_strong_when_corroborated_by_commits():
+    # #123: a pyproject author name is fakeable, but committer attribution is not.
+    # Matching author name + being a committer → strong (0.8); name-only → soft.
+    from praiser.extractors.manifests import ManifestsExtractor
+    from praiser.extractors.base import ExtractContext
+    from praiser.models import Identity, Candidate
+    from praiser.registry import KnownProjects
+    from praiser.forge import ContributorCount
+
+    manifest = '[project]\nname = "praiser"\nauthors = [{name = "Pearu Peterson"}]\n'
+
+    class Forge:
+        def __init__(self, committers): self.committers = committers
+        def get_files(self, o, r, paths, ref=None):
+            return {"pyproject.toml": manifest}
+        def repo_contributors(self, o, r, max_pages=2):
+            return [ContributorCount(c, 100) for c in self.committers]
+
+    def author_conf(committers):
+        ctx = ExtractContext(
+            identity=Identity(primary_login="pearu", names={"Pearu Peterson"}),
+            forge=Forge(committers), registry=KnownProjects(projects={}))
+        ev = ManifestsExtractor().extract(Candidate("openteams-ai/praiser"), ctx)
+        return next((e.confidence for e in ev if e.role == "author"), None)
+
+    assert author_conf(["pearu"]) == 0.8          # listed AND a committer → strong
+    assert author_conf(["someoneelse"]) == 0.45   # listed but not a committer → soft
