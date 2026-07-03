@@ -30,6 +30,11 @@ def _role_display(rec: ProjectRecord, role: str) -> str:
     if role == "release_manager":
         rel = next((e for e in evs if e.releases_total), None)
         return f"{base} ({rel.releases_authored}/{rel.releases_total})" if rel else base
+    if role == "core_contributor":
+        # The contributor rank rides its own role (e.g. "Core contributor
+        # (#14/~1900)"), mirroring the release-manager count — so each rating
+        # sits with the role it describes rather than trailing the whole line.
+        return base + _contributor_suffix(rec)
     quals = [e.qualifier for e in evs if e.qualifier]
     if evs and len(quals) == len(evs):  # every evidence for this role is scoped
         uniq = list(dict.fromkeys(quals))          # a person can hold it in several
@@ -41,8 +46,18 @@ def _role_display(rec: ProjectRecord, role: str) -> str:
 
 
 def _roles_label(rec: ProjectRecord) -> str:
-    """Human-readable list of the record's distinct elevated roles."""
-    return ", ".join(_role_display(rec, r) for r in rec.roles) or "?"
+    """Human-readable list of the record's distinct elevated roles.
+
+    The contributor rating normally rides its "Core contributor" role. But the
+    displayed roles are capped (top-N by weight), and core_contributor is
+    low-weight — so when it's bumped out, the rating would be lost. In that case
+    append it after the shown roles (e.g. "Author, Maintainer (#14/~1900)") so a
+    non-zero contribution rank is never dropped.
+    """
+    label = ", ".join(_role_display(rec, r) for r in rec.roles) or "?"
+    if rec.contributor_standing and "core_contributor" not in rec.roles:
+        label += _contributor_suffix(rec)
+    return label
 
 
 def _record_to_dict(rec: ProjectRecord) -> dict:
@@ -174,20 +189,25 @@ def _approx_count(n: int) -> str:
     return f"~{round(n / step) * step}"
 
 
-def _highlight_line(rec: ProjectRecord, link_repos: bool) -> str:
-    """One highlight: `REPO (STARS★) — ROLES (#R/N)`. REPO is a markdown link
-    when link_repos; the `#R/N` contributor-standing is shown only when known.
-    ``N`` is exact when the full contributor list was read, ``N+`` when it was
-    truncated and no total was resolved, and ``~N`` (rounded) when the total is a
-    snapshot / uncapped estimate."""
-    repo = f"[{rec.name_with_owner}]({rec.url})" if link_repos else rec.name_with_owner
+def _contributor_suffix(rec: ProjectRecord) -> str:
+    """The " (#R/N)" contributor-standing suffix for the Core-contributor role,
+    or "" if unknown. ``N`` is exact when the full contributor list was read,
+    ``N+`` when truncated with no resolved total, and ``~N`` (rounded) when the
+    total is a snapshot / uncapped estimate."""
     standing = rec.contributor_standing
-    rn = ""
-    if standing:
-        rank, total, capped, approx = standing
-        shown = _approx_count(total) if approx else f"{total}{'+' if capped else ''}"
-        rn = f" (#{rank}/{shown})"
-    return f"- {repo} ({_human_stars(rec.stars)}★) — {_roles_label(rec)}{rn}"
+    if not standing:
+        return ""
+    rank, total, capped, approx = standing
+    shown = _approx_count(total) if approx else f"{total}{'+' if capped else ''}"
+    return f" (#{rank}/{shown})"
+
+
+def _highlight_line(rec: ProjectRecord, link_repos: bool) -> str:
+    """One highlight: `REPO (STARS★) — ROLES`. REPO is a markdown link when
+    link_repos. Per-role rating suffixes (contributor "#R/N", release-manager
+    "N/M") ride their own role via ``_role_display``."""
+    repo = f"[{rec.name_with_owner}]({rec.url})" if link_repos else rec.name_with_owner
+    return f"- {repo} ({_human_stars(rec.stars)}★) — {_roles_label(rec)}"
 
 
 def render_highlights(

@@ -10,6 +10,7 @@ from praiser.models import (
 )
 from praiser.render import (
     _role_display,
+    _roles_label,
     render_highlights,
     render_json,
     render_markdown,
@@ -92,6 +93,38 @@ def test_markdown_highlights_separate_list_from_footer_with_blank_lines():
     # plain text (CLI) stays compact — no blank lines
     plain = render_highlights("u", recs, 1, secondary=[_r("s/x", CODE_OWNER, 5)])
     assert "\n\n" not in plain
+
+
+def test_contributor_rating_rides_the_core_contributor_role():
+    rec = ProjectRecord(
+        name_with_owner="scipy/scipy", url="https://github.com/scipy/scipy", stars=15000,
+        evidence=[
+            Evidence("codeowners", "maintainer", "u", 0.9, ""),
+            Evidence("contributors", CORE_CONTRIBUTOR, "u", 0.8, "",
+                     rank=14, n_contributors=1900, contributors_approx=True),
+        ],
+    )
+    # rating sits on Core contributor, not trailing the whole line
+    assert _roles_label(rec) == "Core contributor (#14/~1900), Maintainer"
+
+
+def test_contributor_rating_trails_when_core_role_bumped_from_topN():
+    from praiser.models import AUTHOR, CODE_OWNER, MAINTAINER
+    # 4 distinct roles: core_contributor (0.70) is the lowest, so it's dropped
+    # from the top-3 display — but its rating must still show, trailing the line.
+    rec = ProjectRecord(
+        name_with_owner="a/b", url="https://github.com/a/b", stars=9000,
+        evidence=[
+            Evidence("codeowners", MAINTAINER, "u", 0.9, ""),
+            Evidence("ownership", AUTHOR, "u", 0.9, ""),
+            Evidence("codeowners", CODE_OWNER, "u", 0.9, ""),
+            Evidence("contributors", CORE_CONTRIBUTOR, "u", 0.8, "", rank=14,
+                     n_contributors=1900),
+        ],
+    )
+    assert "core_contributor" not in rec.roles          # bumped by the top-3 cap
+    label = _roles_label(rec)
+    assert label == "Author, Code owner, Maintainer (#14/1900)"  # rating not lost
 
 
 def test_release_manager_role_shows_count():
