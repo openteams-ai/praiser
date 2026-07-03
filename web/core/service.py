@@ -9,17 +9,70 @@ import base64
 import functools
 import os
 import pickle
+import time
+import urllib.error
 import urllib.parse
+import urllib.request
 
 from praiser.cache import Cache
 from praiser.config import Config
-from praiser.github_client import RateLimitError
+from praiser.github_client import USER_AGENT, RateLimitError
 from praiser.pipeline import run
 from praiser.popularity import filter_records
 from praiser.registry import KnownProjects
 from praiser.render import render, render_highlights
 
 from .cache import local_cache, make_result_cache
+
+
+# External data sources praiser depends on, for the ?diag reachability panel.
+# The founder/creator roles come from Wikidata (WDQS) → Wikipedia; those hosts
+# rate-limit per IP and throttle shared cloud egress (e.g. Streamlit Community
+# Cloud) harder than residential IPs — so a role can be missing purely because
+# the deployed host can't reach them. GitHub is the baseline (must be reachable).
+_DIAG_SOURCES = [
+    ("Wikidata Query Service",
+     "https://query.wikidata.org/sparql?format=json&query="
+     + urllib.parse.quote("SELECT ?a WHERE { ?item wdt:P1324 ?repo . "
+       'FILTER(REGEX(STR(?repo),"github.com/scipy/scipy","i")) '
+       "?a schema:about ?item ; schema:isPartOf <https://en.wikipedia.org/> . } LIMIT 1"),
+     "application/sparql-results+json"),
+    ("Wikipedia API",
+     "https://en.wikipedia.org/w/api.php?action=parse&prop=wikitext&section=0&format=json&page=SciPy",
+     "application/json"),
+    ("GitHub API (baseline)",
+     "https://api.github.com/repos/scipy/scipy", "application/vnd.github+json"),
+]
+
+
+def _http_status(url: str, accept: str, timeout: float = 15.0):
+    """(status, error) for a bare GET with praiser's User-Agent. status is None on
+    a non-HTTP failure (timeout/DNS), with the reason in error."""
+    req = urllib.request.Request(
+        url, headers={"User-Agent": USER_AGENT, "Accept": accept})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, None
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.reason
+    except Exception as exc:                       # timeout, DNS, connection reset
+        return None, f"{type(exc).__name__}: {exc}"
+
+
+def diagnose_external_sources(fetch=_http_status):
+    """Probe the external data sources from THIS host with praiser's User-Agent,
+    so the deployed app can show whether WDQS/Wikipedia are reachable (they
+    throttle cloud IPs). Returns ``{"user_agent", "checks": [{name, url, ok,
+    detail, ms}]}``. ``fetch`` is injectable for tests."""
+    checks = []
+    for name, url, accept in _DIAG_SOURCES:
+        t0 = time.monotonic()
+        status, err = fetch(url, accept)
+        ms = round((time.monotonic() - t0) * 1000)
+        ok = status == 200
+        detail = f"HTTP {status}" + (f" — {err}" if err else "") if status else (err or "failed")
+        checks.append({"name": name, "url": url, "ok": ok, "detail": detail, "ms": ms})
+    return {"user_agent": USER_AGENT, "checks": checks}
 
 
 def _dumps(result) -> str:

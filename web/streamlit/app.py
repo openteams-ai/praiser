@@ -350,6 +350,24 @@ if active is not None:
         _show(result, uname)
         _feedback_buttons(result, uname, a_forge, a_opts)
 
+# --- External data-source diagnostics (?diag) ---------------------------------
+# Open `praiser.streamlit.app/?diag` to see, FROM THIS HOST, whether the external
+# data sources praiser depends on are reachable. Founder/creator roles come from
+# Wikidata → Wikipedia, which throttle shared cloud IPs (Streamlit Community
+# Cloud) harder than local ones — so this makes a "missing role" visibly a
+# reachability problem rather than a guess. Read-only, safe to expose.
+if "diag" in st.query_params:
+    st.subheader("🩺 External data-source reachability")
+    diag = service.diagnose_external_sources()
+    st.caption(f"Probed from this host with User-Agent `{diag['user_agent']}`. "
+               "Wikidata/Wikipedia feed the Author/founder roles; GitHub is the "
+               "baseline. ❌ on Wikidata/Wikipedia here (esp. 403/429/timeout) "
+               "explains a missing founder role on this deployment.")
+    for c in diag["checks"]:
+        st.write(f"{'✅' if c['ok'] else '❌'} **{c['name']}** — {c['detail']} "
+                 f"· {c['ms']} ms")
+
+
 # --- Seed the shared reverse-index (#65) --------------------------------------
 # Shown ONLY when the URL has `?seed` AND the deployer opted in (SEED_ENABLED in
 # secrets — one-time deployer config, not a secret the triggering user enters).
