@@ -71,3 +71,39 @@ def test_owned_fork_adds_its_parent_as_candidate():
     assert "pytest-dev/pytest" in cands           # parent added + kept (non-fork)
     assert "fork-parent" in cands["pytest-dev/pytest"].sources
     assert "hpk42/pytest" not in cands            # the fork itself is dropped
+
+
+def test_null_metric_candidate_is_refetched_not_trusted_as_zero():
+    # #120: a partial/degraded discovery response yields stars=0 (metrics_known
+    # False). Such a KNOWN-real candidate must be re-fetched (not trusted as a
+    # 0-star repo) and never dropped.
+    from praiser.discovery import discover
+    from praiser.forge import Forge, RepoMeta
+    from praiser.models import Identity
+
+    calls = []
+
+    class PartialForge(Forge):
+        name = "github"
+        web_base = "https://github.com"
+        def web_url(self, nwo): return f"https://github.com/{nwo}"
+        def get_file(self, o, r, p, ref=None): return None
+        def list_dir(self, o, r, p): return []
+        def repository(self, o, r): return None
+        def get_url(self, url, accept="text/html"): return None
+        def user_contributed_repositories(self, login):
+            # discovery query came back partial: non-null fields resolved to null
+            return [RepoMeta("scipy/scipy", stars=0, forks=0, metrics_known=False)]
+        def repositories_metadata(self, names):
+            calls.append(sorted(names))
+            # the targeted re-fetch succeeds with the real counts
+            return {n: RepoMeta(n, stars=15000, forks=3000, metrics_known=True)
+                    for n in names}
+
+    cands = {c.name_with_owner: c for c in discover(
+        PartialForge(), Identity(primary_login="pearu"), EMPTY,
+        include_org_repos=False, use_code_search=False)}
+    assert "scipy/scipy" in cands                       # not dropped
+    assert cands["scipy/scipy"].stars == 15000          # re-fetched, not left at 0
+    assert cands["scipy/scipy"].forks == 3000
+    assert ["scipy/scipy"] in calls                     # the re-fetch happened
