@@ -4,9 +4,11 @@ import json
 
 from praiser.extractors.base import ExtractContext
 from praiser.extractors.wikipedia import (
+    WikipediaFoundersExtractor,
     build_title_sparql,
     parse_article_title,
     parse_infobox_authors,
+    parse_prose_founders,
 )
 from praiser.models import AUTHOR, Candidate, Identity
 from praiser.registry import KnownProjects
@@ -55,6 +57,59 @@ def test_parse_infobox_authors_drops_placeholders_and_junk():
 
 def test_parse_infobox_authors_none_when_no_author_field():
     assert parse_infobox_authors("{{Infobox software\n| name = X\n}}") == []
+
+
+# numba: the infobox author names only the sponsoring company, but the lead prose
+# credits the individual — the case prose-scanning exists for (#124 follow-up).
+NUMBA_WIKITEXT = """\
+{{Infobox software
+| name = Numba
+| author = Continuum Analytics
+| developer = Community project
+}}
+'''Numba''' is an open-source JIT compiler. Numba was started by \
+[[Travis Oliphant]] in 2012 and has since been under active development.
+"""
+
+
+def test_parse_prose_founders_started_by():
+    names = parse_prose_founders(NUMBA_WIKITEXT)
+    assert "Travis Oliphant" in names
+    assert "Continuum Analytics" not in names   # company isn't a prose "started by"
+
+
+def test_parse_prose_founders_subject_verb_and_negatives():
+    assert "Guido Rossum" in parse_prose_founders("Guido Rossum created the tool in 1991.")
+    # lowercase actors / placeholders never produce a name
+    assert parse_prose_founders("it was developed by the community over time.") == []
+    assert parse_prose_founders("was started by a group of engineers.") == []
+
+
+def test_prose_founder_matched_when_infobox_names_company_only():
+    # numba end-to-end: infobox author = "Continuum Analytics"; prose = "started by
+    # Travis Oliphant". A contributing user "Travis E. Oliphant" earns AUTHOR via the
+    # relaxed match + contribution corroboration.
+    forge = _WikiForge(wikitext=NUMBA_WIKITEXT, title="Numba")
+    ident = Identity(primary_login="teoliphant", names={"Travis E. Oliphant"})
+    ctx = ExtractContext(identity=ident, forge=forge,
+                         registry=KnownProjects(projects={}),
+                         use_wikidata=True, role_discovery_floor=1000)
+    cand = Candidate("numba/numba", stars=11000, sources={"history"})
+    ev = WikipediaFoundersExtractor().extract(cand, ctx)
+    assert len(ev) == 1 and ev[0].role == AUTHOR
+    assert "Numba" in ev[0].detail and "Wikipedia article" in ev[0].detail
+
+
+def test_prose_founder_relaxed_match_needs_contribution():
+    # Same numba prose, but a user who does NOT contribute (no roster, no history/
+    # contributed source) must NOT get AUTHOR from a bare relaxed name match.
+    forge = _WikiForge(wikitext=NUMBA_WIKITEXT, title="Numba")
+    ident = Identity(primary_login="someone", names={"Travis E. Oliphant"})
+    ctx = ExtractContext(identity=ident, forge=forge,
+                         registry=KnownProjects(projects={}),
+                         use_wikidata=True, role_discovery_floor=1000)
+    cand = Candidate("numba/numba", stars=11000)   # no contribution source
+    assert WikipediaFoundersExtractor().extract(cand, ctx) == []
 
 
 class _WikiForge:
