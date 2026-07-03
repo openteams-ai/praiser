@@ -9,10 +9,7 @@ import base64
 import functools
 import os
 import pickle
-import time
-import urllib.error
 import urllib.parse
-import urllib.request
 
 from praiser.cache import Cache
 from praiser.config import Config
@@ -45,57 +42,32 @@ _DIAG_SOURCES = [
 ]
 
 
-def _http_status(url: str, accept: str, timeout: float = 15.0):
-    """(status, error) for a bare GET with praiser's User-Agent. status is None on
-    a non-HTTP failure (timeout/DNS), with the reason in error."""
-    req = urllib.request.Request(
-        url, headers={"User-Agent": USER_AGENT, "Accept": accept})
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.status, None
-    except urllib.error.HTTPError as exc:
-        return exc.code, exc.reason
-    except Exception as exc:                       # timeout, DNS, connection reset
-        return None, f"{type(exc).__name__}: {exc}"
-
-
 def _praiser_geturl_probe(url: str, accept: str):
-    """Fetch via praiser's REAL client path (httpx when installed, else urllib) —
-    what the extractors actually use. Returns (ok, detail). This is the faithful
-    check: raw-urllib reaching a source doesn't prove praiser's httpx client does
-    (proxy/TLS/HTTP2 env differences on a host can diverge)."""
+    """Fetch via praiser's REAL client (the same get_url the extractors use), so
+    the check reflects what praiser can actually reach. Returns (ok, detail)."""
     import tempfile
 
     from praiser.forge import GitHubForge
-    from praiser.github_client import httpx as _httpx
-    client = "httpx" if _httpx is not None else "urllib"
     forge = GitHubForge(None, Cache(tempfile.mkdtemp()))  # no auth (external URLs)
     try:
         body = forge.get_url(url, accept=accept)
-        return (body is not None), (f"{client}: {len(body)} bytes" if body
-                                    else f"{client}: None (fetch failed)")
+        return (body is not None), (f"{len(body)} bytes" if body
+                                    else "unreachable (throttled/blocked/timeout)")
     except Exception as exc:
-        return False, f"{client}: {type(exc).__name__}: {exc}"
+        return False, f"{type(exc).__name__}: {exc}"
     finally:
         forge.close()
 
 
-def diagnose_external_sources(fetch=_http_status, geturl_probe=_praiser_geturl_probe):
-    """Probe the external data sources from THIS host, two ways per source: a raw
-    ``urllib`` GET (HTTP status) AND praiser's actual ``get_url`` (httpx) path that
-    the extractors use. A divergence (urllib 200 but httpx None) localizes the
-    failure to praiser's client on this host, not reachability. Both callables are
-    injectable for tests. Returns ``{"user_agent", "checks": [...]}``."""
+def diagnose_external_sources(probe=_praiser_geturl_probe):
+    """Probe each external source from THIS host via praiser's real get_url — a
+    lightweight, opt-in (?diag) reachability check for the intermittent WDQS/
+    Wikipedia throttling of cloud IPs. ``probe`` is injectable for tests. Returns
+    ``{"user_agent", "checks": [{name, url, ok, detail}]}``."""
     checks = []
     for name, url, accept in _DIAG_SOURCES:
-        t0 = time.monotonic()
-        status, err = fetch(url, accept)
-        ms = round((time.monotonic() - t0) * 1000)
-        ok = status == 200
-        detail = f"HTTP {status}" + (f" — {err}" if err else "") if status else (err or "failed")
-        probe_ok, probe_detail = geturl_probe(url, accept)
-        checks.append({"name": name, "url": url, "ok": ok, "detail": detail, "ms": ms,
-                       "praiser_ok": probe_ok, "praiser_detail": probe_detail})
+        ok, detail = probe(url, accept)
+        checks.append({"name": name, "url": url, "ok": ok, "detail": detail})
     return {"user_agent": USER_AGENT, "checks": checks}
 
 
