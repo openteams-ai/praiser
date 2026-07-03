@@ -40,6 +40,7 @@ _SECRET_KEYS = (
     "GITHUB_TOKEN", "GH_TOKEN", "GITLAB_TOKEN", "CODEBERG_TOKEN", "FORGEJO_TOKEN",
     "GITEE_TOKEN", "BITBUCKET_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN",
     "UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN",
+    "PRAISER_DIAG",   # opt-in founder-resolution trace surfaced in RunResult.diag
 )
 for _k in _SECRET_KEYS:
     if _k in st.secrets and not os.environ.get(_k):
