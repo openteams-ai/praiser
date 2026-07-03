@@ -91,6 +91,25 @@ def parse_infobox_authors(wikitext: str) -> list[str]:
     return names
 
 
+def _first_last(name: str) -> tuple[str, str] | None:
+    """(first, last) tokens of a name, lowercased, punctuation/middle stripped —
+    so "Travis E. Oliphant" and "Travis Oliphant" share (travis, oliphant)."""
+    toks = [t for t in re.sub(r"[.,]", " ", name).lower().split() if t]
+    if not toks:
+        return None
+    return (toks[0], toks[-1])
+
+
+def _relaxed_name_match(name: str, identity_names: set[str]) -> bool:
+    """True if ``name`` agrees with an identity name on first AND last token
+    (ignoring middle initials/names) — a looser match than exact equality, only
+    safe to act on WITH independent same-person evidence (see the extractor)."""
+    fl = _first_last(name)
+    if fl is None or fl[0] == fl[1]:      # need a distinct first+last to be safe
+        return False
+    return any(_first_last(n) == fl for n in identity_names)
+
+
 class WikipediaFoundersExtractor(Extractor):
     name = "wikipedia_authors"
 
@@ -150,6 +169,15 @@ class WikipediaFoundersExtractor(Extractor):
             fc.set(ck, [title, authors])
         return title, authors
 
+    def _contributes(self, candidate, ctx: ExtractContext) -> bool:
+        """Independent evidence the scanned user is tied to THIS repo — a
+        contributor by handle, or discovered via a genuine live-contribution
+        signal. Used to safely allow a relaxed name match (below)."""
+        if candidate.sources & {"contributed", "history"}:
+            return True
+        contribs = ctx.contributors(candidate) or {}
+        return any(h in contribs for h in ctx.identity.logins)
+
     def extract(self, candidate, ctx: ExtractContext) -> list[Evidence]:
         resolved = self._authors(candidate, ctx)
         if resolved is None:
@@ -157,14 +185,25 @@ class WikipediaFoundersExtractor(Extractor):
         title, authors = resolved
         if not title:
             return []
-        for person in authors:
-            if ctx.identity.matches_name(person):
-                page_url = f"https://en.wikipedia.org/wiki/{urllib.parse.quote(title.replace(' ', '_'))}"
-                return [Evidence(
-                    source=self.name, role=AUTHOR, url=page_url,
-                    confidence=_CONFIDENCE,
-                    detail=f"listed as an original author in the “{title}” "
-                           "Wikipedia infobox")]
+        page_url = f"https://en.wikipedia.org/wiki/{urllib.parse.quote(title.replace(' ', '_'))}"
+
+        def evidence(how=""):
+            return [Evidence(source=self.name, role=AUTHOR, url=page_url,
+                             confidence=_CONFIDENCE,
+                             detail=f"listed as an original author in the “{title}” "
+                                    f"Wikipedia infobox{how}")]
+
+        # Exact name match — always trustworthy.
+        if any(ctx.identity.matches_name(p) for p in authors):
+            return evidence()
+        # A relaxed (first+last, middle-initial-tolerant) match — e.g. "Travis
+        # Oliphant" (infobox) vs "Travis E. Oliphant" (GitHub) — only WITH
+        # independent same-person evidence: the scanned user also contributes to
+        # this repo. Without that a bare relaxed match would risk common-name
+        # false positives (cf. #72/#73), so check contribution lazily first.
+        if (any(_relaxed_name_match(p, ctx.identity.names) for p in authors)
+                and self._contributes(candidate, ctx)):
+            return evidence(" (name + contribution)")
         return []
 
 
