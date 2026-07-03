@@ -6,6 +6,7 @@ package manifests, enhancement-proposal series, governance prose) to a list of
 pure function so it can be unit-tested offline with no network.
 """
 
+import os
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -48,6 +49,26 @@ class ExtractContext:
     # repo -> [role-source dicts] discovered this run (for --save-registry)
     _discovered: dict[str, list[dict]] = field(default_factory=dict)
     _discovered_lock: object = field(default_factory=threading.Lock)
+    # Opt-in diagnostic trace (PRAISER_DIAG): why an extractor produced no
+    # evidence on a given repo. Off by default (empty, zero overhead); when on,
+    # notes are collected and surfaced in RunResult so a production failure is
+    # observable from the stored record without a debugger.
+    _diag: list[str] = field(default_factory=list)
+    _diag_lock: object = field(default_factory=threading.Lock)
+
+    @property
+    def diag_on(self) -> bool:
+        return bool(os.environ.get("PRAISER_DIAG"))
+
+    def diag(self, msg: str) -> None:
+        if not self.diag_on:
+            return
+        with self._diag_lock:
+            self._diag.append(msg)
+
+    def diag_notes(self) -> list[str]:
+        with self._diag_lock:
+            return list(self._diag)
 
     def known(self, name_with_owner: str) -> KnownProject | None:
         return self.registry.get(name_with_owner)

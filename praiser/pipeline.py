@@ -52,6 +52,9 @@ class RunResult:
     # so a stored result is self-describing — e.g. an empty ``names`` explains a
     # missing name-based role like a Wikipedia-infobox author (#124).
     identity: Identity | None = None
+    # Opt-in diagnostic trace (PRAISER_DIAG); empty unless enabled. Lets a
+    # production failure be read straight from the stored/cached record (#124).
+    diag: list[str] = field(default_factory=list)
 
 
 def _log(config: Config, msg: str) -> None:
@@ -233,7 +236,7 @@ def _scan_forge(
             contributors=(std[1] if std and not std[2] else None))
     for name, sources in ctx.discovered_sources().items():
         registry.add_role_sources(name, sources)
-    return records, secondary, reset_in
+    return records, secondary, reset_in, ctx.diag_notes()
 
 
 def run(config: Config, cache=None, progress_cb=None, index_cache=None,
@@ -291,12 +294,13 @@ def run(config: Config, cache=None, progress_cb=None, index_cache=None,
         # -- scan each forge, merge -----------------------------------------
         all_records: list[ProjectRecord] = []
         all_secondary: list[ProjectRecord] = []
+        all_diag: list[str] = []
         reset_in: int | None = None
         multi = len(ids) > 1
         for fname, login in ids:
             forge = factory(fname)
             label = f"[{fname}] " if multi else ""
-            recs, sec, r_in = _scan_forge(
+            recs, sec, r_in, diag = _scan_forge(
                 forge, login, identity, config, registry, llm, progress,
                 is_anchor=(fname == config.forge and login == config.username),
                 label=label, index=index, populate_index=populate_index,
@@ -304,6 +308,7 @@ def run(config: Config, cache=None, progress_cb=None, index_cache=None,
             )
             all_records += recs
             all_secondary += sec
+            all_diag += diag
             if r_in is not None and reset_in is None:
                 reset_in = r_in
         progress.done()
@@ -324,7 +329,7 @@ def run(config: Config, cache=None, progress_cb=None, index_cache=None,
         secondary.sort(key=lambda r: r.score, reverse=True)
         return RunResult(
             records=records, secondary=secondary, partial_reset_in=reset_in,
-            identity=identity,
+            identity=identity, diag=all_diag,
         )
     finally:
         for f in open_forges.values():
@@ -346,6 +351,8 @@ def _scan_one(extractors, cand, ctx, config) -> list[Evidence]:
             raise  # stop the whole run, not just this extractor
         except Exception as exc:  # one extractor failing is non-fatal
             _log(config, f"{ext.name} failed on {cand.name_with_owner}: {exc}")
+            ctx.diag(f"EXC {ext.name}@{cand.name_with_owner}: "
+                     f"{type(exc).__name__}: {exc}")
     return evidence
 
 

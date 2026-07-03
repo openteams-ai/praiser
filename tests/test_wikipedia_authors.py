@@ -196,6 +196,23 @@ def test_registry_title_skips_wdqs():
     assert all("query.wikidata.org" not in u for u in forge.calls)   # WDQS-free
 
 
+def test_diag_trace_records_why_no_founder_role_when_enabled(monkeypatch):
+    # PRAISER_DIAG makes a production miss observable from the stored record: it
+    # traces the resolved authors + match/contribution outcome per notable repo.
+    monkeypatch.setenv("PRAISER_DIAG", "1")
+    ctx = _ctx(_WikiForge(), name="Random Person")   # name not in the infobox
+    _extract(ctx, Candidate("scipy/scipy", stars=15000))
+    notes = ctx.diag_notes()
+    assert any("wiki scipy/scipy" in n and "exact=[]" in n for n in notes)
+
+
+def test_diag_trace_is_empty_when_disabled(monkeypatch):
+    monkeypatch.delenv("PRAISER_DIAG", raising=False)
+    ctx = _ctx(_WikiForge(), name="Random Person")
+    _extract(ctx, Candidate("scipy/scipy", stars=15000))
+    assert ctx.diag_notes() == []
+
+
 def test_zero_star_notable_repo_still_yields_founder_role_108_regression():
     # Reproduces #108 at the gate: scipy was discovered with stars=0 at
     # ATTRIBUTION time (star enrichment lags), so the founder extractor's
