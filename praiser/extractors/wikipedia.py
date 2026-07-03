@@ -181,10 +181,21 @@ class WikipediaFoundersExtractor(Extractor):
     def extract(self, candidate, ctx: ExtractContext) -> list[Evidence]:
         resolved = self._authors(candidate, ctx)
         if resolved is None:
+            ctx.diag(f"wiki {candidate.name_with_owner}: _authors=None "
+                     "(founder-cache miss + live fetch failed/throttled)")
             return []
         title, authors = resolved
         if not title:
+            ctx.diag(f"wiki {candidate.name_with_owner}: no enwiki article")
             return []
+        if ctx.diag_on:
+            ex = [p for p in authors if ctx.identity.matches_name(p)]
+            rx = [p for p in authors if _relaxed_name_match(p, ctx.identity.names)]
+            ctx.diag(
+                f"wiki {candidate.name_with_owner}: title={title!r} "
+                f"authors={authors} names={sorted(ctx.identity.names)} "
+                f"exact={ex} relaxed={rx} contributes={self._contributes(candidate, ctx)} "
+                f"sources={sorted(candidate.sources)}")
         page_url = f"https://en.wikipedia.org/wiki/{urllib.parse.quote(title.replace(' ', '_'))}"
 
         def evidence(how=""):
