@@ -1,10 +1,12 @@
 """Orchestrates the phases: identity -> discovery -> attribution -> popularity."""
 
+import os
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from functools import partial
 
+from . import __version__
 from .cache import Cache
 from .contribindex import ContributorIndex
 from .config import Config
@@ -55,6 +57,9 @@ class RunResult:
     # Opt-in diagnostic trace (PRAISER_DIAG); empty unless enabled. Lets a
     # production failure be read straight from the stored/cached record (#124).
     diag: list[str] = field(default_factory=list)
+    # praiser build that produced this record — so a stored result says which
+    # code ran (no more guessing whether a deploy landed).
+    version: str = __version__
 
 
 def _log(config: Config, msg: str) -> None:
@@ -327,9 +332,16 @@ def run(config: Config, cache=None, progress_cb=None, index_cache=None,
 
         records.sort(key=lambda r: r.score, reverse=True)
         secondary.sort(key=lambda r: r.score, reverse=True)
+        if os.environ.get("PRAISER_DIAG"):
+            # Unconditional marker: proves the trace is actually enabled in the
+            # running build, so an otherwise-empty diag means "extractor skipped",
+            # not "diag off / deploy not landed".
+            all_diag.insert(0, f"DIAG enabled; version={__version__}; "
+                            f"names={sorted(identity.names)}; "
+                            f"use_wikidata={config.use_wikidata}")
         return RunResult(
             records=records, secondary=secondary, partial_reset_in=reset_in,
-            identity=identity, diag=all_diag,
+            identity=identity, diag=all_diag, version=__version__,
         )
     finally:
         for f in open_forges.values():

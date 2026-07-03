@@ -116,7 +116,12 @@ class WikipediaFoundersExtractor(Extractor):
     def applicable(self, candidate, ctx: ExtractContext) -> bool:
         # Rides the Wikidata toggle; NOT gated on the LLM flag, so it surfaces
         # founders in a default scan. Name-match extractor, so needs identity names.
-        return ctx.use_wikidata and ctx.is_notable(candidate) and bool(ctx.identity.names)
+        ok = ctx.use_wikidata and ctx.is_notable(candidate) and bool(ctx.identity.names)
+        if not ok and ctx.diag_on and ctx.is_notable(candidate):
+            ctx.diag(f"wiki-skip {candidate.name_with_owner}: "
+                     f"use_wikidata={ctx.use_wikidata} notable=True "
+                     f"names={bool(ctx.identity.names)}")
+        return ok
 
     def _fetch_json(self, ctx, url, accept):
         page = ctx.forge.get_url(url, accept=accept)
