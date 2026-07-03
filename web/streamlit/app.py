@@ -380,6 +380,8 @@ if "diag" in st.query_params:
              f"`{f['resolved_identity_names']}`**")
     st.write(f"- **roles with the resolved identity (what the scan gets): "
              f"`{f['roles_with_resolved_identity']}`**")
+    st.write(f"- **discovered stars (gate sees at attribution; floor 1000): "
+             f"`{f['discovered_stars']}`**")
 
 
 # --- Seed the shared reverse-index (#65) --------------------------------------

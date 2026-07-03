@@ -100,6 +100,7 @@ def diagnose_founder(repo: str = "scipy/scipy", name: str = "Pearu Peterson") ->
                              founder_cache=None)          # bypass cache → LIVE
         return ext._authors(cand, ctx), [e.role for e in ext.extract(cand, ctx)]
 
+    disc_stars = "n/a"
     try:
         # (1) control: hardcoded name — proves the extractor path works.
         resolved, roles = _roles_for(Identity(primary_login="_diag", names={name}))
@@ -108,6 +109,15 @@ def diagnose_founder(repo: str = "scipy/scipy", name: str = "Pearu Peterson") ->
         real = resolve_identity(forge, login)
         real_names = sorted(real.names)
         _, real_roles = _roles_for(real)
+        # (3) the star value the gate SEES at attribution: what discovery yields
+        # for the repo among the user's contributed repos (0/absent → the
+        # role_discovery_floor gate skips the founder extractors, #108).
+        try:
+            contributed = {m.name_with_owner: m.stars
+                           for m in forge.user_contributed_repositories(login)}
+            disc_stars = contributed.get(repo, "absent from contributedTo")
+        except Exception as exc:                         # noqa: BLE001
+            disc_stars = f"EXC {type(exc).__name__}"
     except Exception as exc:                             # noqa: BLE001
         resolved, roles, real_names, real_roles = (
             f"EXC {type(exc).__name__}: {exc}", [], [], [])
@@ -122,6 +132,7 @@ def diagnose_founder(repo: str = "scipy/scipy", name: str = "Pearu Peterson") ->
         "resolved_identity_login": login,
         "resolved_identity_names": real_names,   # what resolve_identity gives the scan
         "roles_with_resolved_identity": real_roles,   # what the SCAN would get
+        "discovered_stars": disc_stars,    # star value the gate sees at attribution
     }
 
 
