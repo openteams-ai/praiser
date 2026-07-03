@@ -221,10 +221,19 @@ class ProjectRecord:
 
     @property
     def best_evidence(self) -> Evidence | None:
-        """Evidence for the strongest role, breaking ties by confidence."""
+        """The strongest *supported* claim: max weight × confidence.
+
+        Not the highest-weight role outright — a high-weight role backed by weak
+        evidence (e.g. a bare ``maintainer=`` field in setup.py, confidence 0.45)
+        must NOT outrank a lower-weight role that is strongly evidenced (e.g.
+        Author by repo ownership, confidence 0.90). Ranking (``score``) and
+        ``confidence`` derive from this, so weighing weight × confidence keeps a
+        weak signal from sinking an otherwise strong record (#96). Ties break to
+        the higher-weight (more senior) role.
+        """
         if not self.evidence:
             return None
-        return max(self.evidence, key=lambda e: (e.weight, e.confidence))
+        return max(self.evidence, key=lambda e: (e.weight * e.confidence, e.weight))
 
     @property
     def role(self) -> str | None:
