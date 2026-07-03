@@ -23,6 +23,40 @@ def _client_with_graphql(status, body_obj, rate=None):
     return c
 
 
+def _client_with_responses(responses):
+    """A bare client whose _request yields the given (status, body) tuples in
+    order — so we can simulate a transient error followed by a success."""
+    c = GitHubClient.__new__(GitHubClient)
+    c.cache = _MemCache()
+    c.rate = {}
+    it = iter(responses)
+    c._request = lambda *a, **k: (lambda s, b: (s, {}, b.encode()))(*next(it))
+    return c
+
+
+def test_get_url_does_not_cache_transient_errors():
+    # A WDQS 429/500 must NOT be cached as a permanent miss — the next call
+    # retries and can succeed (regression for the dropped-founder bug, #102).
+    for transient in (429, 500, 502, 503):
+        c = _client_with_responses([(transient, ""), (200, "OK-BODY")])
+        assert c.get_url("https://query.wikidata.org/x") is None   # transient fail
+        assert c.get_url("https://query.wikidata.org/x") == "OK-BODY"  # retried, ok
+
+
+def test_get_url_caches_genuine_404():
+    # If the 404 weren't cached, the 2nd call would consume the 200 and return
+    # its body; returning None proves the 404 was cached (no 2nd fetch).
+    c = _client_with_responses([(404, ""), (200, "SHOULD-NOT-BE-REACHED")])
+    assert c.get_url("https://example.com/missing") is None
+    assert c.get_url("https://example.com/missing") is None   # served from cache
+
+
+def test_get_url_caches_success():
+    c = _client_with_responses([(200, "HELLO")])
+    assert c.get_url("https://example.com/x") == "HELLO"
+    assert c.get_url("https://example.com/x") == "HELLO"   # cached, no 2nd _request
+
+
 def test_graphql_rate_limited_error_becomes_ratelimiterror():
     future = int(time.time()) + 180
     c = _client_with_graphql(

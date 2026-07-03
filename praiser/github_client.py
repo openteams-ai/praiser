@@ -383,9 +383,15 @@ class GitHubClient:
         try:
             status, _, data = self._request("GET", url, accept=accept, auth=False)
         except GitHubError:
+            return None                       # transient (timeout/network) — don't cache
+        if status in (404, 410):
+            self.cache.set(ck, "__404__")     # genuinely absent — safe to cache
             return None
         if status >= 400:
-            self.cache.set(ck, "__404__")
+            # Transient/throttle (429, 5xx) or an odd 4xx: return None but DON'T
+            # cache it — external sources like the Wikidata Query Service throttle
+            # under load, and caching that as a permanent miss would silently drop
+            # a real signal (e.g. a project's founders) until the entry expired.
             return None
         text = data.decode("utf-8", errors="replace")
         self.cache.set(ck, text)
