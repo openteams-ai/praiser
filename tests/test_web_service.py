@@ -274,22 +274,14 @@ def test_scan_fallback_refresh_only_on_first_attempt():
     assert seen == [("T1", True), ("T2", False)]  # refresh only on the first token
 
 
-def test_diagnose_external_sources_maps_status():
-    # WDQS: urllib 200 but praiser/httpx None (the key divergence we're hunting);
-    # Wikipedia 429; GitHub timeout.
-    def fake_fetch(url, accept):
-        if "wikidata" in url:  return 200, None
-        if "wikipedia" in url: return 429, "Too Many Requests"
-        return None, "TimeoutError: timed out"
+def test_diagnose_external_sources_reports_reachability():
+    # Probe via praiser's real client: WDQS unreachable (throttled), others ok.
     def fake_probe(url, accept):
-        if "wikidata" in url:  return False, "httpx: None (fetch failed)"
-        return True, "httpx: 1234 bytes"
-    diag = service.diagnose_external_sources(fetch=fake_fetch, geturl_probe=fake_probe)
+        if "wikidata" in url: return False, "unreachable (throttled/blocked/timeout)"
+        return True, "1234 bytes"
+    diag = service.diagnose_external_sources(probe=fake_probe)
     by = {c["name"]: c for c in diag["checks"]}
-    assert by["Wikidata Query Service"]["ok"] is True          # urllib reached it
-    assert by["Wikidata Query Service"]["praiser_ok"] is False  # praiser/httpx didn't
-    assert "None" in by["Wikidata Query Service"]["praiser_detail"]
-    assert by["Wikipedia API"]["ok"] is False and "429" in by["Wikipedia API"]["detail"]
-    assert by["GitHub API (baseline)"]["ok"] is False
-    assert "TimeoutError" in by["GitHub API (baseline)"]["detail"]
+    assert by["Wikidata Query Service"]["ok"] is False
+    assert "unreachable" in by["Wikidata Query Service"]["detail"]
+    assert by["Wikipedia API"]["ok"] is True and by["GitHub API (baseline)"]["ok"] is True
     assert diag["user_agent"]                       # praiser's UA is reported
