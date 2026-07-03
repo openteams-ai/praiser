@@ -126,6 +126,25 @@ def test_recent_scans_empty_when_no_index(tmp_path):
     assert service.recent_scans(result_cache=Cache(tmp_path)) == []
 
 
+def test_record_recent_is_case_insensitive(tmp_path):
+    # "Pearu" (phone autocapitalization) and "pearu" are the same account.
+    rc = Cache(tmp_path)
+    service._record_recent(rc, "github", "Pearu")
+    service._record_recent(rc, "github", "pearu")
+    recent = service.recent_scans(result_cache=rc)
+    assert [(r["forge"], r["username"]) for r in recent] == [("github", "pearu")]
+
+
+def test_recent_scans_collapses_preexisting_mixed_case(tmp_path):
+    # An index written before the fix (mixed case + duplicate) collapses on read.
+    rc = Cache(tmp_path)
+    rc.set(service._RECENT_KEY,
+           [["github", "Pearu"], ["github", "pearu"], ["gitlab", "bob"]])
+    recent = service.recent_scans(result_cache=rc)
+    assert [(r["forge"], r["username"]) for r in recent] == \
+        [("github", "Pearu"), ("gitlab", "bob")]   # first occurrence's display kept
+
+
 def test_render_result_highlights_respects_top_n():
     result = RunResult(records=[_rec(f"o/r{i}", 1000 - i) for i in range(10)],
                         secondary=[])

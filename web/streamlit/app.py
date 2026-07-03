@@ -253,7 +253,11 @@ if submitted:
     if not username.strip():
         st.warning("Enter a username.")
         st.stop()
-    uname = username.strip()
+    # Forge usernames are case-insensitive (github/gitlab/codeberg/gitee/bitbucket
+    # all resolve any casing to one canonical account), so canonicalize to lower
+    # case — otherwise "Pearu" (phone autocapitalization) and "pearu" would be two
+    # scans, two cache entries, and two "Recent scans" items for the same person.
+    uname = username.strip().lower()
     data_opts = {
         "forge": forge, "forge_url": forge_url.strip(),
         "discover_roles": discover_roles, "wikidata": wikidata,
