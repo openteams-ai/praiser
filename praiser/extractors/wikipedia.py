@@ -1,12 +1,15 @@
-"""Wikipedia infobox author derivation.
+"""Wikipedia author/founder derivation (infobox + lead prose).
 
 A cheap, derivable *corroborating* signal for original authors/founders — NOT an
 authority. Software infoboxes on Wikipedia carry an ``author`` field (rendered
 "Original author(s)") that often outlives the project's own AUTHORS/THANKS file
 (e.g. SciPy deleted THANKS.txt, but its Wikipedia infobox still lists
-"Travis Oliphant, Pearu Peterson, Eric Jones"). So this fills the gap between
-Wikidata creator claims (structured but sparse — many items have none) and the
-LLM founder fallback (opt-in, costs quota).
+"Travis Oliphant, Pearu Peterson, Eric Jones"). When the infobox names only the
+sponsoring company (numba → "Continuum Analytics"), the lead prose usually still
+credits the person ("Numba was started by Travis Oliphant in 2012"), so we also
+scan the lead for "(started|created|founded|…) by <Name>" attributions. Together
+these fill the gap between Wikidata creator claims (structured but sparse — many
+items have none) and the LLM founder fallback (opt-in, costs quota).
 
 It is deliberately treated as one moderate-confidence signal, not truth:
 Wikipedia is mutable and incomplete, so a miss is fine (the LLM stays the
@@ -91,6 +94,37 @@ def parse_infobox_authors(wikitext: str) -> list[str]:
     return names
 
 
+# Prose founder attributions in the article lead — e.g. "Numba was started by
+# Travis Oliphant in 2012". The infobox ``author`` field sometimes names only the
+# sponsoring company (numba → "Continuum Analytics"), while the lead credits the
+# individual. A name is a run of 2–4 capitalised tokens; matching by the scanned
+# identity's name downstream keeps stray captures harmless.
+_CREATE_VERB = (r"(?:(?:originally|initially|first|co)[ -]?)*"
+                r"(?:started|created|founded|written|authored|developed|"
+                r"designed|invented|built|launched)")
+_NAME = r"[A-Z][\w.'-]+(?:\s+[A-Z][\w.'-]+){1,3}"
+# No re.I: names must stay capitalised (prose verbs are lowercase, e.g. "was
+# started by …"), and re.I would let [A-Z] match lowercase and wreck _NAME.
+_PROSE_BY_RE = re.compile(rf"\b{_CREATE_VERB}\s+by\s+(?P<name>{_NAME})")
+_PROSE_SUBJ_RE = re.compile(rf"\b(?P<name>{_NAME})\s+{_CREATE_VERB}\b")
+
+
+def parse_prose_founders(wikitext: str) -> list[str]:
+    """Names credited with creating the project in the article-lead prose, e.g.
+    "started by <Name>" / "<Name> created …". Complements the infobox author
+    field; stray captures are harmless because only the scanned identity's own
+    name is matched downstream (and relaxed matches need contribution proof)."""
+    text = _clean_markup(wikitext)
+    names: list[str] = []
+    for rx in (_PROSE_BY_RE, _PROSE_SUBJ_RE):
+        for m in rx.finditer(text):
+            tok = m.group("name").strip(" \t'\"·•")
+            if len(tok) > 5 and " " in tok and not _NOT_A_PERSON.search(tok) \
+                    and tok not in names:
+                names.append(tok)
+    return names
+
+
 def _first_last(name: str) -> tuple[str, str] | None:
     """(first, last) tokens of a name, lowercased, punctuation/middle stripped —
     so "Travis E. Oliphant" and "Travis Oliphant" share (travis, oliphant)."""
@@ -139,7 +173,9 @@ class WikipediaFoundersExtractor(Extractor):
         the throttled WDQS/Wikipedia each scan (#108). Returns None on a fetch
         failure (transient — NOT cached, retried next scan)."""
         fc = ctx.founder_cache
-        ck = Cache.key("wikipedia-authors", candidate.name_with_owner)
+        # -2: the cached value now also includes prose-named founders (not just
+        # the infobox author field), so old infobox-only entries must re-resolve.
+        ck = Cache.key("wikipedia-authors-2", candidate.name_with_owner)
         if fc is not None:
             cached = fc.get(ck, default=None)
             if cached is not None:
@@ -170,6 +206,7 @@ class WikipediaFoundersExtractor(Extractor):
             return None                                # transient — don't cache
         wikitext = ((data.get("parse") or {}).get("wikitext") or {}).get("*") or ""
         authors = parse_infobox_authors(wikitext)
+        authors += [n for n in parse_prose_founders(wikitext) if n not in authors]
         if fc is not None:
             fc.set(ck, [title, authors])
         return title, authors
@@ -206,8 +243,8 @@ class WikipediaFoundersExtractor(Extractor):
         def evidence(how=""):
             return [Evidence(source=self.name, role=AUTHOR, url=page_url,
                              confidence=_CONFIDENCE,
-                             detail=f"listed as an original author in the “{title}” "
-                                    f"Wikipedia infobox{how}")]
+                             detail=f"credited as an original author in the “{title}” "
+                                    f"Wikipedia article{how}")]
 
         # Exact name match — always trustworthy.
         if any(ctx.identity.matches_name(p) for p in authors):
