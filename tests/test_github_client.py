@@ -141,3 +141,28 @@ def test_track_rate_ignores_headerless_responses():
     c.rate = {}
     c._track_rate({})  # no rate headers (e.g. a cached path or odd response)
     assert c.rate_summary() == ""
+
+
+def test_graphql_does_not_cache_partial_errored_response():
+    # #120/#121: a partial response (errors + partial data, e.g. a non-nullable
+    # field null under pressure) must NOT be cached, so the next call re-queries
+    # and self-heals. A clean response IS cached.
+    calls = []
+    c = GitHubClient.__new__(GitHubClient)
+    c.cache = _MemCache()
+    c.rate = {}
+    def req(*a, **k):
+        calls.append(1)
+        if len(calls) == 1:  # first: partial (errored) response
+            return 200, {}, json.dumps(
+                {"data": {"user": {"login": "u", "name": None}},
+                 "errors": [{"type": "SERVICE_UNAVAILABLE", "path": ["user", "name"]}]}).encode()
+        return 200, {}, json.dumps({"data": {"user": {"login": "u", "name": "Real"}}}).encode()  # clean
+    c._request = req
+    q, v = "query", {"login": "u"}
+    r1 = c.graphql(q, v)
+    assert r1["user"]["name"] is None          # partial returned best-effort
+    r2 = c.graphql(q, v)                        # NOT served from cache → re-queried
+    assert r2["user"]["name"] == "Real" and len(calls) == 2
+    r3 = c.graphql(q, v)                        # clean response now cached
+    assert r3["user"]["name"] == "Real" and len(calls) == 2

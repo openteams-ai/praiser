@@ -219,7 +219,14 @@ class GitHubClient:
             if not parsed.get("data"):
                 raise GitHubError(f"GraphQL errors: {parsed['errors']}")
         result = parsed.get("data") or {}
-        self.cache.set(ck, result)
+        # Only cache a CLEAN response. A partial/errored one (e.g. a non-nullable
+        # field resolved to null under service pressure) must NOT be cached — else
+        # the degraded data persists across scans and the retry never really
+        # happens until the TTL. Return it best-effort for this call, but let the
+        # next call re-query so it self-heals when the service recovers (cf. #105
+        # for the REST path).
+        if not parsed.get("errors"):
+            self.cache.set(ck, result)
         return result
 
     def _bucket_reset_in(self, resource: str) -> int | None:
