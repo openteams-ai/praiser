@@ -18,10 +18,11 @@ Projects record roles in many different ways — a `CODEOWNERS` file, a
 `MAINTAINERS` list, Kubernetes `OWNERS` YAML, a `GOVERNANCE.md` page, a package
 manifest's author field, a numbered enhancement-proposal series with `Author:`
 headers, a team page on the project's website, the commit history, package
-registries (PyPI/npm/crates), or **Wikidata** creator/developer claims (matched
-by GitHub handle). `praiser` figures out **which convention each project uses**
-rather than assuming one, and corroborates signals that a fork or vendored copy
-could fake.
+registries (PyPI/npm/crates), **Wikidata** creator/developer claims (matched by
+GitHub handle), or the **Wikipedia** infobox's original-author(s) field (which
+often outlives the project's own AUTHORS file). `praiser` figures out **which
+convention each project uses** rather than assuming one, and corroborates signals
+that a fork or vendored copy could fake.
 
 It scans **GitHub** by default, plus **GitLab** (`--forge gitlab`), **Codeberg**
 / any Gitea/Forgejo host (`--forge codeberg`), **Gitee** (`--forge gitee`),
