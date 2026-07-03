@@ -75,21 +75,31 @@ _RECENT_CAP = 50
 
 
 def _record_recent(rcache, forge: str, username: str) -> None:
-    """Prepend (forge, username) to the recent-scans index (best-effort)."""
+    """Prepend (forge, username) to the recent-scans index (best-effort).
+
+    Forge usernames are case-insensitive, so store the canonical lowercase handle
+    and dedupe case-insensitively — "Pearu" and "pearu" are one entry."""
     if rcache is None:
         return
     try:
         idx = rcache.get(_RECENT_KEY) or []
-        entry = [forge, username]
-        idx = [entry] + [e for e in idx if e != entry]
+        entry = [forge, username.lower()]
+        idx = [entry] + [e for e in idx if not _same_scan(e, entry)]
         rcache.set(_RECENT_KEY, idx[:_RECENT_CAP])
     except Exception:
         pass
 
 
+def _same_scan(a, b) -> bool:
+    """Whether two recent-index entries name the same (forge, user), case-insensitively."""
+    return (isinstance(a, list) and len(a) == 2
+            and a[0] == b[0] and str(a[1]).lower() == str(b[1]).lower())
+
+
 def recent_scans(result_cache=None) -> list[dict]:
     """Recently-scanned ``[{"forge", "username"}]``, most-recent-first (for a UI
-    picker). Reads the shared index once; degrades to [] on any error."""
+    picker). Reads the shared index once; degrades to [] on any error. Dedupes
+    case-insensitively so pre-existing mixed-case entries collapse to one."""
     rcache = result_cache if result_cache is not None else make_result_cache()
     if rcache is None:
         return []
@@ -97,8 +107,17 @@ def recent_scans(result_cache=None) -> list[dict]:
         idx = rcache.get(_RECENT_KEY) or []
     except Exception:
         return []
-    return [{"forge": e[0], "username": e[1]} for e in idx
-            if isinstance(e, list) and len(e) == 2]
+    out: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for e in idx:
+        if not (isinstance(e, list) and len(e) == 2):
+            continue
+        key = (e[0], str(e[1]).lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"forge": e[0], "username": e[1]})
+    return out
 
 
 # The options that affect DATA COLLECTION (a change here needs a re-scan). The
