@@ -67,8 +67,13 @@ class WikidataExtractor(Extractor):
     name = "wikidata"
 
     def applicable(self, candidate, ctx: ExtractContext) -> bool:
-        return (ctx.use_wikidata
-                and candidate.stars >= ctx.role_discovery_floor)
+        # Notable = popular by live stars OR curated in the registry. The registry
+        # fallback matters because candidate.stars is set at discovery and may be 0
+        # at attribution (enrichment runs later), which would skip a known-notable
+        # curated repo (#108).
+        return ctx.use_wikidata and (
+            candidate.stars >= ctx.role_discovery_floor
+            or ctx.known(candidate.name_with_owner) is not None)
 
     def _people(self, candidate, ctx: ExtractContext):
         """Repo-level Wikidata people ``[(handle, prop, item)]`` — cached in the

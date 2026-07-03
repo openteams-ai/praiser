@@ -191,3 +191,19 @@ def test_registry_title_skips_wdqs():
     ev = WikipediaFoundersExtractor().extract(Candidate("scipy/scipy", stars=15000), ctx)
     assert ev and ev[0].role == AUTHOR
     assert all("query.wikidata.org" not in u for u in forge.calls)   # WDQS-free
+
+
+def test_curated_repo_runs_even_with_low_attribution_stars():
+    # #108: candidate.stars can be 0 at attribution (enrichment runs later). A
+    # registry-curated repo must still run the founder extractor.
+    from praiser.registry import KnownProject, KnownProjects
+    from praiser.extractors.wikipedia import WikipediaFoundersExtractor
+    reg = KnownProjects(projects={"scipy/scipy": KnownProject("scipy/scipy", wikipedia="SciPy")})
+    ext = WikipediaFoundersExtractor()
+    ctx = ExtractContext(identity=Identity(primary_login="pearu", names={"Pearu Peterson"}),
+                         forge=_WikiForge(), registry=reg, use_wikidata=True,
+                         role_discovery_floor=1000)
+    low = Candidate("scipy/scipy", stars=0)      # not yet enriched
+    assert ext.applicable(low, ctx) is True      # curated → runs despite 0 stars
+    uncurated = Candidate("random/repo", stars=0)
+    assert ext.applicable(uncurated, ctx) is False   # uncurated + low stars → skipped
