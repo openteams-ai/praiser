@@ -12,7 +12,7 @@ import json
 from typing import Any
 
 from ..cache import Cache
-from ..github_client import GitHubClient, GitHubError
+from ..github_client import GitHubClient, GitHubError, RateLimitError
 from ._http import extract_urls
 from .base import ContributorCount, DirEntry, FileHit, Forge, RepoMeta, UserRef
 
@@ -209,9 +209,26 @@ class GitHubForge(Forge):
     def resolve_user(self, login: str) -> UserRef | None:
         data = self._client.graphql(_USER_QUERY, {"login": login})
         user = (data or {}).get("user") or {}
-        if not user.get("login"):
+        resolved_login = user.get("login")
+        name = user.get("name")
+        # `User.name` is nullable, so under service pressure this dedicated query
+        # can return the profile with a null/absent name (or fail entirely) — which
+        # silently empties `identity.names` and disables all name-based authorship
+        # detection (e.g. Wikipedia-infobox authors, #124). The discovery query
+        # fetches the same `login name` independently and is needed anyway, so fall
+        # back to it (memoised — no extra round-trip when the profile query is fine).
+        if not resolved_login or not name:
+            try:
+                disc = self._discovery_data(login)
+            except RateLimitError:
+                raise                     # a real rate limit → let the scan report partial
+            except GitHubError:
+                disc = {}
+            resolved_login = resolved_login or disc.get("login")
+            name = name or disc.get("name")
+        if not resolved_login:
             return None
-        return UserRef(login=user["login"], name=user.get("name"))
+        return UserRef(login=resolved_login, name=name)
 
     def user_repositories(self, login: str) -> list[RepoMeta]:
         user = self._discovery_data(login)
