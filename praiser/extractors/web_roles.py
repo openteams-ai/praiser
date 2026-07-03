@@ -94,7 +94,7 @@ class WebRolesAutoExtractor(Extractor):
     def applicable(self, candidate, ctx: ExtractContext) -> bool:
         if not (ctx.auto_discover_roles and ctx.llm is not None):
             return False
-        if candidate.stars < ctx.role_discovery_floor:
+        if not ctx.is_notable(candidate):
             return False
         known = ctx.known(candidate.name_with_owner)
         return not (known and known.role_sources)  # curated sources win

@@ -24,7 +24,7 @@ class LlmFoundersExtractor(Extractor):
         return (
             ctx.auto_discover_roles
             and ctx.llm is not None
-            and candidate.stars >= ctx.role_discovery_floor
+            and ctx.is_notable(candidate)
             and bool(ctx.identity.logins or ctx.identity.names)
         )
 
