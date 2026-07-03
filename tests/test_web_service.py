@@ -146,13 +146,18 @@ def test_feedback_links_prefill_title_body_and_labels():
     assert fp["url"].startswith("https://github.com/openteams-ai/praiser/issues/new?")
     q = urllib.parse.parse_qs(fp["url"].split("?", 1)[1])
     assert q["title"] == ["[false-positive] pearu (github)"]
-    assert q["labels"] == ["false-positive"]                       # triage label
+    assert q["labels"] == ["needs-triage,false-positive"]          # queue + sub-type
     body = q["body"][0]
     assert "forge: `github`" in body and "praiser: `0.3.0+gabc`" in body
     assert "numpy/numpy" in body                                   # scan context embedded
     assert "cross_forge=True" in body                              # options summarized
-    # the catch-all button carries no forced label (maintainer triages)
-    assert "labels" not in urllib.parse.parse_qs(links[2]["url"].split("?", 1)[1])
+    # EVERY feedback button queues the issue for triage (the catch-all with just
+    # needs-triage, the accuracy ones with needs-triage + their sub-type).
+    for ln in links:
+        labels = urllib.parse.parse_qs(ln["url"].split("?", 1)[1])["labels"][0]
+        assert labels.split(",")[0] == "needs-triage"
+    assert urllib.parse.parse_qs(links[2]["url"].split("?", 1)[1])["labels"] == \
+        ["needs-triage"]                                           # catch-all: queue only
 
 
 def test_feedback_body_truncated_under_url_cap():

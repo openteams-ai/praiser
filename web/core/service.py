@@ -48,11 +48,20 @@ VIEWS = ["highlights", "markdown", "json"]
 _ISSUES_NEW = "https://github.com/openteams-ai/praiser/issues/new"
 # GitHub's prefill is a GET request; keep the whole URL well under the ~8KB cap.
 _FEEDBACK_MAX_BODY = 5000
+
+# Triage queue: EVERY feedback button applies `needs-triage`, so web-submitted
+# issues land in one scannable queue (a human can add it by hand too). A scan
+# reviews `label:needs-triage` issues, then swaps `needs-triage` -> `agent-triaged`
+# so it isn't re-scanned. `false-positive`/`false-negative` are orthogonal accuracy
+# sub-types — an issue with no triage label is intentionally left alone.
+TRIAGE_LABEL = "needs-triage"
+TRIAGED_LABEL = "agent-triaged"
+
 FEEDBACK_KINDS = [
     {
         "key": "false-positive",
         "button": "🚩 Wrong / over-credited role",
-        "labels": "false-positive",
+        "labels": f"{TRIAGE_LABEL},false-positive",
         "lead": "A role shown in this result looks wrong or over-credited.",
         "prompt": "Which project and role is inaccurate, and why? (e.g. only a "
                   "few drive-by PRs, a name collision, or a vendored/forked copy)",
@@ -60,7 +69,7 @@ FEEDBACK_KINDS = [
     {
         "key": "false-negative",
         "button": "🔍 Missing a role",
-        "labels": "false-negative",
+        "labels": f"{TRIAGE_LABEL},false-negative",
         "lead": "A real elevated role is missing from this result.",
         "prompt": "Which project and role should appear? A link as evidence "
                   "(CODEOWNERS, a release, a governance page) helps a lot.",
@@ -68,7 +77,7 @@ FEEDBACK_KINDS = [
     {
         "key": "feedback",
         "button": "🐛 Bug or 💡 idea",
-        "labels": "",          # maintainer triages (bug vs enhancement)
+        "labels": TRIAGE_LABEL,     # queued for triage; sub-type decided on review
         "lead": "Bug report or feature request.",
         "prompt": "What happened (and what did you expect), or what would you "
                   "like praiser to do?",
