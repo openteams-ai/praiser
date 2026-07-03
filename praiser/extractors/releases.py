@@ -28,10 +28,12 @@ from .base import Extractor, ExtractContext
 # automated (CI/release-bot) publishers, which shouldn't count as a human role.
 _BOT_RE = re.compile(r"\[bot\]$", re.I)
 
-# A release manager authored at least this many human releases AND this share of
-# them — enough to be "the person who ships", not someone who cut one release.
-MIN_RELEASES = 3
-MIN_SHARE = 0.25
+# Cutting even a couple of releases is a real, completed act of trust worth
+# crediting — so we don't gate on a dominant share. We DO require more than a
+# single release, to filter incidental one-offs (and the "every merge is a
+# release" CD pattern where many people each author one). Magnitude is reported
+# as "(N/M)" rather than used as a cutoff, so a viewer sees 88/100 vs 6/100 (#79).
+MIN_RELEASES = 2
 
 
 def release_standing(
@@ -48,13 +50,13 @@ def release_standing(
 
 
 def classify(mine: int, total: int) -> float | None:
-    """Confidence that the user is a release manager, or None if too minor."""
+    """Confidence, or None below the minimal floor. Scales with share so a
+    dominant release manager ranks above an occasional one — the count is also
+    shown, so magnitude stays visible rather than hidden behind a cutoff."""
     if mine < MIN_RELEASES:
         return None
     share = mine / total
-    if share < MIN_SHARE:
-        return None
-    return 0.8 if share >= 0.5 else 0.65    # dominant vs. one of a small rota
+    return round(min(0.9, 0.55 + 0.35 * share), 2)   # 2 releases → ~0.55, all → 0.90
 
 
 class ReleaseManagerExtractor(Extractor):
@@ -80,6 +82,7 @@ class ReleaseManagerExtractor(Extractor):
             source=self.name, role=RELEASE_MANAGER,
             url=f"{candidate.url}/releases", confidence=confidence,
             detail=f"published {mine} of the last {total} releases",
+            releases_authored=mine, releases_total=total,
         )]
 
 

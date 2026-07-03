@@ -22,9 +22,14 @@ def _role_display(rec: ProjectRecord, role: str) -> str:
     """Label for one role, qualified with the subcomponent(s) when the role is
     held ONLY for a part of the project — e.g. "Author (f2py)". A role also
     evidenced at the whole-project level (any unqualified evidence) stays bare.
+    The release-manager role is qualified with its release count — e.g.
+    "Release manager (88/100)" — so magnitude is visible.
     """
     base = ROLE_LABELS.get(role, role)
     evs = [e for e in rec.evidence if e.role == role]
+    if role == "release_manager":
+        rel = next((e for e in evs if e.releases_total), None)
+        return f"{base} ({rel.releases_authored}/{rel.releases_total})" if rel else base
     quals = [e.qualifier for e in evs if e.qualifier]
     if evs and len(quals) == len(evs):  # every evidence for this role is scoped
         uniq = list(dict.fromkeys(quals))          # a person can hold it in several
