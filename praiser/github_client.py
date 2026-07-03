@@ -486,6 +486,23 @@ class GitHubClient:
                 break
         return out
 
+    def repo_release_authors(
+        self, owner: str, repo: str, max_releases: int = 100
+    ) -> list[str] | None:
+        """Author logins of the most recent releases (who published each release),
+        most-recent-first. Bot logins (``…[bot]``) are included — the caller
+        decides how to treat automation. None if it couldn't be fetched."""
+        try:
+            data = self.rest_json(
+                f"/repos/{owner}/{repo}/releases",
+                params={"per_page": min(100, max_releases)},
+            )
+        except GitHubError:
+            return None
+        if not isinstance(data, list):
+            return None
+        return [(r.get("author") or {}).get("login") or "" for r in data]
+
     def repo_contributor_count(
         self, owner: str, repo: str, anon: bool = True
     ) -> int | None:

@@ -10,6 +10,7 @@ ROLE_LABELS = {
     "steering_council": "Steering council",
     "standards_author": "Standards author",
     "author": "Author",
+    "release_manager": "Release manager",
     "core_contributor": "Core contributor",
     "org_owner": "Org owner",
     "org_member": "Org member",
