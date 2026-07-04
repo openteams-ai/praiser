@@ -14,6 +14,19 @@ def _rec(name, stars):
     )
 
 
+def test_looks_like_name_detects_a_space():
+    # A forge username can't contain a space, so a space = a full name to resolve.
+    assert service.looks_like_name("Ralf Gommers")
+    assert service.looks_like_name("  Linus Torvalds ")
+    assert not service.looks_like_name("torvalds")
+    assert not service.looks_like_name("rgommers")
+
+
+def test_search_people_is_github_only_for_now():
+    # Other forges have no user search wired up → [] (caller shows guidance).
+    assert service.search_people("Ralf Gommers", forge="gitlab") == []
+
+
 def test_min_stars_excluded_from_data_options():
     # min_stars is a display filter, not a collection option — so it must not be
     # part of the scan/cache key (else changing it would trigger a re-scan).

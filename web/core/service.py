@@ -207,6 +207,33 @@ def _token_for(forge: str) -> str | None:
     return None
 
 
+def looks_like_name(query: str) -> bool:
+    """Whether ``query`` is a full name to resolve rather than a handle to scan.
+    Forge usernames never contain spaces, so a space is an unambiguous signal."""
+    return " " in query.strip()
+
+
+def search_people(name: str, *, forge: str = "github", token: str | None = None,
+                  limit: int = 8):
+    """Resolve a full name → candidate accounts (login/name/bio) for the
+    scan-by-name flow. GitHub-only for now (the one forge with user search wired
+    up); other forges return [] so the caller shows guidance rather than guessing.
+    Returns [] on any error too."""
+    if forge != "github":
+        return []
+    from praiser.forge import GitHubForge
+    f = GitHubForge(token or _token_for("github"), local_cache())
+    try:
+        return f.search_users(name, limit=limit)
+    except Exception:
+        return []
+    finally:
+        try:
+            f.close()
+        except Exception:
+            pass
+
+
 # Bump whenever praiser's *extraction logic* changes (extractors, role rules,
 # ranking, discovery) so previously-cached results — computed by the old logic —
 # are abandoned and recomputed. Folded into the result-cache key: one bump

@@ -35,6 +35,9 @@ PRAISER_VERSION = getattr(praiser, "__version__", "dev")
 
 REPO_URL = "https://github.com/openteams-ai/praiser"
 _SCANNED_RE = re.compile(r"scanned (\d+)/(\d+)")
+# Proper display names per forge, for the username field label.
+_FORGE_LABEL = {"github": "GitHub", "gitlab": "GitLab", "codeberg": "Codeberg",
+                "gitee": "Gitee", "bitbucket": "Bitbucket", "cgit": "cgit"}
 # GitHub mark (neutral gray so it reads on a light or dark button) for the
 # sign-in control's icon — a data URI, self-contained.
 _GH_ICON = (
@@ -224,36 +227,46 @@ if recent:
 
 # The main form is just the hero: username + Praise. A scan runs only on submit.
 with st.form("q"):
-    username = st.text_input("Forge username", key="uname",
-                             placeholder="e.g. torvalds")
+    _label = f"{_FORGE_LABEL.get(forge, forge)} username"
+    _ph = ("e.g. torvalds — or a full name to look up"
+           if forge == "github" else "e.g. torvalds")
+    username = st.text_input(_label, key="uname", placeholder=_ph,
+                             help="A username to scan. On GitHub you can also type "
+                                  "a full name and pick the right account.")
     submitted = st.form_submit_button(
         "🌟 Praise", type="primary", use_container_width=True)
 
-# Display controls are only meaningful once a result exists, so they stay hidden
-# on the empty landing screen. Changing them reruns and re-renders from cache
-# instantly (no re-scan). Defined before the submit block (which may render a
-# partial result) so view/highlights/min_stars are always bound. The View
-# dropdown consolidates every output mode — cards, full report, copy-paste text,
-# and file export — into one control.
+# The View dropdown consolidates every output mode — cards, full report,
+# copy-paste text, file export — into one control.
 _VIEWS = ["Highlights", "Markdown report", "Copy as text", "Export files"]
 # Log-spaced min-stars steps (GitHub stars span 0 → ~500k).
 _MIN_STAR_STEPS = [0, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000,
                    25000, 50000, 100000, 250000, 500000]
-if submitted or st.session_state.get("active") is not None:
-    dc1, dc2, dc3 = st.columns([1.5, 1, 1])
-    view = dc1.selectbox(
-        "View", _VIEWS,
-        help="Highlights = ranked cards; Markdown report = full report with every "
-             "evidence link; Copy as text = plain-text summary to paste; "
-             "Export files = download the report as Markdown or JSON.")
-    highlights = dc2.slider("Top N", 3, 100, 8)
-    # Log-spaced steps: stars span 0 → ~500k on GitHub, so a linear slider wastes
-    # its whole range on tiny values. select_slider gives a logarithmic feel.
-    min_stars = dc3.select_slider(
-        "Min stars", options=_MIN_STAR_STEPS, value=50,
-        format_func=lambda n: (f"{n / 1000:g}k" if n >= 1000 else str(n)))
-else:
-    view, highlights, min_stars = "Highlights", 8, 50
+# Display controls live in this placeholder and are rendered ONLY when results are
+# shown (see _render_controls, called from the render block) — so they stay hidden
+# on the empty landing screen and while a scan runs (pointless without results).
+# Defaults keep view/highlights/min_stars bound until then.
+controls_box = st.empty()
+view, highlights, min_stars = "Highlights", 8, 50
+
+
+def _render_controls():
+    """Render the display controls into their placeholder and bind the module-level
+    view/highlights/min_stars the renderers read. Called only when results exist."""
+    global view, highlights, min_stars
+    with controls_box.container():
+        dc1, dc2, dc3 = st.columns([1.5, 1, 1])
+        view = dc1.selectbox(
+            "View", _VIEWS, key="view_sel",
+            help="Highlights = ranked cards; Markdown report = full report with "
+                 "every evidence link; Copy as text = plain-text summary to paste; "
+                 "Export files = download the report as Markdown or JSON.")
+        highlights = dc2.slider("Top N", 3, 100, 8, key="topn")
+        # Log-spaced steps: stars span 0 → ~500k, so a linear slider wastes its
+        # whole range on tiny values. select_slider gives a logarithmic feel.
+        min_stars = dc3.select_slider(
+            "Min stars", options=_MIN_STAR_STEPS, value=50, key="minstars",
+            format_func=lambda n: (f"{n / 1000:g}k" if n >= 1000 else str(n)))
 
 
 # Role → badge color, tuned toward the OpenTeams brand family (Streamlit only
@@ -443,19 +456,60 @@ cache = st.session_state["results"]
 status_box = st.empty()
 results_box = st.empty()
 
-# A scan runs ONLY on submit. It stores the result and marks it "active"; the
-# render block below then shows the active result with the CURRENT view/N — so
-# a later change to a display control reruns and re-renders instantly, with no
-# submit and no re-scan.
-if submitted:
-    if not username.strip():
+def _pick_candidate(login):
+    """A name-search candidate was chosen — scan that login next run."""
+    st.session_state["scan_login"] = login.lower()
+    st.session_state.pop("name_candidates", None)
+
+
+# Decide what to scan this run: a candidate the user just picked, or a fresh
+# submit. A submit whose input looks like a NAME (has a space — usernames can't)
+# is resolved to a login first; ambiguous names show a picker instead of scanning.
+scan_target = st.session_state.pop("scan_login", None)   # from a candidate pick
+_resolved_from = None   # the name a single-match resolved from (for transparency)
+if scan_target is None and submitted:
+    raw = username.strip()
+    if not raw:
         status_box.warning("Enter a username.")
         st.stop()
-    # Forge usernames are case-insensitive (github/gitlab/codeberg/gitee/bitbucket
-    # all resolve any casing to one canonical account), so canonicalize to lower
-    # case — otherwise "Pearu" (phone autocapitalization) and "pearu" would be two
-    # scans, two cache entries, and two "Recent scans" items for the same person.
-    uname = username.strip().lower()
+    if service.looks_like_name(raw):
+        st.session_state.pop("name_candidates", None)
+        if forge != "github":
+            status_box.warning(
+                f"Looking someone up by name is GitHub-only for now. Enter the "
+                f"exact **{forge}** username, or switch Forge to GitHub.")
+            st.stop()
+        cands = service.search_people(raw, forge=forge, token=USER_TOKEN)
+        if not cands:
+            status_box.warning(
+                f"Couldn't find a GitHub account for **{raw}** (no match, or the "
+                "lookup was rate-limited). Try the person's exact username, add "
+                "more of their name, or find their handle on their GitHub profile, "
+                "personal site, or Wikidata.")
+            st.stop()
+        if len(cands) == 1:
+            scan_target = cands[0].login.lower()
+            _resolved_from = raw     # surfaced in the finished-scan message
+        else:
+            # Ambiguous — let the user pick rather than guessing (issue #142).
+            # Don't st.stop(): fall through so the picker below renders.
+            st.session_state["name_candidates"] = (
+                raw, [(c.login, c.name, c.bio) for c in cands])
+    else:
+        # A handle: forge usernames are case-insensitive, so canonicalize to lower
+        # case — else "Pearu" (phone autocapitalization) and "pearu" would be two
+        # scans / cache entries / "Recent scans" items for the same person.
+        scan_target = raw.lower()
+
+# A scan runs ONLY with a resolved target. It stores the result and marks it
+# "active"; the render block below then shows it with the CURRENT view/N — so a
+# later display-control change reruns and re-renders instantly (no re-scan).
+if scan_target is not None:
+    # Drop the previous result up front: it's re-set only on success/cache below,
+    # so a scan that fails (rate limit) leaves no stale result from another user
+    # to be shown (and no display controls) on a later rerun.
+    st.session_state.pop("active", None)
+    uname = scan_target
     data_opts = {
         "forge": forge, "forge_url": forge_url.strip(),
         "discover_roles": discover_roles, "wikidata": wikidata,
@@ -506,12 +560,16 @@ if submitted:
                 + ("" if USER_TOKEN else " (or sign in with GitHub for your own limit)")
                 + f". Or run praiser locally (`pip install praiser`; see {REPO_URL})."
             )
+            # Partial isn't cached (so it can't become "active"); show it once with
+            # default view/N and no controls (they'd break on the next rerun).
             with results_box.container():
                 _show(result, uname)
             st.stop()
         cache.put(key, result)
         _via = f" (via {label})" if label and USER_TOKEN else ""
-        status_box.success(f"✅ Scan finished in {elapsed:.1f} seconds{_via}.")
+        _from = f" — resolved “{_resolved_from}” → @{uname}" if _resolved_from else ""
+        status_box.success(
+            f"✅ Scan finished in {elapsed:.1f} seconds{_via}{_from}.")
         # Reflect this scan in the recent-picker immediately (shared index is
         # updated inside service.collect()).
         entry = {"forge": forge, "username": uname}
@@ -519,18 +577,34 @@ if submitted:
             r for r in st.session_state.get("recent", []) if r != entry][:49]
     st.session_state["active"] = (key, uname, forge, data_opts)
 
-# Render the active result (from a fresh submit OR a display-only rerun) into the
-# results placeholder, so a subsequent scan can clear it cleanly.
-active = st.session_state.get("active")
-if active is not None:
-    key, uname, a_forge, a_opts = active
-    result = cache.get(key)
-    if result is None:  # evicted from the LRU — ask for a re-scan
-        status_box.info("Previous results expired — click Praise to scan again.")
-    else:
-        with results_box.container():
-            _show(result, uname)
-            _feedback_buttons(result, uname, a_forge, a_opts)
+# Ambiguous name → a pick-one list (issue #142) in place of results, so we never
+# silently scan the wrong person.
+pending = st.session_state.get("name_candidates")
+if pending is not None:
+    raw_name, cands = pending
+    with results_box.container():
+        st.markdown(f"**{len(cands)} GitHub accounts match “{raw_name}” — "
+                    "pick the right person:**")
+        for login, name, bio in cands:
+            label = f"@{login}" + (f" — {name}" if name else "")
+            st.button(label, key=f"cand_{login}", on_click=_pick_candidate,
+                      args=(login,), use_container_width=True)
+            st.caption((bio + "  ·  " if bio else "")
+                       + f"[github.com/{login}](https://github.com/{login})")
+# Otherwise render the active result (from a fresh submit OR a display-only
+# rerun) into the results placeholder, so a subsequent scan can clear it cleanly.
+else:
+    active = st.session_state.get("active")
+    if active is not None:
+        key, uname, a_forge, a_opts = active
+        result = cache.get(key)
+        if result is None:  # evicted from the LRU — ask for a re-scan
+            status_box.info("Previous results expired — click Praise to scan again.")
+        else:
+            _render_controls()   # controls appear only now that results are shown
+            with results_box.container():
+                _show(result, uname)
+                _feedback_buttons(result, uname, a_forge, a_opts)
 
 # --- External data-source diagnostics (?diag) ---------------------------------
 # Open `praiser.streamlit.app/?diag` to see, FROM THIS HOST, whether the external
