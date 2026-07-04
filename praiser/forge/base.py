@@ -47,10 +47,12 @@ class RepoMeta:
 
 @dataclass
 class UserRef:
-    """A resolved account: its canonical handle and display name."""
+    """A resolved account: its canonical handle and display name (+ optional bio,
+    used to disambiguate name-search candidates)."""
 
     login: str
     name: str | None = None
+    bio: str | None = None
 
 
 @dataclass
@@ -220,6 +222,12 @@ class Forge(ABC):
         return []
 
     # -- search & contribution analytics ------------------------------------
+    def search_users(self, name: str, limit: int = 8) -> list[UserRef]:
+        """Accounts whose profile matches ``name`` (a full name), for resolving a
+        person → username. Ranked by the forge, most relevant first. Default: none
+        (forge has no user search) — callers then fall back to guidance."""
+        return []
+
     def search_file_mentions(self, text: str, filename: str) -> list[FileHit]:
         """Repos whose ``filename`` (e.g. CODEOWNERS, AUTHORS) mentions ``text``
         (a handle or a full name). Default: none (forge has no code search)."""

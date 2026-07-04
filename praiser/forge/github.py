@@ -23,6 +23,17 @@ _USER_QUERY = """
 query($login:String!) { user(login:$login) { login name } }
 """
 
+# Resolve a full name → candidate accounts (login + name + bio, one call) for the
+# "scan by name" flow. `type:USER` restricts to people; the query text matches the
+# profile name/login/email.
+_USER_SEARCH_QUERY = """
+query($q:String!, $n:Int!) {
+  search(query:$q, type:USER, first:$n) {
+    nodes { ... on User { login name bio } }
+  }
+}
+"""
+
 # Owned repos + contributed-to repos, in one round-trip. Org memberships are a
 # SEPARATE query (_ORGS_QUERY): reading `organizations{login}` needs the read:org
 # scope, and bundling it here made a no-scope token (e.g. an OAuth user token)
@@ -298,6 +309,23 @@ class GitHubForge(Forge):
         return urls
 
     # -- search & analytics -------------------------------------------------
+    def search_users(self, name: str, limit: int = 8) -> list[UserRef]:
+        # `type: USER` is the GraphQL arg (restricts to people); the query string
+        # is just the name (GitHub matches it against login/name/email).
+        try:
+            data = self._client.graphql(
+                _USER_SEARCH_QUERY, {"q": name.strip(), "n": limit})
+        except GitHubError:
+            return []
+        nodes = ((data or {}).get("search") or {}).get("nodes") or []
+        out: list[UserRef] = []
+        for n in nodes:
+            login = (n or {}).get("login")
+            if login:
+                out.append(UserRef(login=login, name=n.get("name") or None,
+                                   bio=n.get("bio") or None))
+        return out
+
     def search_file_mentions(self, text: str, filename: str) -> list[FileHit]:
         # Multi-word text (a full name) must be quoted; a bare handle isn't.
         term = f'"{text}"' if " " in text.strip() else text

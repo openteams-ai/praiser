@@ -88,6 +88,21 @@ def test_resolve_user():
     assert _forge().resolve_user("pearu") == UserRef(login="pearu", name="Pearu Peterson")
 
 
+def test_search_users_parses_login_name_bio_and_skips_loginless():
+    class _SearchClient(_FakeClient):
+        def graphql(self, query, variables):
+            if "search(query" in query:            # _USER_SEARCH_QUERY
+                return {"search": {"nodes": [
+                    {"login": "rgommers", "name": "Ralf Gommers", "bio": "SciPy"},
+                    {"login": "ghost", "name": None, "bio": None},
+                    {},                             # no login -> skipped
+                ]}}
+            return super().graphql(query, variables)
+    users = _forge(_SearchClient()).search_users("Ralf Gommers")
+    assert [(u.login, u.name, u.bio) for u in users] == [
+        ("rgommers", "Ralf Gommers", "SciPy"), ("ghost", None, None)]
+
+
 def test_resolve_user_falls_back_to_discovery_name_when_profile_name_null():
     # #124: the dedicated profile query returns `User.name` (nullable), which can
     # come back null under service pressure — silently emptying identity.names and
