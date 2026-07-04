@@ -4,7 +4,6 @@ Deploy on Streamlit Community Cloud: main file = web/streamlit/app.py, and set
 the token secrets (see web/README.md). All queries and tokens stay server-side.
 """
 
-import json
 import os
 import re
 import sys
@@ -20,7 +19,13 @@ import streamlit as st  # noqa: E402
 
 import praiser  # noqa: E402
 from praiser.pipeline import humanize_wait  # noqa: E402
-from praiser.render import render_role_glossary  # noqa: E402
+from praiser.render import (  # noqa: E402
+    ROLE_LABELS,
+    human_stars,
+    render_highlights,
+    render_role_glossary,
+    role_display,
+)
 from web.core import service  # noqa: E402
 from web.core.resultcache import SizeBoundedLRU  # noqa: E402
 
@@ -113,12 +118,17 @@ def github_account():
 
 st.set_page_config(page_title="praiser", page_icon="🌟")
 st.title("🌟 praiser")
-st.caption("The open-source projects where a person holds an elevated role — "
-           "author, maintainer, steering council, standards author — with "
-           "evidence links, across GitHub, GitLab, Codeberg, Gitee, Bitbucket "
-           "and cgit hosts.")
-st.caption(f"ℹ️ More information: [{REPO_URL.split('//', 1)[1]}]({REPO_URL}) · "
-           f"praiser v{PRAISER_VERSION}")
+st.caption("Find the open-source projects where someone holds an elevated role — "
+           "with evidence for every claim.")
+with st.expander("About praiser"):
+    st.markdown(
+        "**praiser** records the projects where a person is an **author, "
+        "maintainer, code owner, steering-council member, standards author, "
+        "release manager, or core contributor** — each with a clickable "
+        "**evidence link** and a **confidence** score. It works across GitHub, "
+        "GitLab, Codeberg, Gitee, Bitbucket and cgit hosts.\n\n"
+        f"ℹ️ More: [{REPO_URL.split('//', 1)[1]}]({REPO_URL}) · "
+        f"praiser v{PRAISER_VERSION}")
 
 USER_LOGIN, USER_TOKEN = github_account()   # signed-in GitHub user (or None, None)
 
@@ -147,44 +157,132 @@ if recent:
         key="recent_pick", on_change=_pick_recent,
         help="Pick a previously scanned account to pre-fill the form.")
 
-# Data-collection controls live in a form: they only take effect on "Praise",
-# so a scan runs only on an explicit submit.
+# LLM founder/role discovery spends the DEPLOYMENT's shared LLM budget, so it's
+# hidden on the public demo unless the deployer opts in (mirrors SEED_ENABLED).
+_LLM_ENABLED = "LLM_DISCOVERY_ENABLED" in st.secrets
+
+# Data-collection controls live in a form: they only take effect on "Praise", so a
+# scan runs only on an explicit submit. Username + Praise are the hero; the rest is
+# tucked into Advanced (sensible defaults, rarely changed).
 with st.form("q"):
-    username = st.text_input("Forge username", key="uname", placeholder="e.g. pearu")
-    forge = st.selectbox("Forge", DEMO_FORGES, key="forge_sel")
-    forge_url = ""  # self-hosted instance URL is a CLI/library feature, not the demo
-    c3, c4 = st.columns(2)
-    wikidata = c3.checkbox("Wikidata roles", value=True)
-    package_registries = c4.checkbox("Package registries", value=True)
-    cross_forge = c3.checkbox("Cross-forge (follow profile links)", value=False)
-    discover_roles = c4.checkbox("LLM founder/role discovery (slower, costs)",
-                                 value=False)
-    refresh = c3.checkbox(
-        "Refresh (ignore cache, re-scan)", value=False,
-        help="Force a fresh scan instead of returning a cached result. Only the "
-             "repos you're actually connected to are re-fetched; repos surfaced "
-             "solely by org membership keep using the cache, so a refresh won't "
-             "exhaust the API rate limit.")
+    username = st.text_input("Forge username", key="uname",
+                             placeholder="e.g. torvalds")
+    with st.expander("⚙️ Advanced options"):
+        forge = st.selectbox("Forge", DEMO_FORGES, key="forge_sel",
+                             help="GitHub by default; switch to scan another host.")
+        a1, a2 = st.columns(2)
+        refresh = a1.checkbox(
+            "Refresh (ignore cache)", value=False,
+            help="Force a fresh re-scan instead of a cached result. Only repos "
+                 "you're actually connected to are re-fetched, so a refresh won't "
+                 "exhaust the API rate limit.")
+        package_registries = a2.checkbox(
+            "Package registries", value=True,
+            help="Also check PyPI / npm / crates.io: credit the person as author "
+                 "(PyPI) or maintainer (npm/crates) of a package — but only when "
+                 "the package's metadata links back to a repo praiser found.")
+        cross_forge = a1.checkbox(
+            "Cross-forge", value=False,
+            help="Follow the person's own profile links to their accounts on other "
+                 "forges and merge into one record. Rarely needed.")
+        discover_roles = (a2.checkbox(
+            "LLM founder/role discovery", value=False,
+            help="Use an LLM to infer founders/roles in hard cases. Slower, and "
+                 "spends the deployment's shared LLM budget.")
+            if _LLM_ENABLED else False)
+    forge_url = ""       # self-hosted instance URL is a CLI/library feature
+    wikidata = True      # always on — a cheap, broadly-useful role source
     submitted = st.form_submit_button(
         "🌟 Praise", type="primary", use_container_width=True)
 
-# Display controls live OUTSIDE the form: changing them reruns immediately and
-# re-renders the already-collected result from cache — no button, no re-scan.
-# (min_stars is a display filter — the scan collects the full superset.)
-d1, d2, d3 = st.columns(3)
-view = d1.selectbox("View", service.VIEWS, index=0)
-highlights = d2.slider("Highlights (top N)", 3, 100, 8)
-min_stars = d3.slider("Min stars", 0, 1000, 50, step=10)
+# Display controls are only meaningful once a result exists, so they stay hidden
+# on the empty landing screen. Changing them reruns and re-renders from cache
+# instantly (no re-scan). Defined before the submit block (which may render a
+# partial result) so view/highlights/min_stars are always bound.
+if submitted or st.session_state.get("active") is not None:
+    dc1, dc2, dc3 = st.columns([1.4, 1, 1])
+    view = dc1.segmented_control(
+        "View", ["Highlights", "Markdown"], default="Highlights",
+        help="Highlights = the ranked summary; Markdown = the full report with "
+             "every evidence link.") or "Highlights"
+    highlights = dc2.slider("Top N", 3, 100, 8)
+    min_stars = dc3.slider("Min stars", 0, 1000, 50, step=10)
+else:
+    view, highlights, min_stars = "Highlights", 8, 50
+
+
+# Role → badge color (Streamlit's named badge palette). Author gets the accent.
+_ROLE_BADGE_COLOR = {
+    "steering_council": "red", "author": "violet", "maintainer": "blue",
+    "standards_author": "orange", "code_owner": "green",
+    "release_manager": "orange", "core_contributor": "gray",
+}
+
+
+def _role_badges(rec) -> str:
+    """A row of inline colored badges for a record's roles, each carrying its
+    rank/qualifier suffix (reuses render.role_display so labels never diverge)."""
+    return " ".join(
+        f":{_ROLE_BADGE_COLOR.get(role, 'gray')}-badge[{role_display(rec, role)}]"
+        for role in rec.roles)
+
+
+def _show_highlights(result, uname):
+    """The default view: summary metrics + one bordered card per top project with
+    role badges, plus a copy-pastable plain-text version of the same highlights."""
+    primary, secondary = service.filtered_records(result, min_stars=min_stars)
+    top = primary[:max(1, highlights)]
+    if not top:
+        st.info("No elevated roles at this popularity threshold — lower **Min "
+                "stars** in the controls above to see more.")
+        return
+    communities = {
+        o for r in (*primary, *secondary)
+        if (o := r.name_with_owner.split("/", 1)[0]).lower() != uname.lower()}
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Projects", len(primary) + len(secondary))
+    m2.metric("Communities", len(communities))
+    m3.metric("Top role", ROLE_LABELS.get(top[0].role, "—"))
+    for r in top:
+        with st.container(border=True):
+            name_col, star_col = st.columns([5, 1])
+            name_col.markdown(f"#### [{r.name_with_owner}]({r.url})")
+            star_col.markdown(f"### {human_stars(r.stars)}★")
+            name_col.markdown(_role_badges(r))
+    bits = []
+    if (extra := len(primary) - len(top)) > 0:
+        bits.append(f"{extra} more elevated-role project(s)")
+    if secondary:
+        bits.append(f"{len(secondary)} smaller but widely-used project(s) "
+                    "with a notable role")
+    if bits:
+        st.caption("…plus " + "; ".join(bits) + ".")
+    with st.expander("📋 Copy as text"):
+        st.code(render_highlights(uname, primary, highlights, secondary,
+                                  link_repos=False), language=None)
+
+
+def _export_buttons(result, uname):
+    md = service.render_result(result, uname, view="markdown",
+                               highlights=highlights, min_stars=min_stars)
+    js = service.render_result(result, uname, view="json",
+                               highlights=highlights, min_stars=min_stars)
+    e1, e2 = st.columns(2)
+    e1.download_button("⬇ Markdown", md, file_name=f"praiser-{uname}.md",
+                       mime="text/markdown", use_container_width=True)
+    e2.download_button("⬇ JSON", js, file_name=f"praiser-{uname}.json",
+                       mime="application/json", use_container_width=True)
 
 
 def _show(result, uname):
     """Render a RunResult with the current display controls (view/N/min-stars)."""
-    out = service.render_result(result, uname, view=view,
-                                highlights=highlights, min_stars=min_stars)
-    if view == "json":
-        st.json(json.loads(out))
+    if view == "Markdown":
+        st.markdown(service.render_result(result, uname, view="markdown",
+                                          highlights=highlights,
+                                          min_stars=min_stars))
     else:
-        st.markdown(out)   # highlights (repos linked) + markdown both render here
+        _show_highlights(result, uname)
+    _export_buttons(result, uname)
     with st.expander("ℹ️ What do these roles mean?"):
         st.markdown(render_role_glossary())
 

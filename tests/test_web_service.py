@@ -36,6 +36,23 @@ def test_render_result_applies_min_stars_at_render_time():
     assert n1000 < n0         # higher threshold -> fewer primary
 
 
+def test_filtered_records_splits_by_min_stars_and_sorts_by_score():
+    # The shared helper the web card view + text renderers both build on.
+    result = RunResult(
+        records=[_rec("a/big", 5000), _rec("a/mid", 200), _rec("a/small", 3)],
+        secondary=[],
+    )
+    primary, secondary = service.filtered_records(result, min_stars=1000)
+    assert [r.name_with_owner for r in primary] == ["a/big"]
+    # below-threshold repos are NOT primary (secondary only holds the
+    # widely-used/maintained ones; a 3-star repo is dropped entirely)
+    assert "a/big" not in {r.name_with_owner for r in secondary}
+    # a 0 floor keeps everything as primary, score-sorted (descending)
+    p0, _ = service.filtered_records(result, min_stars=0)
+    assert len(p0) == 3
+    assert [r.stars for r in p0] == sorted((r.stars for r in p0), reverse=True)
+
+
 def test_collect_serves_from_result_cache_without_scanning(monkeypatch, tmp_path):
     # A warm result-cache entry must short-circuit collect() entirely — no call
     # to pipeline.run (i.e. zero praiser HTTP work, ~1 shared-cache read).

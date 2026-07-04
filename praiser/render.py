@@ -198,6 +198,20 @@ def _human_stars(stars: int) -> str:
     return str(stars)
 
 
+# --- public helpers for alternative frontends (e.g. the Streamlit web UI) ----
+# so a frontend can render roles/stars as badges/chips using the SAME logic as
+# the text renderers (rank/qualifier suffixes, star formatting), no duplication.
+def role_display(rec: ProjectRecord, role: str) -> str:
+    """Per-role label incl. its rank/qualifier suffix, e.g. "Code owner (Sparse
+    Tensors)" or "Core contributor (#8/~2100)"."""
+    return _role_display(rec, role)
+
+
+def human_stars(stars: int) -> str:
+    """Compact star count, e.g. 32000 -> "32k"."""
+    return _human_stars(stars)
+
+
 def _approx_count(n: int) -> str:
     """Round an approximate contributor total to 2 significant figures for
     display: 6835 -> "~6800", 2097 -> "~2100", 637 -> "~640", 251 -> "~250"."""
