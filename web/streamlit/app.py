@@ -366,12 +366,14 @@ def _feedback_buttons(result, uname, forge, data_opts):
                    "pre-filled issue you post under your own GitHub login._")
 
 
-def _run_scan(username, data_opts, token_options, exhausted):
+def _run_scan(username, data_opts, token_options, exhausted, status_ph, hint=""):
     """Scan in a worker thread (live progress bar on the main thread), trying the
     token options in order and falling back on rate limits (signed-in user's
     quota first, shared bot behind it). Returns (result, elapsed, label): result
     may be complete, partial (with .partial_reset_in), or None (all limited).
-    The worker never touches st.* — it only mutates the plain `state`/`exhausted`."""
+    The worker never touches st.* — it only mutates the plain `state`/`exhausted`.
+    All progress/terminal output renders into ``status_ph`` (a placeholder) so the
+    caller can keep the results area cleared while a scan runs."""
     state = {"msg": "starting…", "result": None, "label": None,
              "reset": None, "error": None, "done": False}
 
@@ -392,17 +394,19 @@ def _run_scan(username, data_opts, token_options, exhausted):
     started = time.time()
     worker = threading.Thread(target=_work, daemon=True)
     worker.start()
-    bar, status = st.empty(), st.empty()
     while not state["done"]:
         m = _SCANNED_RE.search(state["msg"])
-        bar.progress(min(1.0, int(m.group(1)) / max(1, int(m.group(2)))) if m else 0.0)
-        status.caption(f"⏳ {state['msg']}")
+        with status_ph.container():
+            st.progress(min(1.0, int(m.group(1)) / max(1, int(m.group(2))))
+                        if m else 0.0)
+            st.caption(f"⏳ {state['msg']}")
+            if hint:
+                st.caption(hint)
         time.sleep(0.2)
     worker.join()
-    bar.empty()
-    status.empty()
+    status_ph.empty()
     if state["error"]:
-        st.error(f"Failed: {state['error']}")
+        status_ph.error(f"Failed: {state['error']}")
         st.stop()
     if state["result"] is None:      # every token rate-limited, nothing usable
         reset = state["reset"]
@@ -414,7 +418,7 @@ def _run_scan(username, data_opts, token_options, exhausted):
                     "rate limit — independent of other demo users.")
         msg += (f"\n\nOr run praiser locally: `pip install praiser`, then "
                 f"`praiser {username}`. See {REPO_URL}.")
-        st.warning(msg)
+        status_ph.warning(msg)
         st.stop()
     return state["result"], time.time() - started, state["label"]
 
@@ -425,13 +429,19 @@ if "results" not in st.session_state:
     st.session_state["results"] = SizeBoundedLRU(_CACHE_MB * 1024 * 1024)
 cache = st.session_state["results"]
 
+# Placeholders at fixed positions (status above results). Creating them BEFORE the
+# scan lets a new scan CLEAR the previous results immediately — otherwise Streamlit
+# shows the stale results greyed-out for the whole (long) scan.
+status_box = st.empty()
+results_box = st.empty()
+
 # A scan runs ONLY on submit. It stores the result and marks it "active"; the
 # render block below then shows the active result with the CURRENT view/N — so
 # a later change to a display control reruns and re-renders instantly, with no
 # submit and no re-scan.
 if submitted:
     if not username.strip():
-        st.warning("Enter a username.")
+        status_box.warning("Enter a username.")
         st.stop()
     # Forge usernames are case-insensitive (github/gitlab/codeberg/gitee/bitbucket
     # all resolve any casing to one canonical account), so canonicalize to lower
@@ -450,21 +460,20 @@ if submitted:
     # Cache key excludes the display options (view/highlights) on purpose.
     key = (uname, *(data_opts[k] for k in service.DATA_OPTIONS))
     if not refresh and cache.get(key) is not None:
-        st.success("✅ Showing cached results — change the username, forge, or a "
-                   "scan option to re-scan (or tick Refresh to force one).")
+        status_box.success("✅ Showing cached results — change the username, forge, "
+                           "or a scan option to re-scan (or tick Refresh to force "
+                           "one).")
     else:
-        # A transient "this may take a while" note — shown only WHILE scanning,
-        # then cleared, so it doesn't linger next to the finished results.
-        waiting = st.empty()
-        waiting.info(
-            ("🔄 Refreshing — re-scanning the repos you're connected to; "
-             "org-membership repos ride the cache. "
-             if refresh else
-             "⏳ A first-time scan can take ~30 seconds to a few minutes — praiser "
-             "queries the forge across many repositories (longer with cross-forge "
-             "or LLM discovery on). ")
-            + "Changing the view, top-N or min-stars afterwards is instant."
-        )
+        results_box.empty()   # clear stale results while the new scan runs
+        # A "this may take a while" hint, shown under the progress bar during the
+        # scan (in status_box) and gone once it finishes.
+        hint = (
+            "🔄 Refreshing — re-scanning the repos you're connected to; "
+            "org-membership repos ride the cache."
+            if refresh else
+            "⏳ A first-time scan can take ~30 seconds to a few minutes — praiser "
+            "queries the forge across many repositories (longer with cross-forge "
+            "or LLM discovery on).")
         # Token options: a signed-in user's own quota first, the shared bot token
         # behind it (GitHub only — the OAuth token is a GitHub token). Other forges
         # use their configured env token via collect(). The exhausted map persists
@@ -477,23 +486,24 @@ if submitted:
             token_options = token_options or [("anonymous (60/hr)", None)]
         else:
             token_options = [(forge, None)]     # forge's own env token, no fallback
-        result, elapsed, label = _run_scan(uname, data_opts, token_options, exhausted)
-        waiting.empty()   # scan done — drop the "please wait" note
+        result, elapsed, label = _run_scan(
+            uname, data_opts, token_options, exhausted, status_box, hint)
         if result.partial_reset_in is not None:
             # Every token hit its limit mid-scan → incomplete. Don't cache it;
             # show what we have with a clear warning + wait time.
-            st.warning(
+            status_box.warning(
                 "⚠️ Partial results — the API rate limit was reached mid-scan on "
                 "all available tokens, so some projects may be missing. Re-scan in "
                 f"{humanize_wait(result.partial_reset_in)} for the full record"
                 + ("" if USER_TOKEN else " (or sign in with GitHub for your own limit)")
                 + f". Or run praiser locally (`pip install praiser`; see {REPO_URL})."
             )
-            _show(result, uname)
+            with results_box.container():
+                _show(result, uname)
             st.stop()
         cache.put(key, result)
         _via = f" (via {label})" if label and USER_TOKEN else ""
-        st.success(f"✅ Scan finished in {elapsed:.1f} seconds{_via}.")
+        status_box.success(f"✅ Scan finished in {elapsed:.1f} seconds{_via}.")
         # Reflect this scan in the recent-picker immediately (shared index is
         # updated inside service.collect()).
         entry = {"forge": forge, "username": uname}
@@ -501,16 +511,18 @@ if submitted:
             r for r in st.session_state.get("recent", []) if r != entry][:49]
     st.session_state["active"] = (key, uname, forge, data_opts)
 
-# Render the active result (from a fresh submit OR a display-only rerun).
+# Render the active result (from a fresh submit OR a display-only rerun) into the
+# results placeholder, so a subsequent scan can clear it cleanly.
 active = st.session_state.get("active")
 if active is not None:
     key, uname, a_forge, a_opts = active
     result = cache.get(key)
     if result is None:  # evicted from the LRU — ask for a re-scan
-        st.info("Previous results expired — click Praise to scan again.")
+        status_box.info("Previous results expired — click Praise to scan again.")
     else:
-        _show(result, uname)
-        _feedback_buttons(result, uname, a_forge, a_opts)
+        with results_box.container():
+            _show(result, uname)
+            _feedback_buttons(result, uname, a_forge, a_opts)
 
 # --- External data-source diagnostics (?diag) ---------------------------------
 # Open `praiser.streamlit.app/?diag` to see, FROM THIS HOST, whether the external
