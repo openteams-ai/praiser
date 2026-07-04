@@ -269,17 +269,18 @@ _render_budget_note(budget_slot, USER_TOKEN)
 forge_url = ""       # self-hosted instance URL is a CLI/library feature
 wikidata = True      # always on — a cheap, broadly-useful role source
 
-# Recent scans in the sidebar too (below Options) — a quick picker + debugging aid.
+# Recent scans is a debugging aid (it lists other people's recently-scanned
+# accounts), so it's hidden by default — shown only with `?debug` in the URL.
 recent = st.session_state["recent"]
-if recent:
+if recent and "debug" in st.query_params:
     with st.sidebar:
         st.selectbox(
             "Recent scans",
             ["—", *(f"{r['forge']} · {r['username']}" for r in recent)],
             key="recent_pick", on_change=_pick_recent,
             help="Accounts scanned recently (this session + the shared cache). "
-                 "Pick one to pre-fill the form — quick to re-open and handy for "
-                 "debugging.")
+                 "Pick one to pre-fill the form — a debugging convenience "
+                 "(append `?debug` to the URL to show this).")
 
 # The main form is just the hero: username + Praise. A scan runs only on submit.
 with st.form("q"):
