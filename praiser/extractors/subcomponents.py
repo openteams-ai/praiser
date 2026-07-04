@@ -69,6 +69,7 @@ class SubcomponentsExtractor(Extractor):
                 confidence=confidence,
                 detail=f"{count} commits to {label}",
                 qualifier=label,  # scopes the contribution, e.g. "f2py"
+                contributions=count,
             ))
         return evidence
 

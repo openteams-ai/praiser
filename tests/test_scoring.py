@@ -14,6 +14,26 @@ def _rec(name, stars, evidence):
                          stars=stars, evidence=evidence)
 
 
+def test_record_contributions_uses_whole_project_count_not_double_counted():
+    # A repo's whole-project commit count already includes its subcomponent
+    # commits, so the record's contributions is the whole count (not whole+part).
+    rec = _rec("numpy/numpy", 32000, [
+        Evidence("contributors", CORE_CONTRIBUTOR, "u", 0.8, "", contributions=2065),
+        Evidence("subcomponents", CORE_CONTRIBUTOR, "u", 0.7, "",
+                 qualifier="f2py", contributions=22),
+    ])
+    assert rec.contributions == 2065
+
+
+def test_record_contributions_falls_back_to_subcomponent_then_none():
+    part_only = _rec("x/y", 100, [
+        Evidence("subcomponents", CORE_CONTRIBUTOR, "u", 0.7, "",
+                 qualifier="p", contributions=40)])
+    assert part_only.contributions == 40
+    no_contrib = _rec("x/z", 100, [Evidence("codeowners", "code_owner", "u", 0.9, "")])
+    assert no_contrib.contributions is None
+
+
 def test_weak_high_weight_role_does_not_sink_the_record():
     # pyvtk (#96): a bare setup.py "maintainer=" field (weight 0.85 but conf 0.45)
     # must NOT become best_evidence over strongly-evidenced Author (0.84 @ 0.90).

@@ -234,6 +234,10 @@ class Evidence:
     n_contributors: int | None = None
     contributors_capped: bool = False
     contributors_approx: bool = False
+    # The person's contribution volume behind this signal — commits (or merged PRs
+    # via the rescue) — so a summary can total real work across projects. None when
+    # the signal isn't contribution-based (e.g. a CODEOWNERS entry).
+    contributions: int | None = None
     # Release-manager standing: releases this person published of the total in the
     # window — display shows "Release manager (88/100)". Magnitude is reported
     # rather than gated, so cutting even a couple of releases is credited (#79).
@@ -263,6 +267,18 @@ class ProjectRecord:
         """The popularity signal for ranking/filtering: stars where the host has
         them, else forks (the one universal proxy in ``RepoMeta``)."""
         return self.stars if self.forge_has_stars else self.forks
+
+    @property
+    def contributions(self) -> int | None:
+        """This person's contribution volume here (commits / merged PRs), from the
+        strongest contribution-based signal — None if none. A whole-project count
+        wins over a subcomponent-scoped one (unqualified evidence first)."""
+        counts = [e.contributions for e in self.evidence if e.contributions]
+        if not counts:
+            return None
+        whole = [e.contributions for e in self.evidence
+                 if e.contributions and not e.qualifier]
+        return max(whole) if whole else max(counts)
 
     @property
     def best_evidence(self) -> Evidence | None:
