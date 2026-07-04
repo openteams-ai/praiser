@@ -4,7 +4,7 @@ Elevated roles are maintainer / code owner / steering-council member /
 standards author. Plain contributors are intentionally excluded.
 """
 
-_BASE_VERSION = "0.3.0"
+_BASE_VERSION = "0.4.0"
 
 
 def _git_revision() -> str | None:
