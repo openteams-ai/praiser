@@ -296,8 +296,7 @@ def _show_highlights(result, uname):
               help="All-time commits summed across these projects, where "
                    "measurable from the contributor data. **Not a measure of "
                    "effort and not comparable between people** — a commit's size "
-                   "and significance vary enormously, and squash-merge repos "
-                   "collapse a whole PR into one commit. Read it as rough scale, "
+                   "and significance vary enormously. Read it as rough scale, "
                    "not a score.")
     if commits:
         st.caption("_Total commits is a rough scale, not a measure of effort — a "
