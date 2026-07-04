@@ -79,55 +79,62 @@ class CodeownersExtractor(Extractor):
         rules = parse_codeowners(text)
         url = f"{candidate.url}/blob/HEAD/{path}"
         found: list[Evidence] = []
-        seen_owners: set[str] = set()
+        seen_patterns: set[str] = set()
+        team_cache: dict[tuple[str, str], bool] = {}  # (org, team) -> user is a member
         # A CODEOWNERS entry only counts if it isn't an inherited/copied file
         # (a fork or a downstream repo that vendored an upstream CODEOWNERS along
         # with its git history) — see ExtractContext.trust_role_file.
         trusted = None  # computed lazily on first match
 
-        for owner in all_owners(rules):
-            if owner in seen_owners:
+        # Code-ownership is intrinsically PATH-SCOPED (each rule is a glob), so we
+        # iterate rules — not flattened owners — and record the owned pattern as the
+        # evidence qualifier, rendering "Code owner (compiler/, docs/)" the same way
+        # subcomponent authorship renders "Author (f2py)". A catch-all "*" owner is
+        # whole-project, so it carries no qualifier (shown bare).
+        for rule in rules:
+            detail = self._rule_match_detail(ctx, path, rule, team_cache)
+            if detail is None:
                 continue
-            seen_owners.add(owner)
-            kind, parts = classify_owner(owner)
-
-            if kind == "user" and ctx.identity.matches_handle(parts[0]):
-                if trusted is None:
-                    trusted = ctx.trust_role_file(candidate)
-                if trusted:
-                    found.append(Evidence(
-                        source=self.name, role=CODE_OWNER, url=url, confidence=0.9,
-                        detail=f"listed as @{parts[0]} in {path}",
-                    ))
-            elif kind == "email" and ctx.identity.matches_email(parts[0]):
-                if trusted is None:
-                    trusted = ctx.trust_role_file(candidate)
-                if trusted:
-                    found.append(Evidence(
-                        source=self.name, role=CODE_OWNER, url=url, confidence=0.9,
-                        detail=f"listed by email in {path}",
-                    ))
-            elif kind == "team":
-                ev = self._team_evidence(candidate, ctx, path, url, parts[0], parts[1])
-                if ev:
-                    found.append(ev)
+            if trusted is None:
+                trusted = ctx.trust_role_file(candidate)
+            if not trusted:
+                return []  # inherited/copied CODEOWNERS — none of it counts
+            if rule.pattern in seen_patterns:
+                continue
+            seen_patterns.add(rule.pattern)
+            found.append(Evidence(
+                source=self.name, role=CODE_OWNER, url=url, confidence=0.9,
+                detail=detail,
+                qualifier=None if rule.pattern == "*" else rule.pattern,
+            ))
         return found
 
-    def _team_evidence(self, candidate, ctx, path, url, org, team) -> Evidence | None:
+    def _rule_match_detail(self, ctx, path, rule, team_cache) -> str | None:
+        """How the scanned identity owns this rule (as an evidence detail), or None.
+        Team membership is memoised per (org, team) so a team named in many rules
+        costs one API call."""
+        for owner in rule.owners:
+            kind, parts = classify_owner(owner)
+            if kind == "user" and ctx.identity.matches_handle(parts[0]):
+                return f"listed as @{parts[0]} in {path}"
+            if kind == "email" and ctx.identity.matches_email(parts[0]):
+                return f"listed by email in {path}"
+            if kind == "team":
+                key = (parts[0], parts[1])
+                if key not in team_cache:
+                    team_cache[key] = self._user_in_team(ctx, *key)
+                if team_cache[key]:
+                    return f"member of @{parts[0]}/{parts[1]} (CODEOWNERS in {path})"
+        return None
+
+    def _user_in_team(self, ctx, org, team) -> bool:
+        # Could not confirm membership (private team / no scope) -> False (skip),
+        # same conservative stance as before.
         try:
             members = ctx.forge.team_members(org, team)
         except Exception:
             members = []
-        if members:
-            if any(ctx.identity.matches_handle(m) for m in members):
-                return Evidence(
-                    source=self.name, role=CODE_OWNER, url=url, confidence=0.9,
-                    detail=f"member of @{org}/{team} (CODEOWNERS in {path})",
-                )
-            return None  # team known and user not in it
-        # Could not confirm membership (private team / no scope): weak signal only
-        # if the team name itself references the user — otherwise skip.
-        return None
+        return bool(members) and any(ctx.identity.matches_handle(m) for m in members)
 
 
 register(CodeownersExtractor())

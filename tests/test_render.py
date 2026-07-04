@@ -108,10 +108,10 @@ def test_contributor_rating_rides_the_core_contributor_role():
     assert _roles_label(rec) == "Core contributor (#14/~1900), Maintainer"
 
 
-def test_contributor_rating_trails_when_core_role_bumped_from_topN():
+def test_all_roles_shown_no_cap_with_contributor_rating_inline():
     from praiser.models import AUTHOR, CODE_OWNER, MAINTAINER
-    # 4 distinct roles: core_contributor (0.70) is the lowest, so it's dropped
-    # from the top-3 display — but its rating must still show, trailing the line.
+    # 4 distinct roles: none is dropped (roles are no longer capped, #127), shown
+    # in lifecycle order, with core_contributor carrying its rank inline.
     rec = ProjectRecord(
         name_with_owner="a/b", url="https://github.com/a/b", stars=9000,
         evidence=[
@@ -122,9 +122,22 @@ def test_contributor_rating_trails_when_core_role_bumped_from_topN():
                      n_contributors=1900),
         ],
     )
-    assert "core_contributor" not in rec.roles          # bumped by the top-3 cap
+    assert "core_contributor" in rec.roles              # not dropped anymore
     label = _roles_label(rec)
-    assert label == "Author, Code owner, Maintainer (#14/1900)"  # rating not lost
+    assert label == "Author, Core contributor (#14/1900), Code owner, Maintainer"
+
+
+def test_code_owner_shows_owned_paths():
+    from praiser.models import CODE_OWNER
+    # Path-scoped code-ownership renders like subcomponent authorship: "(paths)".
+    rec = ProjectRecord(
+        name_with_owner="o/r", url="https://github.com/o/r", stars=9000,
+        evidence=[
+            Evidence("codeowners", CODE_OWNER, "u", 0.9, "", qualifier="compiler/"),
+            Evidence("codeowners", CODE_OWNER, "u", 0.9, "", qualifier="docs/"),
+        ],
+    )
+    assert _roles_label(rec) == "Code owner (compiler/, docs/)"
 
 
 def test_release_manager_role_shows_count():
