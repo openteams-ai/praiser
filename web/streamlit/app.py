@@ -294,9 +294,15 @@ def _show_highlights(result, uname):
               help="Distinct organisations (owners other than the person).")
     m3.metric("Total commits", f"{commits:,}" if commits else "—",
               help="All-time commits summed across these projects, where "
-                   "measurable from the contributor data. (Repos that squash-merge "
-                   "PRs into one commit will read low — that's an honest commit "
-                   "count, not effort.)")
+                   "measurable from the contributor data. **Not a measure of "
+                   "effort and not comparable between people** — a commit's size "
+                   "and significance vary enormously, and squash-merge repos "
+                   "collapse a whole PR into one commit. Read it as rough scale, "
+                   "not a score.")
+    if commits:
+        st.caption("_Total commits is a rough scale, not a measure of effort — a "
+                   "commit's size varies enormously, so it isn't comparable "
+                   "between people._")
     # Compact one-line entries: repo · stars · role badges — so many projects fit
     # above the fold and the feedback controls below stay reachable.
     for r in top:
