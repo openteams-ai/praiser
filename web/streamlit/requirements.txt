@@ -1,7 +1,7 @@
 # Streamlit Community Cloud installs these; praiser itself is imported from the
 # repo (the app runs from the repo root). httpx/pyyaml/anthropic cover praiser's
 # http / yaml / llm extras.
-streamlit>=1.30
+streamlit>=1.44   # need st.segmented_control (1.40) + :color-badge markdown / st.badge (1.44)
 httpx>=0.24
 pyyaml>=6
 anthropic>=0.39

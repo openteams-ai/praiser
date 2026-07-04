@@ -415,6 +415,22 @@ def scan_with_fallback(username, token_options, *, data_opts, exhausted, now,
     return None, None, soonest
 
 
+def filtered_records(result, *, min_stars: int = 50):
+    """``(primary, secondary)`` for a display ``min_stars``, score-sorted.
+
+    The single place the display-time popularity split lives (the scan collected
+    the full superset at floor 0). Both the text renderers and the web card view
+    build on this, so they never diverge.
+    """
+    allrecs = [*result.records, *result.secondary]
+    primary, secondary = filter_records(
+        allrecs, min_stars=min_stars, registry=_registry()
+    )
+    primary.sort(key=lambda r: r.score, reverse=True)
+    secondary.sort(key=lambda r: r.score, reverse=True)
+    return primary, secondary
+
+
 def render_result(result, username: str, *, view: str = "highlights",
                   highlights: int = 8, min_stars: int = 50) -> str:
     """Render an already-collected ``RunResult`` for ``view`` (cheap, no network).
@@ -422,13 +438,7 @@ def render_result(result, username: str, *, view: str = "highlights",
     Applies the ``min_stars`` popularity split here (the result was collected at
     floor 0), so changing it re-renders instantly without re-scanning.
     """
-    # The collected superset = records + secondary (collected at floor 0).
-    allrecs = [*result.records, *result.secondary]
-    primary, secondary = filter_records(
-        allrecs, min_stars=min_stars, registry=_registry()
-    )
-    primary.sort(key=lambda r: r.score, reverse=True)
-    secondary.sort(key=lambda r: r.score, reverse=True)
+    primary, secondary = filtered_records(result, min_stars=min_stars)
     if view == "highlights":
         # link_repos: the web renders highlights as markdown (repos clickable).
         return render_highlights(username, primary, highlights, secondary,
