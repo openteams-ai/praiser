@@ -100,13 +100,10 @@ def github_account():
             st.session_state.pop("gh_user_login", None)
             st.rerun()
         return login, tok
-    # Present like the other options: a compact label with a native-style (?)
-    # tooltip, then the sign-in control (styled by the streamlit-oauth component).
-    st.markdown(
-        'GitHub sign-in <span title="Scan on your own GitHub rate limit — handy '
-        'when the shared demo limit is reached. Public, read-only; the token is '
-        'session-only." style="cursor:help;opacity:0.55">&#63;&#8413;</span>',
-        unsafe_allow_html=True)
+    # A short caption explains the purpose; the full-width button below is
+    # self-labelled ("Sign in with GitHub"), so no separate heading is needed.
+    st.caption("Optional — sign in to scan on your own GitHub rate limit "
+               "(public, read-only; the token is session-only).")
     try:
         from streamlit_oauth import OAuth2Component
     except Exception:
