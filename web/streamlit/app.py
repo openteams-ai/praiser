@@ -256,11 +256,19 @@ else:
     view, highlights, min_stars = "Highlights", 8, 50
 
 
-# Role → badge color (Streamlit's named badge palette). Author gets the accent.
+# Role → badge color, tuned toward the OpenTeams brand family (Streamlit only
+# allows NAMED colors, so these approximate the brand): "primary" = the theme's
+# brand blue (#4D75FE), plus blue, orange (≈ gold), red (≈ coral), gray — the
+# off-brand violet/green are avoided. Assignments keep the roles that commonly
+# co-occur on one project visually distinct (e.g. scipy: core/code_owner/release).
 _ROLE_BADGE_COLOR = {
-    "steering_council": "red", "author": "violet", "maintainer": "blue",
-    "standards_author": "orange", "code_owner": "green",
-    "release_manager": "orange", "core_contributor": "gray",
+    "author": "primary",          # brand blue — praiser's signature role
+    "steering_council": "red",    # coral-ish — governance
+    "maintainer": "blue",
+    "standards_author": "orange",  # gold-ish
+    "code_owner": "red",          # coral-ish (rarely co-occurs with steering)
+    "release_manager": "orange",  # gold-ish
+    "core_contributor": "gray",   # neutral — the ubiquitous role
 }
 # A hoverable ⓘ after the badges points to the glossary in "About praiser".
 _ROLE_HINT = ('&nbsp;<span title="See “About praiser” (top of page) for what each '
