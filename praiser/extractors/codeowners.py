@@ -24,20 +24,37 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 class CodeownerRule:
     pattern: str
     owners: list[str]
+    section: str | None = None  # nearest preceding comment header, e.g. "Sparse Tensors"
 
 
 def parse_codeowners(text: str) -> list[CodeownerRule]:
-    """Pure parser: text -> list of (pattern, owners). Comments/blanks dropped."""
+    """Pure parser: text -> list of (pattern, owners, section).
+
+    Large CODEOWNERS files group entries under comment headers (e.g. a
+    "# Sparse Tensors" line above the sparse paths). We attach the nearest
+    preceding comment to each rule as ``section`` so display can name the
+    sub-component ("Code owner (Sparse Tensors)") instead of listing raw path
+    globs (#138). A blank line ends a section; a comment line (re)sets the pending
+    header. Inline comments after a rule are still stripped.
+    """
     rules: list[CodeownerRule] = []
+    section: str | None = None
     for raw in text.splitlines():
-        line = raw.split("#", 1)[0].strip()
+        stripped = raw.strip()
+        if not stripped:
+            section = None                       # blank line separates sections
+            continue
+        if stripped.startswith("#"):
+            section = stripped.lstrip("#").strip() or None   # header for what follows
+            continue
+        line = stripped.split("#", 1)[0].strip()  # drop any inline comment
         if not line:
             continue
         parts = line.split()
         if len(parts) < 2:
             continue  # a pattern with no owners assigns nobody
         pattern, owners = parts[0], parts[1:]
-        rules.append(CodeownerRule(pattern=pattern, owners=owners))
+        rules.append(CodeownerRule(pattern=pattern, owners=owners, section=section))
     return rules
 
 
@@ -47,6 +64,15 @@ def all_owners(rules: list[CodeownerRule]) -> list[str]:
         for owner in rule.owners:
             seen.setdefault(owner, None)
     return list(seen)
+
+
+def _rule_scope(rule: "CodeownerRule") -> str | None:
+    """The concise scope label for a rule's Code-owner evidence: the section
+    header if the file provides one (e.g. "Sparse Tensors"), else the raw path
+    pattern. A whole-repo catch-all ("*") is project-wide → None (shown bare)."""
+    if rule.section:
+        return rule.section
+    return None if rule.pattern == "*" else rule.pattern
 
 
 def classify_owner(owner: str) -> tuple[str, tuple[str, ...]]:
@@ -79,7 +105,7 @@ class CodeownersExtractor(Extractor):
         rules = parse_codeowners(text)
         url = f"{candidate.url}/blob/HEAD/{path}"
         found: list[Evidence] = []
-        seen_patterns: set[str] = set()
+        seen_quals: set[str] = set()
         team_cache: dict[tuple[str, str], bool] = {}  # (org, team) -> user is a member
         # A CODEOWNERS entry only counts if it isn't an inherited/copied file
         # (a fork or a downstream repo that vendored an upstream CODEOWNERS along
@@ -87,10 +113,12 @@ class CodeownersExtractor(Extractor):
         trusted = None  # computed lazily on first match
 
         # Code-ownership is intrinsically PATH-SCOPED (each rule is a glob), so we
-        # iterate rules — not flattened owners — and record the owned pattern as the
-        # evidence qualifier, rendering "Code owner (compiler/, docs/)" the same way
-        # subcomponent authorship renders "Author (f2py)". A catch-all "*" owner is
-        # whole-project, so it carries no qualifier (shown bare).
+        # iterate rules — not flattened owners — and record the owned scope as the
+        # evidence qualifier, rendering "Code owner (Sparse Tensors)" the same way
+        # subcomponent authorship renders "Author (f2py)". The scope is the section
+        # header when the file groups paths under one (concise + meaningful, #138),
+        # else the raw path pattern. Owning many paths under one section collapses
+        # to a single qualifier. A catch-all "*" owner is whole-project (bare).
         for rule in rules:
             detail = self._rule_match_detail(ctx, path, rule, team_cache)
             if detail is None:
@@ -99,13 +127,14 @@ class CodeownersExtractor(Extractor):
                 trusted = ctx.trust_role_file(candidate)
             if not trusted:
                 return []  # inherited/copied CODEOWNERS — none of it counts
-            if rule.pattern in seen_patterns:
+            qualifier = _rule_scope(rule)
+            key = qualifier if qualifier is not None else ""  # "*" -> one bare entry
+            if key in seen_quals:
                 continue
-            seen_patterns.add(rule.pattern)
+            seen_quals.add(key)
             found.append(Evidence(
                 source=self.name, role=CODE_OWNER, url=url, confidence=0.9,
-                detail=detail,
-                qualifier=None if rule.pattern == "*" else rule.pattern,
+                detail=detail, qualifier=qualifier,
             ))
         return found
 

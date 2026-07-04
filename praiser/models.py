@@ -91,9 +91,8 @@ ROLE_GLOSSARY: list[tuple[str, str, str]] = [
      "Named in the Author field of a proposal document header (PEP, NEP, RFC, "
      "XEP, …)."),
     (CODE_OWNER,
-     "Designated required-reviewer over specific code paths. Shown scoped to the "
-     "owned path(s), e.g. \"Code owner (compiler/, docs/)\"; a whole-repo (`*`) "
-     "owner is shown bare.",
+     "Designated reviewer/approver for specific parts of a project — shown scoped "
+     "to the sub-component owned.",
      "CODEOWNERS entries or OWNERS reviewers."),
     (RELEASE_MANAGER,
      "Ships the project's releases — trusted to publish.",

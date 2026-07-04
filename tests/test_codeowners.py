@@ -86,3 +86,28 @@ def test_codeowner_via_team_membership_is_scoped():
         Candidate("o/r", stars=15000), _ctx(Identity(primary_login="bob"), forge))
     assert len(ev) == 1 and ev[0].qualifier == "src/"
     assert "compiler-team" in ev[0].detail
+
+
+# --- section headers name the sub-component, collapsing paths (#138) ---------
+
+def test_parse_attaches_section_header_blank_ends_it():
+    rules = parse_codeowners("# Sparse Tensors\n/a @x\n/b @x\n\n/c @y\n")
+    assert {r.pattern: r.section for r in rules} == {
+        "/a": "Sparse Tensors", "/b": "Sparse Tensors", "/c": None}
+
+
+def test_section_header_collapses_paths_to_one_qualifier():
+    # #138: pytorch-style file — many paths under "# Sparse Tensors" render as a
+    # single concise "Code owner (Sparse Tensors)" instead of raw globs.
+    text = (
+        "# Sparse Tensors\n"
+        "/aten/src/ATen/native/sparse/ @bob\n"
+        "/aten/src/ATen/SparseTensorImpl.cpp @bob\n"
+        "/aten/src/ATen/SparseCsrTensorImpl.cpp @bob\n"
+        "\n"
+        "# Distributed\n"
+        "/torch/distributed/ @bob\n"
+    )
+    ev = CodeownersExtractor().extract(
+        Candidate("o/r", stars=15000), _ctx(Identity(primary_login="bob"), _Forge(text)))
+    assert sorted(e.qualifier for e in ev) == ["Distributed", "Sparse Tensors"]
