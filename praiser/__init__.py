@@ -1,7 +1,8 @@
 """praiser — record the popular projects a GitHub user has an elevated role in.
 
-Elevated roles are maintainer / code owner / steering-council member /
-standards author. Plain contributors are intentionally excluded.
+Elevated roles are author/creator, maintainer, code owner, steering-council
+member, standards author, release manager, and core contributor. Plain drive-by
+contributors are intentionally excluded.
 """
 
 _BASE_VERSION = "0.4.0"

@@ -8,7 +8,8 @@
 
 Given a username, **praiser** records the popular open-source projects where
 that person holds an **elevated role** — author/creator, maintainer, code owner,
-steering-council member, standards (PEP/RFC) author, or core contributor — with
+steering-council member, standards (PEP/RFC) author, release manager, or core
+contributor — with
 a clickable **evidence link** and a **confidence** score for every claim. Plain
 drive-by contributors are intentionally excluded (the record would otherwise be
 enormous and low-signal). By default it prints a compact **highlights** summary;
@@ -19,8 +20,9 @@ Projects record roles in many different ways — a `CODEOWNERS` file, a
 manifest's author field, a numbered enhancement-proposal series with `Author:`
 headers, a team page on the project's website, the commit history, package
 registries (PyPI/npm/crates), **Wikidata** creator/developer claims (matched by
-GitHub handle), or the **Wikipedia** infobox's original-author(s) field (which
-often outlives the project's own AUTHORS file). `praiser` figures out **which
+GitHub handle), or the **Wikipedia** article's original author(s) — its infobox
+field or a lead-prose "started by …" attribution (which often outlives the
+project's own AUTHORS file). `praiser` figures out **which
 convention each project uses** rather than assuming one, and corroborates signals
 that a fork or vendored copy could fake.
 
@@ -97,21 +99,21 @@ count.
 
 ```
 pearu — top 8 highlights:
-- pytorch/pytorch (101k★) — Core contributor, Code owner, Maintainer (#88/~6700)
-- numpy/numpy (32k★) — Author (f2py), Core contributor, Maintainer (#8/~2100)
-- scipy/scipy (15k★) — Core contributor, Maintainer (#14/~1900)
-- heavyai/heavydb (3k★) — Core contributor (#19/80)
+- pytorch/pytorch (101k★) — Core contributor (#88/~6700), Code owner (Sparse Tensors), Maintainer
+- numpy/numpy (32k★) — Author (f2py), Core contributor (#8/~2100), Maintainer
+- scipy/scipy (15k★) — Author, Core contributor (#14/~1900), Maintainer
+- heavyai/heavydb (3k★) — Core contributor (#19/~80)
 - sympy/sympy (15k★) — Core contributor (#162/~1500)
-- pearu/pylibtiff (140★) — Author, Core contributor (#2/24)
+- pearu/pylibtiff (140★) — Author, Core contributor (#2/~24), Release manager (2/7)
 - numba/numba (11k★) — Core contributor (#29/~440)
 - rapidsai/cudf (10k★) — Core contributor (#78/~340)
-…plus 5 more elevated-role project(s); 15 smaller but widely-used project(s) with a notable role.
-Reach: 28 project(s) across 9 communities (distinct orgs).
+…plus 5 more elevated-role project(s); 17 smaller but widely-used project(s) with a notable role.
+Reach: 30 project(s) across 9 communities (distinct orgs).
 ```
 
 Each line reads `REPO (STARS★) — ROLES`. When the role rests on ranked
 contribution, a `(#R/N)` suffix gives the user's rank `R` among the project's
-`N` contributors (e.g. `#2/24`). `N` is **exact** when praiser read the whole
+`N` contributors (e.g. `#8/~2100`). `N` is **exact** when praiser read the whole
 contributor list; **`~N`** (rounded, e.g. `~6700`) when the total is a
 large-project estimate — GitHub's contributor API only resolves the top ~500
 accounts, so praiser reads the true total (distinct commit-author identities) in
@@ -239,7 +241,7 @@ different frontend (FastAPI, Gradio, …) can reuse the core unchanged.
 3. **Role attribution** — a registry of pluggable [extractors](praiser/extractors)
    (`ownership`, `codeowners`, `maintainers`, `manifests`, `enhancement_proposals`,
    `governance`, `contributors`, `subcomponents`, `authors`, `web_roles`,
-   `packages`). The
+   `packages`, `wikidata`, `wikipedia`, `releases`). The
    `contributors` signal measures size by commits **and** merged-PR count
    (robust to squash/ghstack one-commit-per-PR workflows and unlinked commit
    emails); `subcomponents` credits leading/authoring a *part* of a monorepo via
@@ -253,9 +255,10 @@ different frontend (FastAPI, Gradio, …) can reuse the core unchanged.
    (A LOC-diff size axis is intentionally deferred — noisy with generated/vendored
    code and costly to compute — until a need justifies the extra dimension.)
    A repo under the user's
-   own account is attributed as **author/creator**, and manifest `authors` vs
-   `maintainers` fields map to the author vs maintainer roles — so a user's own
-   projects read "Author", not merely "core contributor". Structured files are parsed
+   own account that they also commit to is attributed as **author/creator**, and
+   manifest `authors`/`maintainers` fields map to the author/maintainer roles when
+   **corroborated by commit attribution** (a fakeable field alone isn't enough) —
+   so a user's own projects read "Author", not merely "core contributor". Structured files are parsed
    deterministically; ambiguous prose falls back to Claude **only after** a
    keyword/regex pass. `contributors` records a **core-contributor** role for
    substantial committers to popular/widely-used repos (catches historical
