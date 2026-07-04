@@ -152,21 +152,16 @@ def _ratio(rem, lim):
     return rem / lim if lim else 1.0
 
 
-@st.fragment(run_every="10s")
-def _render_budget_note(token):
-    """Sidebar note on remaining GitHub quota — warns when low, nudges sign-in.
-
-    A fragment that reruns every 10s so the "resets in …" value counts down live
-    WITHOUT re-querying GitHub each tick: the reset time is a known epoch, so the
-    countdown is pure arithmetic. GitHub is re-queried only correctively — when the
-    relevant window has actually rolled over (below) or after a scan (which clears
-    the cache) — matching "a couple of correcting queries should be sufficient".
-
-    The "resets in" refers to the *tightest* bucket (the one you're waiting on),
-    not the global soonest, so a low warning shows when THAT bucket recovers."""
+def _render_budget_note(slot, token):
+    """Render a remaining-GitHub-quota note into ``slot`` (a sidebar placeholder):
+    a snapshot warning when low, else a caption, with the tightest bucket's reset
+    time. It's a point-in-time reading (updates on interaction and after each scan,
+    and is CLEARED while a scan runs — the live figure is then in the progress bar);
+    the reset epoch that's rolled over triggers one corrective re-fetch."""
     b = _rate_budget(token)
     present = [(lbl, *b[res]) for res, lbl in _BUDGET_BUCKETS if res in b]
     if not present:
+        slot.empty()
         return
     now = int(time.time())
     lbl, rem, lim, reset = min(present, key=lambda p: _ratio(p[1], p[2]))
@@ -177,6 +172,7 @@ def _render_budget_note(token):
         b = _rate_budget(token)
         present = [(x, *b[r]) for r, x in _BUDGET_BUCKETS if r in b]
         if not present:
+            slot.empty()
             return
         now = int(time.time())
         lbl, rem, lim, reset = min(present, key=lambda p: _ratio(p[1], p[2]))
@@ -185,20 +181,12 @@ def _render_budget_note(token):
     resets = f", resets in {humanize_wait(max(0, reset - now))}" if reset else ""
     who = "Your GitHub budget" if signed_in else "Shared demo budget"
     if lim and rem < 0.15 * lim:
-        st.warning(f"⚠️ {who} running low: {summary}{resets}."
-                   + ("" if signed_in else " Sign in above to scan on your own limit."))
+        slot.warning(f"⚠️ {who} running low: {summary}{resets}."
+                     + ("" if signed_in else " Sign in above to scan on your own limit."))
     else:
-        st.caption(f"{who}: {summary}{resets}."
-                   + ("" if signed_in else " A few scans can use it up — sign in "
-                      "above for your own limit."))
-
-
-def _budget_reset_at():
-    """Soonest reset epoch across the cached budget buckets (0 if unknown), for the
-    scan-progress countdown."""
-    b = st.session_state.get("rate_budget") or {}
-    resets = [v[2] for v in b.values() if v and v[2]]
-    return min(resets) if resets else 0
+        slot.caption(f"{who}: {summary}{resets}."
+                     + ("" if signed_in else " A few scans can use it up — sign in "
+                        "above for your own limit."))
 
 
 st.set_page_config(page_title="praiser", page_icon="🌟")
@@ -276,7 +264,8 @@ with st.sidebar:
     if "GITHUB_OAUTH_CLIENT_ID" in st.secrets:
         st.divider()
     USER_LOGIN, USER_TOKEN = github_account()
-    _render_budget_note(USER_TOKEN)
+    budget_slot = st.empty()            # a scan clears this, then repaints it
+_render_budget_note(budget_slot, USER_TOKEN)
 forge_url = ""       # self-hosted instance URL is a CLI/library feature
 wikidata = True      # always on — a cheap, broadly-useful role source
 
@@ -463,16 +452,15 @@ def _feedback_buttons(result, uname, forge, data_opts):
                    "pre-filled issue you post under your own GitHub login._")
 
 
-def _run_scan(username, data_opts, token_options, exhausted, status_ph, hint="",
-              reset_at=0):
+def _run_scan(username, data_opts, token_options, exhausted, status_ph, hint=""):
     """Scan in a worker thread (live progress bar on the main thread), trying the
     token options in order and falling back on rate limits (signed-in user's
     quota first, shared bot behind it). Returns (result, elapsed, label): result
     may be complete, partial (with .partial_reset_in), or None (all limited).
     The worker never touches st.* — it only mutates the plain `state`/`exhausted`.
     All progress/terminal output renders into ``status_ph`` (a placeholder) so the
-    caller can keep the results area cleared while a scan runs. ``reset_at`` (an
-    epoch) drives a "budget resets in ~Nm" countdown in the progress caption."""
+    caller can keep the results area cleared while a scan runs. The pipeline's
+    progress message already carries the live rate summary (REST/GraphQL/search)."""
     state = {"msg": "starting…", "result": None, "label": None,
              "reset": None, "error": None, "done": False}
 
@@ -498,11 +486,7 @@ def _run_scan(username, data_opts, token_options, exhausted, status_ph, hint="",
         with status_ph.container():
             st.progress(min(1.0, int(m.group(1)) / max(1, int(m.group(2))))
                         if m else 0.0)
-            cap = f"⏳ {state['msg']}"
-            if reset_at:
-                cap += (f" · GitHub budget resets in "
-                        f"{humanize_wait(max(0, reset_at - int(time.time())))}")
-            st.caption(cap)
+            st.caption(f"⏳ {state['msg']}")
             if hint:
                 st.caption(hint)
         time.sleep(0.2)
@@ -623,6 +607,8 @@ if scan_target is not None:
                            "one).")
     else:
         results_box.empty()   # clear stale results while the new scan runs
+        budget_slot.empty()   # the sidebar budget snapshot is stale during a scan;
+                              # the live figure shows in the progress caption below
         # A "this may take a while" hint, shown under the progress bar during the
         # scan (in status_box) and gone once it finishes.
         hint = (
@@ -645,8 +631,7 @@ if scan_target is not None:
         else:
             token_options = [(forge, None)]     # forge's own env token, no fallback
         result, elapsed, label = _run_scan(
-            uname, data_opts, token_options, exhausted, status_box, hint,
-            reset_at=_budget_reset_at())
+            uname, data_opts, token_options, exhausted, status_box, hint)
         # The scan consumed quota — drop the cached budget so the sidebar note
         # re-fetches the now-lower figure on the next render.
         st.session_state.pop("rate_budget", None)
