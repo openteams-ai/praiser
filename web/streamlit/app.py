@@ -69,50 +69,47 @@ def _fetch_login(token: str) -> str | None:
 
 def github_account():
     """(login, token) for the signed-in GitHub user, or (None, None), rendering a
-    sign-in/out control in the sidebar. Dormant unless the OAuth app is configured
+    sign-in/out control INTO THE CURRENT CONTAINER (caller places it, e.g. as a
+    sidebar option). Dormant unless the OAuth app is configured
     (GITHUB_OAUTH_CLIENT_ID/SECRET in the deployment's secrets). The token is
     session-only — never logged, cached, or written anywhere."""
     if "GITHUB_OAUTH_CLIENT_ID" not in st.secrets or \
        "GITHUB_OAUTH_CLIENT_SECRET" not in st.secrets:
         return None, None
-    with st.sidebar:
-        st.markdown("### GitHub account")
-        tok = st.session_state.get("gh_user_token")
-        if tok:
-            login = st.session_state.get("gh_user_login")
-            st.success(f"Signed in as @{login}" if login else "Signed in")
-            st.caption("Scans use your GitHub rate limit first, so you're not "
-                       "blocked when the shared demo limit is hit.")
-            if st.button("Sign out"):
-                st.session_state.pop("gh_user_token", None)
-                st.session_state.pop("gh_user_login", None)
-                st.rerun()
-            return login, tok
-        st.caption("Sign in with GitHub to scan on your own rate limit (public, "
-                   "read-only) — handy when the shared demo limit is reached.")
-        try:
-            from streamlit_oauth import OAuth2Component
-        except Exception:
-            st.caption("_(sign-in unavailable: streamlit-oauth not installed)_")
-            return None, None
-        redirect = (st.secrets["GITHUB_OAUTH_REDIRECT_URI"]
-                    if "GITHUB_OAUTH_REDIRECT_URI" in st.secrets
-                    else "https://praiser.streamlit.app/")
-        oauth = OAuth2Component(
-            st.secrets["GITHUB_OAUTH_CLIENT_ID"],
-            st.secrets["GITHUB_OAUTH_CLIENT_SECRET"],
-            "https://github.com/login/oauth/authorize",
-            "https://github.com/login/oauth/access_token")
-        # read:org lets discovery read the user's org memberships (org-repo
-        # discovery + affiliation). Public repo reads need no scope; without
-        # read:org the scan still works but org features degrade gracefully.
-        result = oauth.authorize_button("Sign in with GitHub", redirect,
-                                        scope="read:org", key="gh_oauth")
-        if result and "token" in result:
-            t = result["token"]["access_token"]
-            st.session_state["gh_user_token"] = t
-            st.session_state["gh_user_login"] = _fetch_login(t)
+    tok = st.session_state.get("gh_user_token")
+    if tok:
+        login = st.session_state.get("gh_user_login")
+        st.caption(f"✅ Signed in as @{login}" if login else "✅ Signed in")
+        if st.button("Sign out", use_container_width=True):
+            st.session_state.pop("gh_user_token", None)
+            st.session_state.pop("gh_user_login", None)
             st.rerun()
+        return login, tok
+    st.caption("Sign in with GitHub to scan on your own rate limit — handy when "
+               "the shared demo limit is reached.")
+    try:
+        from streamlit_oauth import OAuth2Component
+    except Exception:
+        st.caption("_(sign-in unavailable: streamlit-oauth not installed)_")
+        return None, None
+    redirect = (st.secrets["GITHUB_OAUTH_REDIRECT_URI"]
+                if "GITHUB_OAUTH_REDIRECT_URI" in st.secrets
+                else "https://praiser.streamlit.app/")
+    oauth = OAuth2Component(
+        st.secrets["GITHUB_OAUTH_CLIENT_ID"],
+        st.secrets["GITHUB_OAUTH_CLIENT_SECRET"],
+        "https://github.com/login/oauth/authorize",
+        "https://github.com/login/oauth/access_token")
+    # read:org lets discovery read the user's org memberships (org-repo
+    # discovery + affiliation). Public repo reads need no scope; without
+    # read:org the scan still works but org features degrade gracefully.
+    result = oauth.authorize_button("Sign in with GitHub", redirect,
+                                    scope="read:org", key="gh_oauth")
+    if result and "token" in result:
+        t = result["token"]["access_token"]
+        st.session_state["gh_user_token"] = t
+        st.session_state["gh_user_login"] = _fetch_login(t)
+        st.rerun()
     return None, None
 
 
@@ -135,8 +132,6 @@ with st.expander("About praiser"):
     st.markdown("---")
     st.markdown("#### What do these roles mean?")
     st.markdown(render_role_glossary())
-
-USER_LOGIN, USER_TOKEN = github_account()   # signed-in GitHub user (or None, None)
 
 # Forges usable from just a username (cgit needs an instance URL + --add-repo,
 # which this demo doesn't expose; the core library still supports it via CLI).
@@ -187,6 +182,12 @@ with st.sidebar:
         help="Use an LLM to infer founders/roles in hard cases. Slower, and "
              "spends the deployment's shared LLM budget.")
         if _LLM_ENABLED else False)
+    # GitHub sign-in is itself an option — scan on your own rate limit instead of
+    # the shared demo one. Rendered here as the last Options item (no-op unless
+    # the OAuth app is configured). The divider only shows when there's a control.
+    if "GITHUB_OAUTH_CLIENT_ID" in st.secrets:
+        st.divider()
+    USER_LOGIN, USER_TOKEN = github_account()
 forge_url = ""       # self-hosted instance URL is a CLI/library feature
 wikidata = True      # always on — a cheap, broadly-useful role source
 
@@ -261,13 +262,15 @@ def _show_highlights(result, uname):
     # A hoverable ⓘ after the badges points to the glossary in "About praiser".
     _role_hint = ('&nbsp;<span title="See “About praiser” (top of page) for what '
                   'each role means" style="cursor:help;opacity:0.5">ⓘ</span>')
+    # Compact cards: repo + stars on one line (normal weight, no big headers),
+    # badges on the next — so more projects fit above the fold and the export /
+    # feedback controls below stay reachable without much scrolling.
     for r in top:
         with st.container(border=True):
-            name_col, star_col = st.columns([5, 1])
-            name_col.markdown(f"#### [{r.name_with_owner}]({r.url})")
-            star_col.markdown(f"### {human_stars(r.stars)}★")
-            name_col.markdown(_role_badges(r) + _role_hint,
-                              unsafe_allow_html=True)
+            name_col, star_col = st.columns([5, 1], vertical_alignment="center")
+            name_col.markdown(f"**[{r.name_with_owner}]({r.url})**")
+            star_col.markdown(f"{human_stars(r.stars)}★")
+            st.markdown(_role_badges(r) + _role_hint, unsafe_allow_html=True)
     bits = []
     if (extra := len(primary) - len(top)) > 0:
         bits.append(f"{extra} more elevated-role project(s)")
@@ -413,14 +416,17 @@ if submitted:
         st.success("✅ Showing cached results — change the username, forge, or a "
                    "scan option to re-scan (or tick Refresh to force one).")
     else:
-        st.info(
+        # A transient "this may take a while" note — shown only WHILE scanning,
+        # then cleared, so it doesn't linger next to the finished results.
+        waiting = st.empty()
+        waiting.info(
             ("🔄 Refreshing — re-scanning the repos you're connected to; "
              "org-membership repos ride the cache. "
              if refresh else
              "⏳ A first-time scan can take ~30 seconds to a few minutes — praiser "
              "queries the forge across many repositories (longer with cross-forge "
              "or LLM discovery on). ")
-            + "Changing the view, top-N or min-stars is instant."
+            + "Changing the view, top-N or min-stars afterwards is instant."
         )
         # Token options: a signed-in user's own quota first, the shared bot token
         # behind it (GitHub only — the OAuth token is a GitHub token). Other forges
@@ -435,6 +441,7 @@ if submitted:
         else:
             token_options = [(forge, None)]     # forge's own env token, no fallback
         result, elapsed, label = _run_scan(uname, data_opts, token_options, exhausted)
+        waiting.empty()   # scan done — drop the "please wait" note
         if result.partial_reset_in is not None:
             # Every token hit its limit mid-scan → incomplete. Don't cache it;
             # show what we have with a clear warning + wait time.
