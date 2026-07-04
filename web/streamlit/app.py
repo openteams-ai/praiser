@@ -20,7 +20,6 @@ import streamlit as st  # noqa: E402
 import praiser  # noqa: E402
 from praiser.pipeline import humanize_wait  # noqa: E402
 from praiser.render import (  # noqa: E402
-    ROLE_LABELS,
     human_stars,
     render_highlights,
     render_role_glossary,
@@ -85,8 +84,13 @@ def github_account():
             st.session_state.pop("gh_user_login", None)
             st.rerun()
         return login, tok
-    st.caption("Sign in with GitHub to scan on your own rate limit — handy when "
-               "the shared demo limit is reached.")
+    # Present like the other options: a compact label with a native-style (?)
+    # tooltip, then the sign-in control (styled by the streamlit-oauth component).
+    st.markdown(
+        'GitHub sign-in <span title="Scan on your own GitHub rate limit — handy '
+        'when the shared demo limit is reached. Public, read-only; the token is '
+        'session-only." style="cursor:help;opacity:0.55">&#63;&#8413;</span>',
+        unsafe_allow_html=True)
     try:
         from streamlit_oauth import OAuth2Component
     except Exception:
@@ -195,12 +199,13 @@ wikidata = True      # always on — a cheap, broadly-useful role source
 recent = st.session_state["recent"]
 if recent:
     with st.sidebar:
-        st.markdown("### Recent scans")
         st.selectbox(
-            "Pick a recent scan",
+            "Recent scans",
             ["—", *(f"{r['forge']} · {r['username']}" for r in recent)],
-            key="recent_pick", on_change=_pick_recent, label_visibility="collapsed",
-            help="Pick a previously scanned account to pre-fill the form.")
+            key="recent_pick", on_change=_pick_recent,
+            help="Accounts scanned recently (this session + the shared cache). "
+                 "Pick one to pre-fill the form — quick to re-open and handy for "
+                 "debugging.")
 
 # The main form is just the hero: username + Praise. A scan runs only on submit.
 with st.form("q"):
@@ -212,13 +217,17 @@ with st.form("q"):
 # Display controls are only meaningful once a result exists, so they stay hidden
 # on the empty landing screen. Changing them reruns and re-renders from cache
 # instantly (no re-scan). Defined before the submit block (which may render a
-# partial result) so view/highlights/min_stars are always bound.
+# partial result) so view/highlights/min_stars are always bound. The View
+# dropdown consolidates every output mode — cards, full report, copy-paste text,
+# and file export — into one control.
+_VIEWS = ["Highlights", "Markdown report", "Copy as text", "Export files"]
 if submitted or st.session_state.get("active") is not None:
-    dc1, dc2, dc3 = st.columns([1.4, 1, 1])
-    view = dc1.segmented_control(
-        "View", ["Highlights", "Markdown"], default="Highlights",
-        help="Highlights = the ranked summary; Markdown = the full report with "
-             "every evidence link.") or "Highlights"
+    dc1, dc2, dc3 = st.columns([1.5, 1, 1])
+    view = dc1.selectbox(
+        "View", _VIEWS,
+        help="Highlights = ranked cards; Markdown report = full report with every "
+             "evidence link; Copy as text = plain-text summary to paste; "
+             "Export files = download the report as Markdown or JSON.")
     highlights = dc2.slider("Top N", 3, 100, 8)
     min_stars = dc3.slider("Min stars", 0, 1000, 50, step=10)
 else:
@@ -231,6 +240,9 @@ _ROLE_BADGE_COLOR = {
     "standards_author": "orange", "code_owner": "green",
     "release_manager": "orange", "core_contributor": "gray",
 }
+# A hoverable ⓘ after the badges points to the glossary in "About praiser".
+_ROLE_HINT = ('&nbsp;<span title="See “About praiser” (top of page) for what each '
+              'role means" style="cursor:help;opacity:0.5">ⓘ</span>')
 
 
 def _role_badges(rec) -> str:
@@ -242,35 +254,32 @@ def _role_badges(rec) -> str:
 
 
 def _show_highlights(result, uname):
-    """The default view: summary metrics + one bordered card per top project with
-    role badges, plus a copy-pastable plain-text version of the same highlights."""
+    """The default view: summary metrics + one compact line per top project."""
     primary, secondary = service.filtered_records(result, min_stars=min_stars)
     top = primary[:max(1, highlights)]
     if not top:
         st.info("No elevated roles at this popularity threshold — lower **Min "
                 "stars** in the controls above to see more.")
         return
+    allrecs = [*primary, *secondary]
     communities = {
-        o for r in (*primary, *secondary)
+        o for r in allrecs
         if (o := r.name_with_owner.split("/", 1)[0]).lower() != uname.lower()}
+    commits = sum(r.contributions or 0 for r in allrecs)
     m1, m2, m3 = st.columns(3)
-    m1.metric("Projects", len(primary) + len(secondary))
-    m2.metric("Communities", len(communities))
-    m3.metric("Top role", ROLE_LABELS.get(top[0].role, "—"),
-              help="See “About praiser” at the top of the page for what each "
-                   "role means and the evidence behind it.")
-    # A hoverable ⓘ after the badges points to the glossary in "About praiser".
-    _role_hint = ('&nbsp;<span title="See “About praiser” (top of page) for what '
-                  'each role means" style="cursor:help;opacity:0.5">ⓘ</span>')
-    # Compact cards: repo + stars on one line (normal weight, no big headers),
-    # badges on the next — so more projects fit above the fold and the export /
-    # feedback controls below stay reachable without much scrolling.
+    m1.metric("Projects", len(allrecs))
+    m2.metric("Communities", len(communities),
+              help="Distinct organisations (owners other than the person).")
+    m3.metric("Total commits", f"{commits:,}" if commits else "—",
+              help="All-time commits (or merged PRs) summed across these projects, "
+                   "where measurable from the contributor data.")
+    # Compact one-line entries: repo · stars · role badges — so many projects fit
+    # above the fold and the feedback controls below stay reachable.
     for r in top:
-        with st.container(border=True):
-            name_col, star_col = st.columns([5, 1], vertical_alignment="center")
-            name_col.markdown(f"**[{r.name_with_owner}]({r.url})**")
-            star_col.markdown(f"{human_stars(r.stars)}★")
-            st.markdown(_role_badges(r) + _role_hint, unsafe_allow_html=True)
+        st.markdown(
+            f"**[{r.name_with_owner}]({r.url})** &nbsp;·&nbsp; "
+            f"{human_stars(r.stars)}★ &nbsp;·&nbsp; {_role_badges(r)}{_ROLE_HINT}",
+            unsafe_allow_html=True)
     bits = []
     if (extra := len(primary) - len(top)) > 0:
         bits.append(f"{extra} more elevated-role project(s)")
@@ -279,12 +288,9 @@ def _show_highlights(result, uname):
                     "with a notable role")
     if bits:
         st.caption("…plus " + "; ".join(bits) + ".")
-    with st.expander("📋 Copy as text"):
-        st.code(render_highlights(uname, primary, highlights, secondary,
-                                  link_repos=False), language=None)
 
 
-def _export_buttons(result, uname):
+def _export_view(result, uname):
     md = service.render_result(result, uname, view="markdown",
                                highlights=highlights, min_stars=min_stars)
     js = service.render_result(result, uname, view="json",
@@ -297,14 +303,19 @@ def _export_buttons(result, uname):
 
 
 def _show(result, uname):
-    """Render a RunResult with the current display controls (view/N/min-stars)."""
-    if view == "Markdown":
+    """Render a RunResult in the selected View."""
+    if view == "Markdown report":
         st.markdown(service.render_result(result, uname, view="markdown",
                                           highlights=highlights,
                                           min_stars=min_stars))
+    elif view == "Copy as text":
+        primary, secondary = service.filtered_records(result, min_stars=min_stars)
+        st.code(render_highlights(uname, primary, highlights, secondary,
+                                  link_repos=False), language=None)
+    elif view == "Export files":
+        _export_view(result, uname)
     else:
         _show_highlights(result, uname)
-    _export_buttons(result, uname)
 
 
 def _feedback_buttons(result, uname, forge, data_opts):
