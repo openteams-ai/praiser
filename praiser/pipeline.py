@@ -157,7 +157,7 @@ def _scan_forge(
         _log(config, f"package registries: {len(package_refs)} package(s) "
                      f"({sum(1 for r in package_refs if r.repo)} on GitHub)")
 
-    progress.phase(f"{label}discovering candidate repositories…")
+    progress.phase(f"{label}discovering {forge_login}'s repositories…")
     candidates = discover(
         forge, identity, registry,
         include_private=config.include_private,

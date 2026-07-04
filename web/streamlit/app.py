@@ -227,7 +227,8 @@ if recent:
 
 # The main form is just the hero: username + Praise. A scan runs only on submit.
 with st.form("q"):
-    _label = f"{_FORGE_LABEL.get(forge, forge)} username"
+    _label = (f"{_FORGE_LABEL.get(forge, forge)} username"
+              + (" or person's name" if forge == "github" else ""))
     _ph = ("e.g. torvalds — or a full name to look up"
            if forge == "github" else "e.g. torvalds")
     username = st.text_input(_label, key="uname", placeholder=_ph,
