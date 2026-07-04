@@ -148,20 +148,43 @@ def _rate_budget(token):
     return st.session_state["rate_budget"]
 
 
+def _ratio(rem, lim):
+    return rem / lim if lim else 1.0
+
+
+@st.fragment(run_every="10s")
 def _render_budget_note(token):
-    """Sidebar note on remaining GitHub quota — warns when low, nudges sign-in."""
+    """Sidebar note on remaining GitHub quota — warns when low, nudges sign-in.
+
+    A fragment that reruns every 10s so the "resets in …" value counts down live
+    WITHOUT re-querying GitHub each tick: the reset time is a known epoch, so the
+    countdown is pure arithmetic. GitHub is re-queried only correctively — when the
+    relevant window has actually rolled over (below) or after a scan (which clears
+    the cache) — matching "a couple of correcting queries should be sufficient".
+
+    The "resets in" refers to the *tightest* bucket (the one you're waiting on),
+    not the global soonest, so a low warning shows when THAT bucket recovers."""
     b = _rate_budget(token)
     present = [(lbl, *b[res]) for res, lbl in _BUDGET_BUCKETS if res in b]
     if not present:
         return
+    now = int(time.time())
+    lbl, rem, lim, reset = min(present, key=lambda p: _ratio(p[1], p[2]))
+    if reset and now >= reset:
+        # The tightest bucket's window rolled over → cached figures are stale; one
+        # corrective query for fresh numbers.
+        st.session_state.pop("rate_budget", None)
+        b = _rate_budget(token)
+        present = [(x, *b[r]) for r, x in _BUDGET_BUCKETS if r in b]
+        if not present:
+            return
+        now = int(time.time())
+        lbl, rem, lim, reset = min(present, key=lambda p: _ratio(p[1], p[2]))
     signed_in = bool(token)
-    summary = " · ".join(f"{lbl} {rem}/{lim}" for lbl, rem, lim, _ in present)
-    low = any(lim and rem < 0.15 * lim for _, rem, lim, _ in present)
-    soonest = min((r for *_, r in present if r), default=0)
-    resets = (f", resets in {humanize_wait(max(0, soonest - int(time.time())))}"
-              if soonest else "")
+    summary = " · ".join(f"{x} {rm}/{lm}" for x, rm, lm, _ in present)
+    resets = f", resets in {humanize_wait(max(0, reset - now))}" if reset else ""
     who = "Your GitHub budget" if signed_in else "Shared demo budget"
-    if low:
+    if lim and rem < 0.15 * lim:
         st.warning(f"⚠️ {who} running low: {summary}{resets}."
                    + ("" if signed_in else " Sign in above to scan on your own limit."))
     else:
@@ -542,12 +565,15 @@ if scan_target is None and submitted:
             cands = service.search_people(raw, forge=forge, token=USER_TOKEN)
         except RateLimitError as exc:
             wait = humanize_wait(exc.reset_in) if exc.reset_in else "a little while"
+            # The GraphQL API budget is spent (shared across demo users); it refills
+            # on GitHub's hourly window. Don't suggest scanning by handle — a scan
+            # hits the same limit. Signing in gives an independent budget.
             status_box.warning(
-                f"⏳ GitHub's search rate limit was reached — the name lookup "
-                f"couldn't run. Try again in {wait}"
-                + ("" if USER_TOKEN else ", or sign in with GitHub (sidebar) to use "
-                   "your own limit")
-                + ". Or enter the person's exact username to scan directly.")
+                f"⏳ GitHub's API rate limit is exhausted, so the name lookup "
+                f"couldn't run. It resets in {wait}"
+                + (" — or sign in with GitHub (sidebar) to use your own limit"
+                   if not USER_TOKEN else "")
+                + ".")
             st.stop()
         if not cands:
             status_box.warning(
