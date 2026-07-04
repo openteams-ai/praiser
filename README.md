@@ -43,6 +43,22 @@ mutually confirmed, it never falsely merges two different people (it may
 under-merge someone who hasn't cross-linked, which is safe). `--also-forge
 FORGE:LOGIN` adds an identity explicitly when you'd rather not rely on links.
 
+## Roles
+
+<!-- ROLE-GLOSSARY:START — generated from praiser.render.render_role_glossary; keep verbatim (tests/test_role_glossary.py enforces it stays in sync). -->
+praiser reports **software-engineering authorship and stewardship** — a factual, evidence-linked relation between a person and a project, on the engineering axis and independent of academic authorship. Every claim carries an evidence link and a confidence score. The roles, most elevated first:
+
+- **Steering council** — Holds a named seat in the project's formal governance body. _Evidence:_ Listed in a governance document under steering-council / committee keywords, or on the project's governance page (handle-required).
+- **Author** — Originated the project, or a named self-contained component of it (the creator). Not a copyright claim, not a claim of *sole* authorship, and its absence does not mean a person didn't create the project — many projects attribute authorship collectively by design. _Evidence:_ Wikidata / Wikipedia founder attribution, or a manifest / ownership author claim corroborated by commit history.
+- **Maintainer** — Ongoing project-level stewardship and merge authority. _Evidence:_ MAINTAINERS or OWNERS approvers, a package-registry maintainer, a Wikidata developer claim, the maintainers/team page, or a commit-corroborated manifest maintainer field.
+- **Standards author** — Authored a formal enhancement proposal or standard for the project. _Evidence:_ Named in the Author field of a proposal document header (PEP, NEP, RFC, XEP, …).
+- **Code owner** — Designated required-reviewer over specific code paths. Shown scoped to the owned path(s), e.g. "Code owner (compiler/, docs/)"; a whole-repo (`*`) owner is shown bare. _Evidence:_ CODEOWNERS entries or OWNERS reviewers.
+- **Release manager** — Ships the project's releases — trusted to publish. _Evidence:_ Authored a dominant share of the recent releases.
+- **Core contributor** — A substantial builder of a widely-used project. Being listed in an AUTHORS / all-contributors file lands here, not under Author. _Evidence:_ High commit volume or a genuine top-of-project rank; substantial commits to a named subcomponent; or an AUTHORS / all-contributors listing.
+<!-- ROLE-GLOSSARY:END -->
+
+Roles display in project-lifecycle order (origination → governance → building → maintenance), a person may hold several on one project, and the headline uses the strongest-evidenced role (`popularity × role weight × confidence`).
+
 ## Install
 
 ```bash

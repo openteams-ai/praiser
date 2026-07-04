@@ -2,7 +2,7 @@
 
 import json
 
-from .models import ProjectRecord
+from .models import ROLE_GLOSSARY, ProjectRecord
 
 ROLE_LABELS = {
     "maintainer": "Maintainer",
@@ -15,6 +15,25 @@ ROLE_LABELS = {
     "org_member": "Org member",
     "contributor": "Contributor",
 }
+
+
+_GLOSSARY_INTRO = (
+    "praiser reports **software-engineering authorship and stewardship** — a "
+    "factual, evidence-linked relation between a person and a project, on the "
+    "engineering axis and independent of academic authorship. Every claim carries "
+    "an evidence link and a confidence score. The roles, most elevated first:"
+)
+
+
+def render_role_glossary() -> str:
+    """Markdown glossary of the elevated roles — the user-visible '#127' legend,
+    generated from the single source of truth (``models.ROLE_GLOSSARY``) so the
+    web app and README never drift from what praiser actually computes."""
+    lines = [_GLOSSARY_INTRO, ""]
+    for role, meaning, evidence in ROLE_GLOSSARY:
+        lines.append(f"- **{ROLE_LABELS.get(role, role)}** — {meaning} "
+                     f"_Evidence:_ {evidence}")
+    return "\n".join(lines)
 
 
 def _role_display(rec: ProjectRecord, role: str) -> str:
