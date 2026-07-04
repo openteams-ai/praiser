@@ -66,6 +66,15 @@ def all_owners(rules: list[CodeownerRule]) -> list[str]:
     return list(seen)
 
 
+def _owns_codeowners_file(pattern: str) -> bool:
+    """True if a rule assigns ownership of the CODEOWNERS file itself (e.g.
+    ``.github/CODEOWNERS @x``). That's meta-administrative — control over who owns
+    what — not authorship of a code area, so it shouldn't count as code-ownership
+    (and surfaced a nonsensical "``.github/CODEOWNERS``" scope label; #150)."""
+    base = pattern.strip().strip("/").rsplit("/", 1)[-1]
+    return base.upper() == "CODEOWNERS"
+
+
 def _rule_scope(rule: "CodeownerRule") -> str | None:
     """The concise scope label for a rule's Code-owner evidence: the section
     header if the file provides one (e.g. "Sparse Tensors"), else the raw path
@@ -120,6 +129,8 @@ class CodeownersExtractor(Extractor):
         # else the raw path pattern. Owning many paths under one section collapses
         # to a single qualifier. A catch-all "*" owner is whole-project (bare).
         for rule in rules:
+            if _owns_codeowners_file(rule.pattern):
+                continue  # meta-ownership of the ownership file itself — not a role
             detail = self._rule_match_detail(ctx, path, rule, team_cache)
             if detail is None:
                 continue
