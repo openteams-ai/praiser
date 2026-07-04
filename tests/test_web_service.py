@@ -207,7 +207,8 @@ def test_feedback_links_record_reporter_when_signed_in():
     links = service.feedback_links("pearu", forge="github", version="v",
                                    reporter="alice")
     body = urllib.parse.parse_qs(links[0]["url"].split("?", 1)[1])["body"][0]
-    assert "reported by: @alice" in body          # follow-up attribution
+    assert "reported by: `alice`" in body          # follow-up attribution
+    assert "@alice" not in body                    # never a bare @-mention (no spam)
 
 
 def test_feedback_body_truncated_under_url_cap():

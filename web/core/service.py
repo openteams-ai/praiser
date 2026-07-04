@@ -118,11 +118,16 @@ FEEDBACK_KINDS = [
     },
     {
         "key": "false-negative",
-        "button": "🔍 Missing a role",
+        "button": "🔍 Missing a role or project",
         "labels": f"{TRIAGE_LABEL},false-negative",
-        "lead": "A real elevated role is missing from this result.",
-        "prompt": "Which project and role should appear? A link as evidence "
-                  "(CODEOWNERS, a release, a governance page) helps a lot.",
+        "lead": "A real elevated role — or a whole project — is missing from this "
+                "result.",
+        "prompt": "Which project (and role) should appear? A link as evidence "
+                  "(CODEOWNERS, a release, a governance page) helps a lot.\n\n"
+                  "Tip: if praiser missed a project entirely, an easy fix is to "
+                  "link it as `owner/repo` in your GitHub **profile README** "
+                  "(github.com/<you>/<you>) — praiser reads that as self-reported "
+                  "work, so the project then shows up on a re-scan.",
     },
     {
         "key": "feedback",
@@ -148,8 +153,9 @@ def _feedback_body(kind, username, forge, version, opts, result_text, reporter):
         + (f"- options: `{opts}`\n" if opts else "")
         # The GitHub account that authors the issue is whoever is logged into
         # github.com in the browser; this only records the app's signed-in user
-        # (usually the same person) so we know who to follow up with.
-        + (f"- reported by: @{reporter}\n" if reporter else "")
+        # (usually the same person) so we know who to follow up with. Note: no
+        # bare "@handle" — that would fire a mention/notification. Backticked.
+        + (f"- reported by: `{reporter}`\n" if reporter else "")
     )
     if result_text:
         budget = _FEEDBACK_MAX_BODY - len(body) - 40
