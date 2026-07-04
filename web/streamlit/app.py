@@ -653,25 +653,33 @@ if "SEED_ENABLED" in st.secrets and "seed" in st.query_params:
     _forge, _kind, _name = webseed.parse_seed_target(st.query_params.get("seed", ""))
     if _name and "seed_name" not in st.session_state:
         st.session_state["seed_name"] = _name             # pre-fill from the URL
-    with st.expander("🌱 Seed reverse-index", expanded=True):
-        a_forge = st.selectbox("Forge", service.FORGES,
-                               index=service.FORGES.index(_forge)
-                               if _forge in service.FORGES else 0,
-                               key="seed_forge",
-                               help="Only GitHub is functional today.")
-        a_kind = st.radio("Seed", ["org", "repo"],
-                          index=0 if _kind == "org" else 1,
-                          horizontal=True, key="seed_kind",
-                          help="An org's repos, or a single owner/repo.")
-        a_name = st.text_input(
-            "Org or owner/repo", key="seed_name",
-            placeholder="numpy" if a_kind == "org" else "pytorch/pytorch")
-        a_budget = st.number_input("Repos to seed (budget, org only)",
-                                   1, 200, 30, key="seed_budget")
-        if st.button("Seed", key="seed_go"):
-            if not a_name.strip():
-                st.warning("Enter an org or owner/repo.")
-            else:
+    # The form lives in a placeholder so it can be CLEARED while seeding runs —
+    # otherwise Streamlit shows the form greyed-out for the whole (long) operation.
+    seed_form = st.empty()
+    seed_status = st.empty()
+    with seed_form.container():
+        with st.expander("🌱 Seed reverse-index", expanded=True):
+            a_forge = st.selectbox("Forge", service.FORGES,
+                                   index=service.FORGES.index(_forge)
+                                   if _forge in service.FORGES else 0,
+                                   key="seed_forge",
+                                   help="Only GitHub is functional today.")
+            a_kind = st.radio("Seed", ["org", "repo"],
+                              index=0 if _kind == "org" else 1,
+                              horizontal=True, key="seed_kind",
+                              help="An org's repos, or a single owner/repo.")
+            a_name = st.text_input(
+                "Org or owner/repo", key="seed_name",
+                placeholder="numpy" if a_kind == "org" else "pytorch/pytorch")
+            a_budget = st.number_input("Repos to seed (budget, org only)",
+                                       1, 200, 30, key="seed_budget")
+            go = st.button("Seed", key="seed_go")
+    if go:
+        if not a_name.strip():
+            seed_status.warning("Enter an org or owner/repo.")
+        else:
+            seed_form.empty()   # hide the form while seeding runs
+            with seed_status.container():
                 with st.spinner(f"Seeding {a_forge}/{a_name}…"):
                     try:
                         res = webseed.run_seed(a_name.strip(), a_forge,
@@ -683,5 +691,5 @@ if "SEED_ENABLED" in st.secrets and "seed" in st.query_params:
                     st.success(
                         f"Seeded {res['seeded']} repo(s), "
                         f"{res['contributors_indexed']} contributor entries — "
-                        f"{res['stopped']}. Re-run to continue (resumes where it left off)."
-                    )
+                        f"{res['stopped']}. Re-run to continue (resumes where it "
+                        "left off).")
