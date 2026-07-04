@@ -1,6 +1,6 @@
 import praiser.cli as cli
 import praiser.config as config
-from praiser.cli import TOKEN_HELP, _token_hint
+from praiser.cli import _token_hint
 from praiser.config import resolve_token
 
 

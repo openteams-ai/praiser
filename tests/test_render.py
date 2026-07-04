@@ -77,7 +77,7 @@ def test_approx_count_rounds_to_two_significant_figures():
 def test_highlight_link_repos_makes_markdown_link():
     rec = _r("numpy/numpy", CODE_OWNER, 32000)
     out = render_highlights("u", [rec], 8, link_repos=True)
-    line = next(l for l in out.splitlines() if l.startswith("- "))
+    line = next(ln for ln in out.splitlines() if ln.startswith("- "))
     assert line == "- [numpy/numpy](https://github.com/numpy/numpy) (32k★) — Code owner"
 
 

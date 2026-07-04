@@ -214,10 +214,14 @@ def test_fetch_failure_is_not_cached():
     cache = _MemCache()
 
     class Flaky(_WikiForge):
-        def __init__(self): super().__init__(); self.fail = True
+        def __init__(self):
+            super().__init__()
+            self.fail = True
+
         def get_url(self, url, accept="text/html"):
             if self.fail and "query.wikidata.org" in url:
-                self.calls.append(url); return None   # throttled
+                self.calls.append(url)
+                return None   # throttled
             return super().get_url(url, accept)
     forge = Flaky()
     cand = Candidate("scipy/scipy", stars=15000)
@@ -318,8 +322,12 @@ def test_relaxed_founder_match_needs_contribution_corroboration():
     from praiser.forge import ContributorCount
 
     class ForgeWithContribs(_WikiForge):
-        def __init__(self, contribs): super().__init__(); self._c = contribs
-        def repo_contributors(self, o, r, max_pages=2): return self._c
+        def __init__(self, contribs):
+            super().__init__()
+            self._c = contribs
+
+        def repo_contributors(self, o, r, max_pages=2):
+            return self._c
 
     reg = KnownProjects(projects={"scipy/scipy": KnownProject("scipy/scipy", wikipedia="SciPy")})
     ident = Identity(primary_login="teoliphant", names={"Travis E. Oliphant"})
