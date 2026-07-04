@@ -9,6 +9,7 @@ import base64
 import functools
 import os
 import pickle
+import re
 import urllib.parse
 
 from praiser.cache import Cache
@@ -211,6 +212,20 @@ def looks_like_name(query: str) -> bool:
     """Whether ``query`` is a full name to resolve rather than a handle to scan.
     Forge usernames never contain spaces, so a space is an unambiguous signal."""
     return " " in query.strip()
+
+
+def name_matches(query: str, name: str | None) -> bool:
+    """Whether a candidate's profile ``name`` genuinely matches the searched
+    ``query`` — every query token present in the name (order/middle-name tolerant).
+    Used to decide whether a *single* search hit is safe to auto-scan: GitHub
+    ranks a loose hit first even when it's the wrong person (e.g. "Victor Fomin"
+    surfaces "FominVictor", not the person whose profile name is "vfdev"), so we
+    only auto-scan when the name really lines up; otherwise the user confirms."""
+    if not name:
+        return False
+    q = {t for t in re.split(r"[\s.]+", query.lower()) if t}
+    n = {t for t in re.split(r"[\s.]+", name.lower()) if t}
+    return bool(q) and q <= n
 
 
 def search_people(name: str, *, forge: str = "github", token: str | None = None,

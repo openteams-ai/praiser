@@ -488,12 +488,14 @@ if scan_target is None and submitted:
                 "more of their name, or find their handle on their GitHub profile, "
                 "personal site, or Wikidata.")
             st.stop()
-        if len(cands) == 1:
+        if len(cands) == 1 and service.name_matches(raw, cands[0].name):
+            # A single hit whose profile name really matches → safe to auto-scan.
             scan_target = cands[0].login.lower()
             _resolved_from = raw     # surfaced in the finished-scan message
         else:
-            # Ambiguous — let the user pick rather than guessing (issue #142).
-            # Don't st.stop(): fall through so the picker below renders.
+            # Ambiguous, or a single loose hit (GitHub ranks a wrong person first
+            # when the real name isn't in their profile) — let the user confirm
+            # rather than guessing (issue #142). Don't st.stop(): the picker renders.
             st.session_state["name_candidates"] = (
                 raw, [(c.login, c.name, c.bio) for c in cands])
     else:
@@ -584,7 +586,7 @@ pending = st.session_state.get("name_candidates")
 if pending is not None:
     raw_name, cands = pending
     with results_box.container():
-        st.markdown(f"**{len(cands)} GitHub accounts match “{raw_name}” — "
+        st.markdown(f"**GitHub accounts matching “{raw_name}” — "
                     "pick the right person:**")
         for login, name, bio in cands:
             label = f"@{login}" + (f" — {name}" if name else "")
@@ -592,6 +594,9 @@ if pending is not None:
                       args=(login,), use_container_width=True)
             st.caption((bio + "  ·  " if bio else "")
                        + f"[github.com/{login}](https://github.com/{login})")
+        st.caption("_Not the right person? A GitHub profile name often differs "
+                   "from someone's real name, so search may miss them — enter their "
+                   "exact username above (find it via a web search or their site)._")
 # Otherwise render the active result (from a fresh submit OR a display-only
 # rerun) into the results placeholder, so a subsequent scan can clear it cleanly.
 else:
