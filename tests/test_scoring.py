@@ -33,13 +33,14 @@ def test_weak_high_weight_role_does_not_sink_the_record():
     assert rec.roles == [AUTHOR, CORE_CONTRIBUTOR, MAINTAINER]
 
 
-def test_strong_high_weight_role_still_wins():
-    # A well-evidenced Maintainer (0.85 @ 0.90) still outranks Author (0.84 @ 0.90).
+def test_author_outranks_maintainer_at_equal_confidence():
+    # Creating a project outranks maintaining it: Author (0.86) beats Maintainer
+    # (0.85) when both are equally well-evidenced (#127 role-set decision).
     rec = _rec("a/b", 100, [
         Evidence("codeowners", MAINTAINER, "u", 0.90, ""),
         Evidence("ownership", AUTHOR, "u", 0.90, ""),
     ])
-    assert rec.best_evidence.role == MAINTAINER    # 0.85*0.90 > 0.84*0.90
+    assert rec.best_evidence.role == AUTHOR        # 0.86*0.90 > 0.85*0.90
 
 
 def test_tie_breaks_to_higher_weight_role():

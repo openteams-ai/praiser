@@ -12,7 +12,6 @@ ROLE_LABELS = {
     "author": "Author",
     "release_manager": "Release manager",
     "core_contributor": "Core contributor",
-    "org_owner": "Org owner",
     "org_member": "Org member",
     "contributor": "Contributor",
 }
@@ -48,11 +47,11 @@ def _role_display(rec: ProjectRecord, role: str) -> str:
 def _roles_label(rec: ProjectRecord) -> str:
     """Human-readable list of the record's distinct elevated roles.
 
-    The contributor rating normally rides its "Core contributor" role. But the
-    displayed roles are capped (top-N by weight), and core_contributor is
-    low-weight — so when it's bumped out, the rating would be lost. In that case
-    append it after the shown roles (e.g. "Author, Maintainer (#14/~1900)") so a
-    non-zero contribution rank is never dropped.
+    The contributor rating normally rides its "Core contributor" role. Roles are
+    no longer capped, so core_contributor is shown whenever it's held; the guard
+    below is a safety net that still appends the rating (e.g. "Author, Maintainer
+    (#14/~1900)") in the unlikely case a contribution rank exists without the
+    core_contributor role, so a non-zero rank is never dropped.
     """
     label = ", ".join(_role_display(rec, r) for r in rec.roles) or "?"
     if rec.contributor_standing and "core_contributor" not in rec.roles:

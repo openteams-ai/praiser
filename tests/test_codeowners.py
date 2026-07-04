@@ -1,8 +1,12 @@
 from praiser.extractors.codeowners import (
+    CodeownersExtractor,
     all_owners,
     classify_owner,
     parse_codeowners,
 )
+from praiser.extractors.base import ExtractContext
+from praiser.models import CODE_OWNER, Candidate, Identity
+from praiser.registry import KnownProjects
 
 SAMPLE = """\
 # Default owners
@@ -38,3 +42,47 @@ def test_classify_owner():
     assert classify_owner("@org/core-team") == ("team", ("org", "core-team"))
     assert classify_owner("x@y.com") == ("email", ("x@y.com",))
     assert classify_owner("garbage")[0] == "unknown"
+
+
+# --- extract-level: code-ownership is path-scoped (#127) --------------------
+
+class _Forge:
+    def __init__(self, text, teams=None):
+        self.text, self.teams = text, teams or {}
+
+    def get_files(self, owner, repo, paths):
+        return {".github/CODEOWNERS": self.text}
+
+    def team_members(self, org, team):
+        return self.teams.get((org, team), [])
+
+
+def _ctx(identity, forge):
+    return ExtractContext(identity=identity, forge=forge,
+                          registry=KnownProjects(projects={}))
+
+
+def test_codeowner_paths_become_qualifiers():
+    # bob owns two path patterns -> two scoped Code-owner evidences.
+    text = "*       @alice\n*.py    @bob\ndocs/   @bob\n"
+    ev = CodeownersExtractor().extract(
+        Candidate("o/r", stars=15000), _ctx(Identity(primary_login="bob"), _Forge(text)))
+    assert ev and all(e.role == CODE_OWNER for e in ev)
+    assert sorted(e.qualifier for e in ev) == ["*.py", "docs/"]
+
+
+def test_codeowner_catchall_is_whole_project_bare():
+    # A "*" catch-all owner is whole-project -> no qualifier (rendered bare).
+    ev = CodeownersExtractor().extract(
+        Candidate("o/r", stars=15000),
+        _ctx(Identity(primary_login="alice"), _Forge("*   @alice\n")))
+    assert len(ev) == 1 and ev[0].qualifier is None
+
+
+def test_codeowner_via_team_membership_is_scoped():
+    forge = _Forge("src/  @org/compiler-team\n",
+                   teams={("org", "compiler-team"): ["bob", "carol"]})
+    ev = CodeownersExtractor().extract(
+        Candidate("o/r", stars=15000), _ctx(Identity(primary_login="bob"), forge))
+    assert len(ev) == 1 and ev[0].qualifier == "src/"
+    assert "compiler-team" in ev[0].detail
