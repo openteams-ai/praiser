@@ -1,6 +1,5 @@
 """Tests for the web shared-cache backend (offline; no real Redis/network)."""
 
-import json
 
 from praiser.cache import Cache
 from web.core.cache import RedisCache, local_cache, make_result_cache

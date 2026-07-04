@@ -19,7 +19,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import streamlit as st  # noqa: E402
 
 import praiser  # noqa: E402
-from praiser.github_client import RateLimitError  # noqa: E402
 from praiser.pipeline import humanize_wait  # noqa: E402
 from web.core import service  # noqa: E402
 from web.core.resultcache import SizeBoundedLRU  # noqa: E402

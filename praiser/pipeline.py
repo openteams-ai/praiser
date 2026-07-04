@@ -22,6 +22,13 @@ from .forge import (
     GitLabForge,
 )
 from .github_client import RateLimitError
+from .identity import resolve_identity
+from .llm import LLM
+from .models import WEAK_ROLES, Evidence, Identity, ProjectRecord
+from .popularity import enrich_stars, filter_records
+from .progress import Progress
+from .registries import JSON_ACCEPT, discover_packages, index_by_repo
+from .registry import KnownProjects
 
 # Selectable code hosts. Each value builds a Forge from (token, cache, verbose).
 FORGES = {
@@ -34,13 +41,6 @@ FORGES = {
 }
 # Forges that take a self-hosted instance URL (--forge-url).
 INSTANCE_FORGES = {"gitlab", "codeberg", "cgit"}
-from .identity import resolve_identity
-from .llm import LLM
-from .models import WEAK_ROLES, Evidence, Identity, ProjectRecord
-from .popularity import enrich_stars, filter_records
-from .progress import Progress
-from .registries import JSON_ACCEPT, discover_packages, index_by_repo
-from .registry import KnownProjects
 
 
 @dataclass

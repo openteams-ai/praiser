@@ -9,7 +9,6 @@ names — so the rest of praiser can stay forge-agnostic.
 
 import datetime
 import json
-from typing import Any
 
 from ..cache import Cache
 from ..github_client import GitHubClient, GitHubError, RateLimitError

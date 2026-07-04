@@ -1,4 +1,3 @@
-import praiser.llm as llm_mod
 from praiser.extractors.base import ExtractContext
 from praiser.extractors.web_roles import WebRolesAutoExtractor
 from praiser.llm import LLM, availability

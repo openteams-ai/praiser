@@ -9,7 +9,7 @@ Handles two conventions:
 """
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from ..models import CODE_OWNER, MAINTAINER, Evidence
 from . import register

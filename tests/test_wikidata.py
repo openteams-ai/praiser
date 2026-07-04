@@ -98,7 +98,8 @@ def test_is_notable_accepts_stars_forks_or_curated():
     from praiser.registry import KnownProject, KnownProjects
     from praiser.models import Candidate, Identity
 
-    class F: pass
+    class F:
+        pass
     reg = KnownProjects(projects={"a/curated": KnownProject("a/curated")})
     ctx = ExtractContext(identity=Identity(primary_login="u"), forge=F(),
                          registry=reg, role_discovery_floor=1000, canonical_forks=100)

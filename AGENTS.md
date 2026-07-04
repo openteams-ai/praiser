@@ -20,9 +20,12 @@ claim carries a clickable evidence URL and a confidence score.
   `pip install -e '.[dev,http,yaml,llm]'`.
 - **Run `python -m pytest` before every commit; keep it green.** Tests are
   **offline** — never hit the network in a test (fake/monkeypatch the client).
+- **Lint with `ruff check .` before pushing** (config in `pyproject.toml`; rules
+  are pyflakes + a pragmatic pycodestyle subset, `E501` line-length intentionally
+  off). `ruff check --fix` auto-fixes the safe ones. CI runs it as a separate job.
 - Branch off `main`; open a PR. Commit messages: short imperative subject + a
   body explaining *why*. Keep diffs focused.
-- CI (GitHub Actions) runs pytest on Python 3.11/3.12/3.13.
+- CI (GitHub Actions) runs ruff + pytest on Python 3.11/3.12/3.13/3.14.
 
 ## Architecture (where things live)
 

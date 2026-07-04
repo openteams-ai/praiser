@@ -2,7 +2,7 @@ from praiser.discovery import keep_candidate
 from praiser.extractors.base import ExtractContext
 from praiser.extractors.contributors import ContributorsExtractor
 from praiser.forge import ContributorCount
-from praiser.models import CODE_OWNER, Candidate, Evidence, Identity, ProjectRecord
+from praiser.models import Candidate, Evidence, Identity, ProjectRecord
 from praiser.popularity import filter_records
 from praiser.registry import KnownProjects
 

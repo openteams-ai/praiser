@@ -199,7 +199,9 @@ def test_render_result_highlights_respects_top_n():
 def test_scan_fallback_uses_first_token_when_ok():
     from praiser.pipeline import RunResult
     calls = []
-    def fake(u, token=None, **k): calls.append(token); return RunResult(records=[_rec("a/b",100)], secondary=[])
+    def fake(u, token=None, **k):
+        calls.append(token)
+        return RunResult(records=[_rec("a/b", 100)], secondary=[])
     result, label, soonest = service.scan_with_fallback(
         "u", [("user", "T1"), ("bot", "T2")], data_opts={}, exhausted={}, now=1000, collect_fn=fake)
     assert label == "user" and calls == ["T1"] and soonest is None
@@ -209,7 +211,8 @@ def test_scan_fallback_switches_on_rate_limit():
     from praiser.pipeline import RunResult
     from praiser.github_client import RateLimitError
     def fake(u, token=None, **k):
-        if token == "T1": raise RateLimitError("x", reset_in=1800)
+        if token == "T1":
+            raise RateLimitError("x", reset_in=1800)
         return RunResult(records=[_rec("a/b",100)], secondary=[])
     exhausted = {}
     result, label, soonest = service.scan_with_fallback(
@@ -221,7 +224,8 @@ def test_scan_fallback_switches_on_rate_limit():
 def test_scan_fallback_partial_then_complete_on_next():
     from praiser.pipeline import RunResult
     def fake(u, token=None, **k):
-        if token == "T1": return RunResult(records=[], secondary=[], partial_reset_in=600)
+        if token == "T1":
+            return RunResult(records=[], secondary=[], partial_reset_in=600)
         return RunResult(records=[_rec("a/b",100)], secondary=[])
     result, label, soonest = service.scan_with_fallback(
         "u", [("user","T1"),("bot","T2")], data_opts={}, exhausted={}, now=1000, collect_fn=fake)
@@ -250,7 +254,9 @@ def test_scan_fallback_all_exhausted_returns_soonest():
 def test_scan_fallback_skips_cooling_down_token():
     from praiser.pipeline import RunResult
     calls = []
-    def fake(u, token=None, **k): calls.append(token); return RunResult(records=[_rec("a/b",100)], secondary=[])
+    def fake(u, token=None, **k):
+        calls.append(token)
+        return RunResult(records=[_rec("a/b", 100)], secondary=[])
     result, label, soonest = service.scan_with_fallback(
         "u", [("user","T1"),("bot","T2")], data_opts={},
         exhausted={"user": 5000}, now=1000, collect_fn=fake)
@@ -265,7 +271,8 @@ def test_scan_fallback_refresh_only_on_first_attempt():
     seen = []
     def fake(u, token=None, refresh=False, **k):
         seen.append((token, refresh))
-        if token == "T1": raise RateLimitError("x", reset_in=1800)
+        if token == "T1":
+            raise RateLimitError("x", reset_in=1800)
         return RunResult(records=[_rec("a/b", 100)], secondary=[])
     result, label, soonest = service.scan_with_fallback(
         "u", [("user", "T1"), ("bot", "T2")], data_opts={"refresh": True},
@@ -277,7 +284,8 @@ def test_scan_fallback_refresh_only_on_first_attempt():
 def test_diagnose_external_sources_reports_reachability():
     # Probe via praiser's real client: WDQS unreachable (throttled), others ok.
     def fake_probe(url, accept):
-        if "wikidata" in url: return False, "unreachable (throttled/blocked/timeout)"
+        if "wikidata" in url:
+            return False, "unreachable (throttled/blocked/timeout)"
         return True, "1234 bytes"
     diag = service.diagnose_external_sources(probe=fake_probe)
     by = {c["name"]: c for c in diag["checks"]}

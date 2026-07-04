@@ -34,7 +34,7 @@ Issues = "https://github.com/openteams-ai/praiser/issues"
 http = ["httpx>=0.27"]       # faster, connection-pooled HTTP client (falls back to urllib)
 llm = ["anthropic>=0.40"]    # Claude fallback for ambiguous governance prose
 yaml = ["pyyaml>=6"]         # k8s OWNERS files and YAML front-matter proposals
-dev = ["pytest>=7"]
+dev = ["pytest>=7", "ruff>=0.6"]  # test runner + linter
 
 [project.scripts]
 praiser = "praiser.cli:main"
@@ -56,3 +56,15 @@ praiser = ["data/*.json"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88   # documented intent; E501 is intentionally NOT enforced (see below)
+
+[tool.ruff.lint]
+# ruff's default rule set (pyflakes F + a pragmatic pycodestyle subset: E4 imports,
+# E7 statements, E9 syntax). Deliberately excludes E501 line-length — the codebase
+# has many long descriptive comments and prose strings, and reflowing them adds
+# churn without improving correctness. Add I (import sorting) / UP (pyupgrade) /
+# B (bugbear) later if wanted; keep the baseline small so it always passes.
+select = ["E4", "E7", "E9", "F"]
