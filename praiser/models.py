@@ -101,8 +101,10 @@ ROLE_GLOSSARY: list[tuple[str, str, str]] = [
     (CORE_CONTRIBUTOR,
      "A substantial builder of a widely-used project. Being listed in an AUTHORS "
      "/ all-contributors file lands here, not under Author.",
-     "High commit volume or a genuine top-of-project rank; substantial commits to "
-     "a named subcomponent; or an AUTHORS / all-contributors listing."),
+     "A substantial amount of work in absolute terms — heavy or solid commit "
+     "volume — or a top-of-project rank backed by real work (not a relative "
+     "ranking alone); substantial commits to a named subcomponent; or an AUTHORS "
+     "/ all-contributors listing."),
 ]
 
 

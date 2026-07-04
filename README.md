@@ -54,7 +54,7 @@ praiser reports **software-engineering authorship and stewardship** — a factua
 - **Standards author** — Authored a formal enhancement proposal or standard for the project. _Evidence:_ Named in the Author field of a proposal document header (PEP, NEP, RFC, XEP, …).
 - **Code owner** — Designated required-reviewer over specific code paths. Shown scoped to the owned path(s), e.g. "Code owner (compiler/, docs/)"; a whole-repo (`*`) owner is shown bare. _Evidence:_ CODEOWNERS entries or OWNERS reviewers.
 - **Release manager** — Ships the project's releases — trusted to publish. _Evidence:_ Authored a dominant share of the recent releases.
-- **Core contributor** — A substantial builder of a widely-used project. Being listed in an AUTHORS / all-contributors file lands here, not under Author. _Evidence:_ High commit volume or a genuine top-of-project rank; substantial commits to a named subcomponent; or an AUTHORS / all-contributors listing.
+- **Core contributor** — A substantial builder of a widely-used project. Being listed in an AUTHORS / all-contributors file lands here, not under Author. _Evidence:_ A substantial amount of work in absolute terms — heavy or solid commit volume — or a top-of-project rank backed by real work (not a relative ranking alone); substantial commits to a named subcomponent; or an AUTHORS / all-contributors listing.
 <!-- ROLE-GLOSSARY:END -->
 
 Roles display in project-lifecycle order (origination → governance → building → maintenance), a person may hold several on one project, and the headline uses the strongest-evidenced role (`popularity × role weight × confidence`).
