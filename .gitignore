@@ -24,3 +24,6 @@ venv/
 
 # Local session handoff note (not part of the project)
 HANDOFF.md
+
+# Streamlit local secrets — never commit (deploy secrets live in Cloud settings)
+.streamlit/secrets.toml
