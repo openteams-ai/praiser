@@ -293,8 +293,10 @@ def _show_highlights(result, uname):
     m2.metric("Communities", len(communities),
               help="Distinct organisations (owners other than the person).")
     m3.metric("Total commits", f"{commits:,}" if commits else "—",
-              help="All-time commits (or merged PRs) summed across these projects, "
-                   "where measurable from the contributor data.")
+              help="All-time commits summed across these projects, where "
+                   "measurable from the contributor data. (Repos that squash-merge "
+                   "PRs into one commit will read low — that's an honest commit "
+                   "count, not effort.)")
     # Compact one-line entries: repo · stars · role badges — so many projects fit
     # above the fold and the feedback controls below stay reachable.
     for r in top:

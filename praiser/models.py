@@ -234,9 +234,10 @@ class Evidence:
     n_contributors: int | None = None
     contributors_capped: bool = False
     contributors_approx: bool = False
-    # The person's contribution volume behind this signal — commits (or merged PRs
-    # via the rescue) — so a summary can total real work across projects. None when
-    # the signal isn't contribution-based (e.g. a CODEOWNERS entry).
+    # The person's commit count behind this signal — a single honest unit so a
+    # summary can total commits across projects. None when the signal isn't
+    # commit-based (e.g. a CODEOWNERS entry, or a PR-rescued role — see the
+    # contributors extractor: the PR fallback earns the role but isn't a commit).
     contributions: int | None = None
     # Release-manager standing: releases this person published of the total in the
     # window — display shows "Release manager (88/100)". Magnitude is reported
@@ -270,9 +271,9 @@ class ProjectRecord:
 
     @property
     def contributions(self) -> int | None:
-        """This person's contribution volume here (commits / merged PRs), from the
-        strongest contribution-based signal — None if none. A whole-project count
-        wins over a subcomponent-scoped one (unqualified evidence first)."""
+        """This person's commit count here, from the strongest commit-based signal
+        — None if none. A whole-project count wins over a subcomponent-scoped one
+        (unqualified evidence first), so subcomponent commits aren't double-counted."""
         counts = [e.contributions for e in self.evidence if e.contributions]
         if not counts:
             return None

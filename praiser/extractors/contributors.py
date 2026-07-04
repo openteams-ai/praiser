@@ -94,7 +94,11 @@ class ContributorsExtractor(Extractor):
         manual = candidate.name_with_owner in ctx.manual_repos
         confidence = classify(count, rank)
         detail = f"{count} commits (~#{rank} contributor)"
-        contributions = count      # volume behind the signal (commits, or PRs below)
+        # The commit count is the reported contribution volume (a single, honest
+        # unit for a "total commits" summary). The merged-PR fallback below only
+        # decides whether the repo EARNS a role — it doesn't change this count
+        # (a PR isn't a commit, so mixing them into one total would be wrong).
+        commits = count
 
         if confidence is None:
             # Commit count can understate real impact: squash/ghstack land one
@@ -108,7 +112,6 @@ class ContributorsExtractor(Extractor):
                 if pr_conf is not None:
                     confidence = pr_conf
                     detail = f"{prs} merged PRs ({count} commits, ~#{rank})"
-                    contributions = max(count, prs)
         if confidence is None:
             # Still below the bar: a plain contributor, excluded — unless the
             # user explicitly vouched for this repo via --add-repo.
@@ -127,7 +130,7 @@ class ContributorsExtractor(Extractor):
             confidence=confidence, detail=detail,
             rank=rank, n_contributors=n_contributors,
             contributors_capped=capped, contributors_approx=approx,
-            contributions=contributions,
+            contributions=commits,
         )]
 
 
