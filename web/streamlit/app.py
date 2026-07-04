@@ -120,6 +120,9 @@ st.set_page_config(page_title="praiser", page_icon="🌟")
 st.title("🌟 praiser")
 st.caption("Find the open-source projects where someone holds an elevated role — "
            "with evidence for every claim.")
+# One "About praiser" dropdown at the top holds both the intro and the role
+# glossary — so the meaning of every role is one obvious place to look (the result
+# cards point here). Kept out of the main flow so the landing screen stays lean.
 with st.expander("About praiser"):
     st.markdown(
         "**praiser** records the projects where a person is an **author, "
@@ -129,9 +132,8 @@ with st.expander("About praiser"):
         "GitLab, Codeberg, Gitee, Bitbucket and cgit hosts.\n\n"
         f"ℹ️ More: [{REPO_URL.split('//', 1)[1]}]({REPO_URL}) · "
         f"praiser v{PRAISER_VERSION}")
-# The role glossary lives here (top, next to About) so it's easy to find up
-# front, rather than buried below each result.
-with st.expander("ℹ️ What do these roles mean?"):
+    st.markdown("---")
+    st.markdown("#### What do these roles mean?")
     st.markdown(render_role_glossary())
 
 USER_LOGIN, USER_TOKEN = github_account()   # signed-in GitHub user (or None, None)
@@ -154,8 +156,41 @@ def _pick_recent():
         st.session_state["uname"] = uname
 
 
-# Recent scans live in the sidebar (alongside the GitHub sign-in) — a quick
-# picker + handy for debugging, kept out of the main entry flow.
+# LLM founder/role discovery spends the DEPLOYMENT's shared LLM budget, so it's
+# hidden on the public demo unless the deployer opts in (mirrors SEED_ENABLED).
+_LLM_ENABLED = "LLM_DISCOVERY_ENABLED" in st.secrets
+
+# Options live in the sidebar (not the main form): they're rarely changed and have
+# good defaults, so the main area stays a clean username + Praise. They're plain
+# widgets read at submit time — toggling one just reruns (re-rendering the cached
+# result); a scan still runs only on the Praise button.
+with st.sidebar:
+    st.markdown("### Options")
+    forge = st.selectbox("Forge", DEMO_FORGES, key="forge_sel",
+                         help="GitHub by default; switch to scan another host.")
+    refresh = st.checkbox(
+        "Refresh (ignore cache)", value=False,
+        help="Force a fresh re-scan instead of a cached result. Only repos "
+             "you're actually connected to are re-fetched, so a refresh won't "
+             "exhaust the API rate limit.")
+    package_registries = st.checkbox(
+        "Package registries", value=True,
+        help="Also check PyPI / npm / crates.io: credit the person as author "
+             "(PyPI) or maintainer (npm/crates) of a package — but only when "
+             "the package's metadata links back to a repo praiser found.")
+    cross_forge = st.checkbox(
+        "Cross-forge", value=False,
+        help="Follow the person's own profile links to their accounts on other "
+             "forges and merge into one record. Rarely needed.")
+    discover_roles = (st.checkbox(
+        "LLM founder/role discovery", value=False,
+        help="Use an LLM to infer founders/roles in hard cases. Slower, and "
+             "spends the deployment's shared LLM budget.")
+        if _LLM_ENABLED else False)
+forge_url = ""       # self-hosted instance URL is a CLI/library feature
+wikidata = True      # always on — a cheap, broadly-useful role source
+
+# Recent scans in the sidebar too (below Options) — a quick picker + debugging aid.
 recent = st.session_state["recent"]
 if recent:
     with st.sidebar:
@@ -166,41 +201,10 @@ if recent:
             key="recent_pick", on_change=_pick_recent, label_visibility="collapsed",
             help="Pick a previously scanned account to pre-fill the form.")
 
-# LLM founder/role discovery spends the DEPLOYMENT's shared LLM budget, so it's
-# hidden on the public demo unless the deployer opts in (mirrors SEED_ENABLED).
-_LLM_ENABLED = "LLM_DISCOVERY_ENABLED" in st.secrets
-
-# Data-collection controls live in a form: they only take effect on "Praise", so a
-# scan runs only on an explicit submit. Username + Praise are the hero; the rest is
-# tucked into Advanced (sensible defaults, rarely changed).
+# The main form is just the hero: username + Praise. A scan runs only on submit.
 with st.form("q"):
     username = st.text_input("Forge username", key="uname",
                              placeholder="e.g. torvalds")
-    with st.expander("⚙️ Advanced options"):
-        forge = st.selectbox("Forge", DEMO_FORGES, key="forge_sel",
-                             help="GitHub by default; switch to scan another host.")
-        a1, a2 = st.columns(2)
-        refresh = a1.checkbox(
-            "Refresh (ignore cache)", value=False,
-            help="Force a fresh re-scan instead of a cached result. Only repos "
-                 "you're actually connected to are re-fetched, so a refresh won't "
-                 "exhaust the API rate limit.")
-        package_registries = a2.checkbox(
-            "Package registries", value=True,
-            help="Also check PyPI / npm / crates.io: credit the person as author "
-                 "(PyPI) or maintainer (npm/crates) of a package — but only when "
-                 "the package's metadata links back to a repo praiser found.")
-        cross_forge = a1.checkbox(
-            "Cross-forge", value=False,
-            help="Follow the person's own profile links to their accounts on other "
-                 "forges and merge into one record. Rarely needed.")
-        discover_roles = (a2.checkbox(
-            "LLM founder/role discovery", value=False,
-            help="Use an LLM to infer founders/roles in hard cases. Slower, and "
-                 "spends the deployment's shared LLM budget.")
-            if _LLM_ENABLED else False)
-    forge_url = ""       # self-hosted instance URL is a CLI/library feature
-    wikidata = True      # always on — a cheap, broadly-useful role source
     submitted = st.form_submit_button(
         "🌟 Praise", type="primary", use_container_width=True)
 
@@ -251,13 +255,19 @@ def _show_highlights(result, uname):
     m1, m2, m3 = st.columns(3)
     m1.metric("Projects", len(primary) + len(secondary))
     m2.metric("Communities", len(communities))
-    m3.metric("Top role", ROLE_LABELS.get(top[0].role, "—"))
+    m3.metric("Top role", ROLE_LABELS.get(top[0].role, "—"),
+              help="See “About praiser” at the top of the page for what each "
+                   "role means and the evidence behind it.")
+    # A hoverable ⓘ after the badges points to the glossary in "About praiser".
+    _role_hint = ('&nbsp;<span title="See “About praiser” (top of page) for what '
+                  'each role means" style="cursor:help;opacity:0.5">ⓘ</span>')
     for r in top:
         with st.container(border=True):
             name_col, star_col = st.columns([5, 1])
             name_col.markdown(f"#### [{r.name_with_owner}]({r.url})")
             star_col.markdown(f"### {human_stars(r.stars)}★")
-            name_col.markdown(_role_badges(r))
+            name_col.markdown(_role_badges(r) + _role_hint,
+                              unsafe_allow_html=True)
     bits = []
     if (extra := len(primary) - len(top)) > 0:
         bits.append(f"{extra} more elevated-role project(s)")
