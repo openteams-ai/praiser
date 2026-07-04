@@ -20,6 +20,7 @@ import streamlit as st  # noqa: E402
 
 import praiser  # noqa: E402
 from praiser.pipeline import humanize_wait  # noqa: E402
+from praiser.render import render_role_glossary  # noqa: E402
 from web.core import service  # noqa: E402
 from web.core.resultcache import SizeBoundedLRU  # noqa: E402
 
@@ -184,6 +185,8 @@ def _show(result, uname):
         st.json(json.loads(out))
     else:
         st.markdown(out)   # highlights (repos linked) + markdown both render here
+    with st.expander("ℹ️ What do these roles mean?"):
+        st.markdown(render_role_glossary())
 
 
 def _feedback_buttons(result, uname, forge, data_opts):

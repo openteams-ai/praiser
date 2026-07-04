@@ -64,6 +64,50 @@ def role_order(role: str) -> int:
     return _ROLE_ORDER_INDEX.get(role, len(ROLE_ORDER))
 
 
+# User-facing role glossary — the single source of truth for what each elevated
+# role asserts and the evidence behind it (#127). Ordered by elevation (highest
+# weight first). Rendered in both the web app ("what do these roles mean?") and
+# the README, so the definition users see always matches what praiser computes.
+# Each entry: (role constant, one-line meaning, evidence summary).
+ROLE_GLOSSARY: list[tuple[str, str, str]] = [
+    (STEERING_COUNCIL,
+     "Holds a named seat in the project's formal governance body.",
+     "Listed in a governance document under steering-council / committee "
+     "keywords, or on the project's governance page (handle-required)."),
+    (AUTHOR,
+     "Originated the project, or a named self-contained component of it (the "
+     "creator). Not a copyright claim, not a claim of *sole* authorship, and its "
+     "absence does not mean a person didn't create the project — many projects "
+     "attribute authorship collectively by design.",
+     "Wikidata / Wikipedia founder attribution, or a manifest / ownership author "
+     "claim corroborated by commit history."),
+    (MAINTAINER,
+     "Ongoing project-level stewardship and merge authority.",
+     "MAINTAINERS or OWNERS approvers, a package-registry maintainer, a Wikidata "
+     "developer claim, the maintainers/team page, or a commit-corroborated "
+     "manifest maintainer field."),
+    (STANDARDS_AUTHOR,
+     "Authored a formal enhancement proposal or standard for the project.",
+     "Named in the Author field of a proposal document header (PEP, NEP, RFC, "
+     "XEP, …)."),
+    (CODE_OWNER,
+     "Designated required-reviewer over specific code paths. Shown scoped to the "
+     "owned path(s), e.g. \"Code owner (compiler/, docs/)\"; a whole-repo (`*`) "
+     "owner is shown bare.",
+     "CODEOWNERS entries or OWNERS reviewers."),
+    (RELEASE_MANAGER,
+     "Ships the project's releases — trusted to publish.",
+     "Authored a dominant share of the recent releases."),
+    (CORE_CONTRIBUTOR,
+     "A substantial builder of a widely-used project. Being listed in an AUTHORS "
+     "/ all-contributors file lands here, not under Author.",
+     "A substantial amount of work in absolute terms — heavy or solid commit "
+     "volume — or a top-of-project rank backed by real work (not a relative "
+     "ranking alone); substantial commits to a named subcomponent; or an AUTHORS "
+     "/ all-contributors listing."),
+]
+
+
 # --- Identity (Phase 0) ----------------------------------------------------
 @dataclass
 class Identity:
