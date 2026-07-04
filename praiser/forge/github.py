@@ -309,6 +309,11 @@ class GitHubForge(Forge):
         return urls
 
     # -- search & analytics -------------------------------------------------
+    def rate_limit_status(self) -> dict[str, tuple[int, int, int]]:
+        """Live quota per resource ``{name: (remaining, limit, reset_epoch)}`` from
+        GitHub's free ``/rate_limit`` endpoint (doesn't consume quota)."""
+        return self._client.rate_limit()
+
     def search_users(self, name: str, limit: int = 8) -> list[UserRef]:
         # `type: USER` is the GraphQL arg (restricts to people); the query string
         # is just the name (GitHub matches it against login/name/email).

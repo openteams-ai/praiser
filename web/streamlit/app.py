@@ -136,6 +136,48 @@ def github_account():
     return None, None
 
 
+_BUDGET_BUCKETS = [("core", "REST"), ("graphql", "GraphQL"), ("search", "search")]
+
+
+def _rate_budget(token):
+    """Cached live GitHub quota {resource: (remaining, limit, reset_epoch)} for
+    this session (via the free /rate_limit endpoint). Cleared after a scan so it
+    re-fetches the now-lower budget."""
+    if "rate_budget" not in st.session_state:
+        st.session_state["rate_budget"] = service.rate_budget(token)
+    return st.session_state["rate_budget"]
+
+
+def _render_budget_note(token):
+    """Sidebar note on remaining GitHub quota — warns when low, nudges sign-in."""
+    b = _rate_budget(token)
+    present = [(lbl, *b[res]) for res, lbl in _BUDGET_BUCKETS if res in b]
+    if not present:
+        return
+    signed_in = bool(token)
+    summary = " · ".join(f"{lbl} {rem}/{lim}" for lbl, rem, lim, _ in present)
+    low = any(lim and rem < 0.15 * lim for _, rem, lim, _ in present)
+    soonest = min((r for *_, r in present if r), default=0)
+    resets = (f", resets in {humanize_wait(max(0, soonest - int(time.time())))}"
+              if soonest else "")
+    who = "Your GitHub budget" if signed_in else "Shared demo budget"
+    if low:
+        st.warning(f"⚠️ {who} running low: {summary}{resets}."
+                   + ("" if signed_in else " Sign in above to scan on your own limit."))
+    else:
+        st.caption(f"{who}: {summary}{resets}."
+                   + ("" if signed_in else " A few scans can use it up — sign in "
+                      "above for your own limit."))
+
+
+def _budget_reset_at():
+    """Soonest reset epoch across the cached budget buckets (0 if unknown), for the
+    scan-progress countdown."""
+    b = st.session_state.get("rate_budget") or {}
+    resets = [v[2] for v in b.values() if v and v[2]]
+    return min(resets) if resets else 0
+
+
 st.set_page_config(page_title="praiser", page_icon="🌟")
 st.title("🌟 praiser")
 st.caption("Find the open-source projects where someone holds an elevated role — "
@@ -211,6 +253,7 @@ with st.sidebar:
     if "GITHUB_OAUTH_CLIENT_ID" in st.secrets:
         st.divider()
     USER_LOGIN, USER_TOKEN = github_account()
+    _render_budget_note(USER_TOKEN)
 forge_url = ""       # self-hosted instance URL is a CLI/library feature
 wikidata = True      # always on — a cheap, broadly-useful role source
 
@@ -397,14 +440,16 @@ def _feedback_buttons(result, uname, forge, data_opts):
                    "pre-filled issue you post under your own GitHub login._")
 
 
-def _run_scan(username, data_opts, token_options, exhausted, status_ph, hint=""):
+def _run_scan(username, data_opts, token_options, exhausted, status_ph, hint="",
+              reset_at=0):
     """Scan in a worker thread (live progress bar on the main thread), trying the
     token options in order and falling back on rate limits (signed-in user's
     quota first, shared bot behind it). Returns (result, elapsed, label): result
     may be complete, partial (with .partial_reset_in), or None (all limited).
     The worker never touches st.* — it only mutates the plain `state`/`exhausted`.
     All progress/terminal output renders into ``status_ph`` (a placeholder) so the
-    caller can keep the results area cleared while a scan runs."""
+    caller can keep the results area cleared while a scan runs. ``reset_at`` (an
+    epoch) drives a "budget resets in ~Nm" countdown in the progress caption."""
     state = {"msg": "starting…", "result": None, "label": None,
              "reset": None, "error": None, "done": False}
 
@@ -430,7 +475,11 @@ def _run_scan(username, data_opts, token_options, exhausted, status_ph, hint="")
         with status_ph.container():
             st.progress(min(1.0, int(m.group(1)) / max(1, int(m.group(2))))
                         if m else 0.0)
-            st.caption(f"⏳ {state['msg']}")
+            cap = f"⏳ {state['msg']}"
+            if reset_at:
+                cap += (f" · GitHub budget resets in "
+                        f"{humanize_wait(max(0, reset_at - int(time.time())))}")
+            st.caption(cap)
             if hint:
                 st.caption(hint)
         time.sleep(0.2)
@@ -570,7 +619,11 @@ if scan_target is not None:
         else:
             token_options = [(forge, None)]     # forge's own env token, no fallback
         result, elapsed, label = _run_scan(
-            uname, data_opts, token_options, exhausted, status_box, hint)
+            uname, data_opts, token_options, exhausted, status_box, hint,
+            reset_at=_budget_reset_at())
+        # The scan consumed quota — drop the cached budget so the sidebar note
+        # re-fetches the now-lower figure on the next render.
+        st.session_state.pop("rate_budget", None)
         if result.partial_reset_in is not None:
             # Every token hit its limit mid-scan → incomplete. Don't cache it;
             # show what we have with a clear warning + wait time.
