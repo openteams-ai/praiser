@@ -49,7 +49,20 @@ meta-file), `llm.py` (optional, gated), `models.py` (roles + dataclasses).
   - expose an `Extractor` subclass whose `extract()` does the I/O via
     `ctx.client`;
   - call `register(MyExtractor())` at import and be listed in
-    `_BUILTIN_MODULES` in `extractors/__init__.py`.
+    `_BUILTIN_MODULES` in `extractors/__init__.py` — a completeness guard test
+    (`tests/test_extractors_registry.py`) fails CI if a `register()`-ing module
+    is missing from that list. (Target: replace the manual list with
+    auto-discovery so presence of the file *is* the wiring — see the
+    extension-points convention below.)
+- **Extension points must be auto-discovered or guarded, never a
+  prose-synced list.** When you add a registry / plugin list / dispatch table,
+  the enabled set must come from auto-discovery (the code is the source of
+  truth) or, failing that, be backed by a test that fails loudly when an entry
+  is missing. A manually maintained list whose only safeguard is documentation
+  is a latent bug: the "register `wikipedia`/`releases`" step was documented in
+  three places and still silently skipped (extractors never ran in production;
+  #124). Make the wrong thing impossible or loud — don't rely on the extender
+  reading the docs.
 - **Roles live in `models.py`** as constants with `ROLE_WEIGHTS`. The headline
   role is the highest weight, ties broken by confidence. Add new roles there;
   pick the weight relative to neighbours deliberately (whole-repo roles should
@@ -103,3 +116,10 @@ meta-file), `llm.py` (optional, gated), `models.py` (roles + dataclasses).
   the methods used (`get_files`, `repo_contributors`, `merged_pr_count`,
   `path_commit_count`, `get_url`, …).
 - Every new behaviour gets a test. Don't lower coverage of the parsers.
+- **Test through the wiring seam, not only the unit.** Unit-testing internals in
+  isolation is good, but a test that imports the unit directly can't tell you the
+  system actually reaches it (that's how #124 hid — every test imported the
+  extractor, none went through `all_extractors()`). For any component behind a
+  registry/dispatch, add one cheap test that exercises it via the **public entry
+  point**. Cheap is the operative word — assert it appears in `all_extractors()`,
+  don't spin up the whole app.
