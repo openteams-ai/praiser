@@ -32,14 +32,15 @@ def test_manual_repo_is_trusted_and_contributor_checked():
 
 
 def test_manual_repo_records_plain_contribution():
-    # apache/arrow case: 8 commits, rank ~165 — below the elevated bar, but the
-    # user vouched via --add-repo, so it's recorded at low confidence.
+    # apache/arrow case: 8 commits, rank ~165, and only 2 merged PRs — below BOTH
+    # the commit and merged-PR bars, but the user vouched via --add-repo, so it's
+    # recorded at low confidence via the manual fallback.
     class C:
         def repo_contributors(self, o, r, max_pages=2):
             return [ContributorCount(f"u{i}", 100) for i in range(164)] + \
                    [ContributorCount("pearu", 8)]
         def merged_pr_count(self, o, r, login):
-            return 8  # modest -> still below the bar
+            return 2  # below MIN_MERGED_PRS -> not core; only the manual vouch keeps it
     ctx = ExtractContext(
         identity=Identity(primary_login="pearu"), forge=C(), registry=EMPTY,
         manual_repos={"apache/arrow"}, popularity_floor=50,
@@ -56,12 +57,12 @@ def test_non_manual_plain_contribution_excluded():
             return [ContributorCount(f"u{i}", 100) for i in range(164)] + \
                    [ContributorCount("pearu", 8)]
         def merged_pr_count(self, o, r, login):
-            return 8
+            return 2  # below the commit AND merged-PR bars
     ctx = ExtractContext(
         identity=Identity(primary_login="pearu"), forge=C(), registry=EMPTY,
         popularity_floor=50, canonical_stars=1000,
     )
-    # popular repo, but pearu is a plain contributor -> excluded
+    # popular repo, but pearu is a plain contributor (8 commits, 2 PRs) -> excluded
     assert ContributorsExtractor().extract(Candidate("apache/arrow", stars=16000), ctx) == []
 
 
