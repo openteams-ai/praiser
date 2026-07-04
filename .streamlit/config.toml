@@ -1,0 +1,18 @@
+# OpenTeams-branded theme (matches openteams.com): a light content area with the
+# brand blue as the accent, and a deep-navy sidebar with white text. Brand palette
+# (from openteams.com): navy #022791 / #011A6B, bright blue #4D75FE, hover #0F3FB2,
+# gold #FAA944, coral #FF8A69. Read at repo root when Streamlit Cloud runs
+# `streamlit run web/streamlit/app.py`. Sidebar theming needs Streamlit >= 1.44.
+[theme]
+base = "light"
+primaryColor = "#4D75FE"              # accent: Praise button, sliders, links, active widgets
+backgroundColor = "#FFFFFF"           # main content area
+secondaryBackgroundColor = "#EEF2FB"  # cards / code blocks / metric surfaces (light blue tint)
+textColor = "#0F172A"                 # near-black navy for body text on white
+font = "sans serif"
+
+[theme.sidebar]
+backgroundColor = "#022791"           # deep OpenTeams navy
+secondaryBackgroundColor = "#011A6B"  # darker navy for sidebar widget fills
+textColor = "#FFFFFF"                 # white sidebar text
+primaryColor = "#4D75FE"              # bright brand blue accent on the navy
