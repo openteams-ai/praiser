@@ -35,6 +35,22 @@ PRAISER_VERSION = getattr(praiser, "__version__", "dev")
 
 REPO_URL = "https://github.com/openteams-ai/praiser"
 _SCANNED_RE = re.compile(r"scanned (\d+)/(\d+)")
+# GitHub mark (neutral gray so it reads on a light or dark button) for the
+# sign-in control's icon — a data URI, self-contained.
+_GH_ICON = (
+    "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org"
+    "%2F2000%2Fsvg%27%20viewBox%3D%270%200%2016%2016%27%20width%3D%2716%27%20"
+    "height%3D%2716%27%3E%3Cpath%20fill%3D%27%23808A94%27%20d%3D%27M8%200C3.58%20"
+    "0%200%203.58%200%208c0%203.54%202.29%206.53%205.47%207.59.4.07.55-.17.55-.38"
+    "%200-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13"
+    "-.28-.15-.68-.52-.01-.53.63-.01%201.08.58%201.23.82.72%201.21%201.87.87%20"
+    "2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95%200-.87.31-1.59.82"
+    "-2.15-.08-.2-.36-1.02.08-2.12%200%200%20.67-.21%202.2.82.64-.18%201.32-.27%20"
+    "2-.27.68%200%201.36.09%202%20.27%201.53-1.04%202.2-.82%202.2-.82.44%201.1.16"
+    "%201.92.08%202.12.51.56.82%201.27.82%202.15%200%203.07-1.87%203.75-3.65%20"
+    "3.95.29.25.54.73.54%201.48%200%201.07-.01%201.93-.01%202.2%200%20.21.15.46"
+    ".55.38A8.013%208.013%200%200%200%2016%208c0-4.42-3.58-8-8-8z%27%2F%3E%3C%2F"
+    "svg%3E")
 # Per-session result cache, bounded by total size (a RunResult is tens of KB, so
 # this holds a whole session's scans; oldest evicted only when over budget).
 _CACHE_MB = 200
@@ -107,8 +123,10 @@ def github_account():
     # read:org lets discovery read the user's org memberships (org-repo
     # discovery + affiliation). Public repo reads need no scope; without
     # read:org the scan still works but org features degrade gracefully.
-    result = oauth.authorize_button("Sign in with GitHub", redirect,
-                                    scope="read:org", key="gh_oauth")
+    # Full-width + a GitHub mark so it reads as a proper option, not a raw button.
+    result = oauth.authorize_button(
+        "Sign in with GitHub", redirect, scope="read:org", key="gh_oauth",
+        icon=_GH_ICON, use_container_width=True)
     if result and "token" in result:
         t = result["token"]["access_token"]
         st.session_state["gh_user_token"] = t
@@ -221,6 +239,9 @@ with st.form("q"):
 # dropdown consolidates every output mode — cards, full report, copy-paste text,
 # and file export — into one control.
 _VIEWS = ["Highlights", "Markdown report", "Copy as text", "Export files"]
+# Log-spaced min-stars steps (GitHub stars span 0 → ~500k).
+_MIN_STAR_STEPS = [0, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000,
+                   25000, 50000, 100000, 250000, 500000]
 if submitted or st.session_state.get("active") is not None:
     dc1, dc2, dc3 = st.columns([1.5, 1, 1])
     view = dc1.selectbox(
@@ -229,7 +250,11 @@ if submitted or st.session_state.get("active") is not None:
              "evidence link; Copy as text = plain-text summary to paste; "
              "Export files = download the report as Markdown or JSON.")
     highlights = dc2.slider("Top N", 3, 100, 8)
-    min_stars = dc3.slider("Min stars", 0, 1000, 50, step=10)
+    # Log-spaced steps: stars span 0 → ~500k on GitHub, so a linear slider wastes
+    # its whole range on tiny values. select_slider gives a logarithmic feel.
+    min_stars = dc3.select_slider(
+        "Min stars", options=_MIN_STAR_STEPS, value=50,
+        format_func=lambda n: (f"{n / 1000:g}k" if n >= 1000 else str(n)))
 else:
     view, highlights, min_stars = "Highlights", 8, 50
 
