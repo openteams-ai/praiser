@@ -55,11 +55,10 @@ def _role_display(rec: ProjectRecord, role: str) -> str:
         return base + _contributor_suffix(rec)
     quals = [e.qualifier for e in evs if e.qualifier]
     if evs and len(quals) == len(evs):  # every evidence for this role is scoped
+        # Show every scope in full — the labels are concise (section names /
+        # subcomponents), and a cryptic "+N more" hides what the extra scopes are.
         uniq = list(dict.fromkeys(quals))          # a person can hold it in several
-        shown = ", ".join(uniq[:3])
-        if len(uniq) > 3:
-            shown += f", +{len(uniq) - 3} more"    # keep the compact view compact
-        return f"{base} ({shown})"
+        return f"{base} ({', '.join(uniq)})"
     return base
 
 

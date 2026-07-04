@@ -201,9 +201,9 @@ def test_multiple_subcomponents_are_listed_and_capped():
         )
     assert _role_display(author_of("f2py", "numpy.distutils"), AUTHOR) == \
         "Author (f2py, numpy.distutils)"
-    # capped at 3 with a "+N more"
+    # all scopes shown in full — no cryptic "+N more" truncation
     assert _role_display(author_of("a", "b", "c", "d", "e"), AUTHOR) == \
-        "Author (a, b, c, +2 more)"
+        "Author (a, b, c, d, e)"
 
 
 def test_whole_project_author_stays_bare_even_with_a_subcomponent():
