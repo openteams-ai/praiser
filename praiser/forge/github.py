@@ -315,6 +315,8 @@ class GitHubForge(Forge):
         try:
             data = self._client.graphql(
                 _USER_SEARCH_QUERY, {"q": name.strip(), "n": limit})
+        except RateLimitError:
+            raise                       # let the caller distinguish this from "no match"
         except GitHubError:
             return []
         nodes = ((data or {}).get("search") or {}).get("nodes") or []

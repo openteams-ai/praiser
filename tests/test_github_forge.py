@@ -103,6 +103,22 @@ def test_search_users_parses_login_name_bio_and_skips_loginless():
         ("rgommers", "Ralf Gommers", "SciPy"), ("ghost", None, None)]
 
 
+def test_search_users_propagates_rate_limit_not_empty():
+    # A rate-limited search must RAISE (so the UI says "rate-limited"), not return
+    # [] which reads as "no such person".
+    import pytest
+
+    from praiser.github_client import RateLimitError
+
+    class _RL(_FakeClient):
+        def graphql(self, query, variables):
+            if "search(query" in query:
+                raise RateLimitError("limited", reset_in=1800)
+            return super().graphql(query, variables)
+    with pytest.raises(RateLimitError):
+        _forge(_RL()).search_users("Ralf Gommers")
+
+
 def test_resolve_user_falls_back_to_discovery_name_when_profile_name_null():
     # #124: the dedicated profile query returns `User.name` (nullable), which can
     # come back null under service pressure — silently emptying identity.names and
