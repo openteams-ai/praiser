@@ -111,3 +111,27 @@ def test_section_header_collapses_paths_to_one_qualifier():
     ev = CodeownersExtractor().extract(
         Candidate("o/r", stars=15000), _ctx(Identity(primary_login="bob"), _Forge(text)))
     assert sorted(e.qualifier for e in ev) == ["Distributed", "Sparse Tensors"]
+
+
+def test_owning_the_codeowners_file_itself_is_not_code_ownership():
+    # #150: owning ".github/CODEOWNERS" is meta-administrative, not a code area —
+    # it must not add a role or a nonsensical ".github/CODEOWNERS" scope label.
+    # (scipy: rgommers owns the CODEOWNERS file plus real sections.)
+    text = (
+        ".github/CODEOWNERS  @bob\n"
+        "\n"
+        "# Build related files\n"
+        "pyproject.toml  @bob\n"
+    )
+    ev = CodeownersExtractor().extract(
+        Candidate("o/r", stars=15000), _ctx(Identity(primary_login="bob"), _Forge(text)))
+    quals = [e.qualifier for e in ev]
+    assert ".github/CODEOWNERS" not in quals
+    assert quals == ["Build related files"]
+
+
+def test_owning_only_the_codeowners_file_yields_no_code_owner_role():
+    ev = CodeownersExtractor().extract(
+        Candidate("o/r", stars=15000),
+        _ctx(Identity(primary_login="bob"), _Forge("CODEOWNERS  @bob\n")))
+    assert ev == []
