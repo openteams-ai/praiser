@@ -298,13 +298,20 @@ def _role_badges(rec) -> str:
         for role in rec.roles)
 
 
-def _show_highlights(result, uname):
+def _show_highlights(result, uname, controls_shown=True):
     """The default view: summary metrics + one compact line per top project."""
     primary, secondary = service.filtered_records(result, min_stars=min_stars)
     top = primary[:max(1, highlights)]
     if not top:
-        st.info("No elevated roles at this popularity threshold — lower **Min "
-                "stars** in the controls above to see more.")
+        # Only suggest lowering Min stars when that control is actually shown AND
+        # the floor is above 0 (else the hint is pointless — e.g. partial results
+        # have no controls, and a scan can simply find no elevated roles).
+        floor_hides_some = min_stars > 0 and bool(result.records or result.secondary)
+        if controls_shown and floor_hides_some:
+            st.info("No elevated roles at this popularity threshold — lower **Min "
+                    "stars** in the controls above to see more.")
+        else:
+            st.info(f"No elevated roles found for **{uname}**.")
         return
     allrecs = [*primary, *secondary]
     communities = {
@@ -351,8 +358,9 @@ def _export_view(result, uname):
                        mime="application/json", use_container_width=True)
 
 
-def _show(result, uname):
-    """Render a RunResult in the selected View."""
+def _show(result, uname, controls_shown=True):
+    """Render a RunResult in the selected View. ``controls_shown`` tells the empty
+    state whether the Min-stars control is on screen (it isn't for partial results)."""
     if view == "Markdown report":
         st.markdown(service.render_result(result, uname, view="markdown",
                                           highlights=highlights,
@@ -364,7 +372,7 @@ def _show(result, uname):
     elif view == "Export files":
         _export_view(result, uname)
     else:
-        _show_highlights(result, uname)
+        _show_highlights(result, uname, controls_shown=controls_shown)
 
 
 def _feedback_buttons(result, uname, forge, data_opts):
@@ -576,7 +584,7 @@ if scan_target is not None:
             # Partial isn't cached (so it can't become "active"); show it once with
             # default view/N and no controls (they'd break on the next rerun).
             with results_box.container():
-                _show(result, uname)
+                _show(result, uname, controls_shown=False)
             st.stop()
         cache.put(key, result)
         _via = f" (via {label})" if label and USER_TOKEN else ""
