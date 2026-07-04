@@ -129,6 +129,10 @@ with st.expander("About praiser"):
         "GitLab, Codeberg, Gitee, Bitbucket and cgit hosts.\n\n"
         f"ℹ️ More: [{REPO_URL.split('//', 1)[1]}]({REPO_URL}) · "
         f"praiser v{PRAISER_VERSION}")
+# The role glossary lives here (top, next to About) so it's easy to find up
+# front, rather than buried below each result.
+with st.expander("ℹ️ What do these roles mean?"):
+    st.markdown(render_role_glossary())
 
 USER_LOGIN, USER_TOKEN = github_account()   # signed-in GitHub user (or None, None)
 
@@ -150,12 +154,17 @@ def _pick_recent():
         st.session_state["uname"] = uname
 
 
+# Recent scans live in the sidebar (alongside the GitHub sign-in) — a quick
+# picker + handy for debugging, kept out of the main entry flow.
 recent = st.session_state["recent"]
 if recent:
-    st.selectbox(
-        "Recent scans", ["—", *(f"{r['forge']} · {r['username']}" for r in recent)],
-        key="recent_pick", on_change=_pick_recent,
-        help="Pick a previously scanned account to pre-fill the form.")
+    with st.sidebar:
+        st.markdown("### Recent scans")
+        st.selectbox(
+            "Pick a recent scan",
+            ["—", *(f"{r['forge']} · {r['username']}" for r in recent)],
+            key="recent_pick", on_change=_pick_recent, label_visibility="collapsed",
+            help="Pick a previously scanned account to pre-fill the form.")
 
 # LLM founder/role discovery spends the DEPLOYMENT's shared LLM budget, so it's
 # hidden on the public demo unless the deployer opts in (mirrors SEED_ENABLED).
@@ -283,8 +292,6 @@ def _show(result, uname):
     else:
         _show_highlights(result, uname)
     _export_buttons(result, uname)
-    with st.expander("ℹ️ What do these roles mean?"):
-        st.markdown(render_role_glossary())
 
 
 def _feedback_buttons(result, uname, forge, data_opts):
