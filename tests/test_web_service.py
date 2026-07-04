@@ -22,6 +22,17 @@ def test_looks_like_name_detects_a_space():
     assert not service.looks_like_name("rgommers")
 
 
+def test_name_matches_gates_auto_scan():
+    # Exact / middle-name-tolerant → match (safe to auto-scan a single hit).
+    assert service.name_matches("Ralf Gommers", "Ralf Gommers")
+    assert service.name_matches("Travis Oliphant", "Travis E. Oliphant")
+    # The Victor Fomin case: GitHub surfaces "FominVictor" — NOT a real match, so
+    # praiser must not auto-scan it.
+    assert not service.name_matches("Victor Fomin", "FominVictor")
+    assert not service.name_matches("Victor Fomin", None)     # no profile name
+    assert not service.name_matches("Victor Fomin", "vfdev")  # unrelated name
+
+
 def test_search_people_is_github_only_for_now():
     # Other forges have no user search wired up → [] (caller shows guidance).
     assert service.search_people("Ralf Gommers", forge="gitlab") == []
