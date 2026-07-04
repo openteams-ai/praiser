@@ -240,6 +240,8 @@ def search_people(name: str, *, forge: str = "github", token: str | None = None,
     f = GitHubForge(token or _token_for("github"), local_cache())
     try:
         return f.search_users(name, limit=limit)
+    except RateLimitError:
+        raise                     # surfaced to the caller so it's not "no match"
     except Exception:
         return []
     finally:

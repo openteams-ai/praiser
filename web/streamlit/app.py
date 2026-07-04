@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import streamlit as st  # noqa: E402
 
 import praiser  # noqa: E402
+from praiser.github_client import RateLimitError  # noqa: E402
 from praiser.pipeline import humanize_wait  # noqa: E402
 from praiser.render import (  # noqa: E402
     human_stars,
@@ -480,13 +481,22 @@ if scan_target is None and submitted:
                 f"Looking someone up by name is GitHub-only for now. Enter the "
                 f"exact **{forge}** username, or switch Forge to GitHub.")
             st.stop()
-        cands = service.search_people(raw, forge=forge, token=USER_TOKEN)
+        try:
+            cands = service.search_people(raw, forge=forge, token=USER_TOKEN)
+        except RateLimitError as exc:
+            wait = humanize_wait(exc.reset_in) if exc.reset_in else "a little while"
+            status_box.warning(
+                f"⏳ GitHub's search rate limit was reached — the name lookup "
+                f"couldn't run. Try again in {wait}"
+                + ("" if USER_TOKEN else ", or sign in with GitHub (sidebar) to use "
+                   "your own limit")
+                + ". Or enter the person's exact username to scan directly.")
+            st.stop()
         if not cands:
             status_box.warning(
-                f"Couldn't find a GitHub account for **{raw}** (no match, or the "
-                "lookup was rate-limited). Try the person's exact username, add "
-                "more of their name, or find their handle on their GitHub profile, "
-                "personal site, or Wikidata.")
+                f"No GitHub account found for **{raw}**. Try the person's exact "
+                "username, add more of their name, or find their handle on their "
+                "GitHub profile, personal site, or Wikidata.")
             st.stop()
         if len(cands) == 1 and service.name_matches(raw, cands[0].name):
             # A single hit whose profile name really matches → safe to auto-scan.
