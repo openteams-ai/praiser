@@ -228,6 +228,23 @@ def name_matches(query: str, name: str | None) -> bool:
     return bool(q) and q <= n
 
 
+def rate_budget(token: str | None = None) -> dict:
+    """Live GitHub quota per resource for the given token (or the shared bot),
+    ``{name: (remaining, limit, reset_epoch)}`` — via the free ``/rate_limit``
+    endpoint. {} on error. Lets the UI warn before the limit bites."""
+    from praiser.forge import GitHubForge
+    f = GitHubForge(token or _token_for("github"), local_cache())
+    try:
+        return f.rate_limit_status()
+    except Exception:
+        return {}
+    finally:
+        try:
+            f.close()
+        except Exception:
+            pass
+
+
 def search_people(name: str, *, forge: str = "github", token: str | None = None,
                   limit: int = 8):
     """Resolve a full name → candidate accounts (login/name/bio) for the

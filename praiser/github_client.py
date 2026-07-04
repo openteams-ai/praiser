@@ -236,6 +236,28 @@ class GitHubClient:
             return None
         return max(0, entry[2] - int(time.time()))
 
+    def rate_limit(self) -> dict[str, tuple[int, int, int]]:
+        """Live quota per resource as ``{name: (remaining, limit, reset_epoch)}``,
+        from GitHub's ``/rate_limit`` endpoint — which is FREE (it does not count
+        against the limit). Uncached (the point is a fresh reading). {} on error."""
+        try:
+            status, _, data = self._request(
+                "GET", f"{REST_BASE}/rate_limit", accept="application/vnd.github+json")
+        except GitHubError:
+            return {}
+        if status != 200 or not data:
+            return {}
+        try:
+            resources = (json.loads(data).get("resources") or {})
+        except ValueError:
+            return {}
+        out: dict[str, tuple[int, int, int]] = {}
+        for name, r in resources.items():
+            if isinstance(r, dict) and "remaining" in r:
+                out[name] = (int(r.get("remaining", 0)), int(r.get("limit", 0)),
+                             int(r.get("reset", 0)))
+        return out
+
     # -- REST ---------------------------------------------------------------
     def rest_json(self, path: str, params: dict[str, Any] | None = None) -> Any:
         url = f"{REST_BASE}{path}"
