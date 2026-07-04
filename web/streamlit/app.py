@@ -288,15 +288,17 @@ def _show_highlights(result, uname):
         o for r in allrecs
         if (o := r.name_with_owner.split("/", 1)[0]).lower() != uname.lower()}
     commits = sum(r.contributions or 0 for r in allrecs)
+    # Broad → narrow: communities (orgs) contain projects, which contain commits.
     m1, m2, m3 = st.columns(3)
-    m1.metric("Projects", len(allrecs))
-    m2.metric("Communities", len(communities),
+    m1.metric("Communities", len(communities),
               help="Distinct organisations (owners other than the person).")
+    m2.metric("Projects", len(allrecs))
     m3.metric("Total commits", f"{commits:,}" if commits else "—",
               help="All-time commits summed across these projects, where "
                    "measurable from the contributor data.")
     if commits:
-        st.caption("_Rough scale, not effort — not comparable between people._")
+        st.caption("_Total commits is a rough scale, not effort — "
+                   "not comparable between people._")
     # Compact one-line entries: repo · stars · role badges — so many projects fit
     # above the fold and the feedback controls below stay reachable.
     for r in top:
