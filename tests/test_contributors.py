@@ -123,6 +123,43 @@ def test_merged_pr_rescue_elevates_undercounted_contributor():
     assert "merged PRs" in ev[0].detail
 
 
+def test_merged_pr_rescue_credits_small_genuine_contribution():
+    # #169: a modest committer (8 commits, rank ~#31) to a SMALL project (53★,
+    # below the star gate) discovered via genuine contribution is credited when
+    # they have >= MIN_MERGED_PRS merged PRs — the star gate no longer blocks it.
+    from praiser.extractors.contributors import ContributorsExtractor
+
+    class C:
+        def repo_contributors(self, o, r, max_pages=2):
+            return ([ContributorCount(f"u{i}", 50) for i in range(30)]
+                    + [ContributorCount("postmath", 8)]
+                    + [ContributorCount(f"v{i}", 3) for i in range(70)])
+        def merged_pr_count(self, o, r, login):
+            return 8
+    ctx = ExtractContext(identity=Identity(primary_login="postmath"), forge=C(),
+                         registry=KnownProjects(projects={}))
+    cand = Candidate("torch-spyre/torch-spyre", stars=53, sources={"contributed"})
+    ev = ContributorsExtractor().extract(cand, ctx)
+    assert ev and ev[0].role == "core_contributor"
+    assert "8 merged PRs" in ev[0].detail
+
+
+def test_below_min_merged_prs_small_project_still_excluded():
+    # Fewer than MIN_MERGED_PRS merged PRs on a small project stays drive-by.
+    from praiser.extractors.contributors import ContributorsExtractor
+
+    class C:
+        def repo_contributors(self, o, r, max_pages=2):
+            return ([ContributorCount(f"u{i}", 50) for i in range(30)]
+                    + [ContributorCount("postmath", 3), ContributorCount("z", 1)])
+        def merged_pr_count(self, o, r, login):
+            return 3
+    ctx = ExtractContext(identity=Identity(primary_login="postmath"), forge=C(),
+                         registry=KnownProjects(projects={}))
+    cand = Candidate("small/proj", stars=53, sources={"contributed"})
+    assert ContributorsExtractor().extract(cand, ctx) == []
+
+
 class _CappedForge:
     """200 contributors fetched (== the 2-page cap) → the list is truncated."""
     def __init__(self, real_count):

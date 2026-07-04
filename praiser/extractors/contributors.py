@@ -17,12 +17,19 @@ from .base import Extractor, ExtractContext
 
 # Also scan repos that aren't star-popular but are widely forked/used.
 WIDELY_USED_FORKS = 25
-# Only spend a search-API call on the merged-PR rescue for notable repos.
+# Spend a search-API call on the merged-PR rescue for star-popular repos, and —
+# regardless of stars — for repos the user *genuinely contributed to* (a bounded
+# set), so real contributors to smaller projects aren't missed for lack of raw
+# commit volume (#169).
 PR_RESCUE_MIN_STARS = 1000
 # A high rank only means "core" with a real amount of work behind it. On a repo
 # with few contributors, 1-2 commits can rank top-10 — that's a drive-by, not a
 # core contributor. So the rank shortcut requires at least this many commits/PRs.
 MIN_RANKED_CONTRIBUTIONS = 10
+# Merged PRs are a stronger unit than raw commits (each is reviewed, accepted
+# work), so a handful of them is a genuine sustained contribution — credited as a
+# core contributor even below the commit-volume bar (#169).
+MIN_MERGED_PRS = 5
 
 
 def classify(count: int, rank: int) -> float | None:
@@ -102,13 +109,18 @@ class ContributorsExtractor(Extractor):
 
         if confidence is None:
             # Commit count can understate real impact: squash/ghstack land one
-            # commit per PR, and unlinked commit emails aren't attributed. Fall
-            # back to merged-PR count (workflow-agnostic) for notable repos.
-            if candidate.stars >= PR_RESCUE_MIN_STARS or manual:
+            # commit per PR, unlinked commit emails aren't attributed, and a modest
+            # commit count can still be a sustained contribution. Fall back to
+            # merged-PR count (workflow-agnostic) for star-popular repos AND for any
+            # repo the user genuinely contributed to (bounded search-API cost).
+            if candidate.stars >= PR_RESCUE_MIN_STARS or manual or genuine_contrib:
                 prs = max((ctx.forge.merged_pr_count(
                     candidate.owner, candidate.repo, h)
                     for h in ctx.identity.logins), default=0)
-                pr_conf = classify(prs, rank)
+                # Volume/rank thresholds, else a floor of MIN_MERGED_PRS merged PRs
+                # (a merged PR is stronger than a raw commit — #169).
+                pr_conf = classify(prs, rank) or (0.65 if prs >= MIN_MERGED_PRS
+                                                  else None)
                 if pr_conf is not None:
                     confidence = pr_conf
                     detail = f"{prs} merged PRs ({count} commits, ~#{rank})"
