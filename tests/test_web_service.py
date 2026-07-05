@@ -234,6 +234,30 @@ def test_clear_tracked_scans_removes_tracked_entries_and_catalog(monkeypatch, tm
     assert service.cache_catalog(result_cache=rc) == []
 
 
+def test_seed_catalog_records_runs_and_dedupes_by_target(monkeypatch, tmp_path):
+    _clock(monkeypatch)
+    rc = Cache(tmp_path)
+    service.record_seed({"seeded": 3, "contributors_indexed": 120},
+                        forge="github", kind="org", target="numpy", result_cache=rc)
+    service.record_seed({"seeded": 1, "contributors_indexed": 40},
+                        forge="github", kind="repo", target="pytorch/pytorch",
+                        result_cache=rc)
+    rows = service.seed_catalog(result_cache=rc)
+    assert {(r["target"], r["kind"], r["seeded"], r["contributors"]) for r in rows} == {
+        ("numpy", "org", 3, 120), ("pytorch/pytorch", "repo", 1, 40)}
+    # Re-seeding numpy updates its row (same forge:kind:target key), not a dup.
+    service.record_seed({"seeded": 5, "contributors_indexed": 200},
+                        forge="github", kind="org", target="numpy", result_cache=rc)
+    rows = service.seed_catalog(result_cache=rc)
+    assert len(rows) == 2
+    numpy = next(r for r in rows if r["target"] == "numpy")
+    assert numpy["seeded"] == 5 and numpy["contributors"] == 200
+
+
+def test_seed_catalog_empty_when_none(tmp_path):
+    assert service.seed_catalog(result_cache=Cache(tmp_path)) == []
+
+
 def test_wipe_all_cache_clears_local_dir(tmp_path):
     rc = Cache(tmp_path)
     rc.set("k1", "v1")

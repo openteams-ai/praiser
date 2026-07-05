@@ -217,9 +217,9 @@ carries an **evidence link** (file/page URL) and a **confidence** score.
 
 A [Streamlit](https://streamlit.io) web UI wraps the same engine: type a
 username, pick a forge, and get the ranked record with evidence links — with
-instant **view / top-N / min-stars** controls, a live progress bar, and a
-"recent scans" picker. Collected results are shared across sessions via a
-durable cache, so repeat lookups are fast.
+instant **view / top-N / min-stars** controls and a live progress bar.
+Collected results are shared across sessions via a durable cache, so repeat
+lookups are fast.
 
 - **Hosted demo:** <https://praiser.streamlit.app/>
 - **Run locally or deploy your own:** see [`web/README.md`](web/README.md).

@@ -82,6 +82,8 @@ def run_seed(name: str, forge: str = "github", budget: int = 30,
     res["forge"] = forge
     if forge not in SEEDABLE_FORGES and res.get("seeded", 0) == 0:
         res["stopped"] = f"{forge} seeding not supported yet (GitHub-only)"
+    from web.core import service       # log the run for the admin "seed status" view
+    service.record_seed(res, forge=forge, kind=kind, target=name, result_cache=shared)
     return res
 
 
