@@ -17,29 +17,28 @@ from .base import Extractor, ExtractContext
 
 # Also scan repos that aren't star-popular but are widely forked/used.
 WIDELY_USED_FORKS = 25
-# Spend a search-API call on the merged-PR rescue for star-popular repos, and —
-# regardless of stars — for repos the user *genuinely contributed to* (a bounded
-# set), so real contributors to smaller projects aren't missed for lack of raw
-# commit volume (#169).
-PR_RESCUE_MIN_STARS = 1000
 # A high rank only means "core" with a real amount of work behind it. On a repo
 # with few contributors, 1-2 commits can rank top-10 — that's a drive-by, not a
-# core contributor. So the rank shortcut requires at least this many commits/PRs.
+# core contributor. So the rank shortcut requires at least this many commits.
 MIN_RANKED_CONTRIBUTIONS = 10
-# Merged PRs are a stronger unit than raw commits (each is reviewed, accepted
-# work), so a handful of them is a genuine sustained contribution — credited as a
-# core contributor even below the commit-volume bar (#169).
+# Merged-PR count is only consulted for repos the user explicitly vouched for
+# (--add-repo); the search API it needs is scarce (30/min) and, more
+# fundamentally, chasing an exact bar is not worth it — see the note below.
 MIN_MERGED_PRS = 5
 
 
 def classify(count: int, rank: int) -> float | None:
     """Confidence for a contributor, or None if too minor to count as elevated.
 
-    ``count`` is commits (or merged PRs, via the rescue). "Core" means either a
-    substantial body of work (volume), or a genuine top-of-project position
-    backed by real work. A merely double-digit rank with barely double-digit
-    commits (e.g. 11 commits at #17) is a *regular* contributor, not core — that
-    middle zone is deliberately excluded to avoid over-crediting."""
+    ``count`` is commits. The bar is deliberately SIMPLE — a substantial body of
+    work (volume), or a genuine top-of-project position backed by real work —
+    because the real value of a commit (or a PR) is *extremely variable*: one
+    commit can be a rewrite, another a typo fix. Precisely tuning the threshold
+    would be polishing noise, so we pick a clear, cheap, commit-only line and let
+    everything below it be reported as a below-bar contribution (#172) rather than
+    chasing marginal cases with extra API calls. A merely double-digit rank with
+    barely double-digit commits (e.g. 11 commits at #17) is a *regular*
+    contributor, not core — that middle zone is deliberately excluded."""
     if count >= 100:
         return 0.8                          # heavy volume
     if count >= 25:
@@ -107,23 +106,21 @@ class ContributorsExtractor(Extractor):
         # (a PR isn't a commit, so mixing them into one total would be wrong).
         commits = count
 
-        if confidence is None:
-            # Commit count can understate real impact: squash/ghstack land one
-            # commit per PR, unlinked commit emails aren't attributed, and a modest
-            # commit count can still be a sustained contribution. Fall back to
-            # merged-PR count (workflow-agnostic) for star-popular repos AND for any
-            # repo the user genuinely contributed to (bounded search-API cost).
-            if candidate.stars >= PR_RESCUE_MIN_STARS or manual or genuine_contrib:
-                prs = max((ctx.forge.merged_pr_count(
-                    candidate.owner, candidate.repo, h)
-                    for h in ctx.identity.logins), default=0)
-                # Volume/rank thresholds, else a floor of MIN_MERGED_PRS merged PRs
-                # (a merged PR is stronger than a raw commit — #169).
-                pr_conf = classify(prs, rank) or (0.65 if prs >= MIN_MERGED_PRS
-                                                  else None)
-                if pr_conf is not None:
-                    confidence = pr_conf
-                    detail = f"{prs} merged PRs ({count} commits, ~#{rank})"
+        if confidence is None and manual:
+            # ONLY for a repo the user explicitly vouched for (--add-repo): the
+            # commit count can understate real impact (unlinked commit emails
+            # aren't attributed to the login), so consult merged-PR count as a
+            # tie-break. Restricted to manual repos because the search API is
+            # scarce (30/min) and we don't chase an exact bar on a noisy quantity
+            # for normal scans — see classify(). Bounded cost: manual repos are few.
+            prs = max((ctx.forge.merged_pr_count(
+                candidate.owner, candidate.repo, h)
+                for h in ctx.identity.logins), default=0)
+            pr_conf = classify(prs, rank) or (0.65 if prs >= MIN_MERGED_PRS
+                                              else None)
+            if pr_conf is not None:
+                confidence = pr_conf
+                detail = f"{prs} merged PRs ({count} commits, ~#{rank})"
         if confidence is None:
             # Still below the bar: a plain contributor, excluded — unless the
             # user explicitly vouched for this repo via --add-repo.

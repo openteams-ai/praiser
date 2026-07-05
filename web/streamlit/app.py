@@ -395,7 +395,9 @@ def _show_highlights(result, uname, controls_shown=True):
     m2.metric("Projects", len(allrecs))
     m3.metric("Total commits", f"{commits:,}" if commits else "—",
               help="All-time commits summed across these projects, where "
-                   "measurable from the contributor data.")
+                   "measurable from the contributor data. A commit's real value "
+                   "varies enormously (a rewrite vs a typo fix), so this is a "
+                   "rough scale only — never a way to compare people.")
     if commits:
         st.caption("_Total commits is a rough scale, not effort — "
                    "not comparable between people._")
