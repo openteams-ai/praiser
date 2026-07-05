@@ -65,10 +65,17 @@ _SECRET_KEYS = (
     "GITEE_TOKEN", "BITBUCKET_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN",
     "UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN",
     "PRAISER_DIAG",   # opt-in founder-resolution trace surfaced in RunResult.diag
+    "PRAISER_ADMIN_USERS",  # comma-separated GitHub logins that get the admin frame
 )
 for _k in _SECRET_KEYS:
     if _k in st.secrets and not os.environ.get(_k):
         os.environ[_k] = str(st.secrets[_k])
+
+# GitHub logins allowed into the admin frame. Admin is only reachable when the
+# OAuth app is configured AND the signed-in user is listed here (the login comes
+# from the OAuth token, so it's not spoofable).
+_ADMIN_USERS = {u.strip().lower() for u in
+                os.environ.get("PRAISER_ADMIN_USERS", "").split(",") if u.strip()}
 
 
 def _fetch_login(token: str) -> str | None:
@@ -265,6 +272,7 @@ with st.sidebar:
         st.divider()
     USER_LOGIN, USER_TOKEN = github_account()
     budget_slot = st.empty()            # a scan clears this, then repaints it
+IS_ADMIN = bool(USER_LOGIN) and USER_LOGIN.lower() in _ADMIN_USERS
 _render_budget_note(budget_slot, USER_TOKEN)
 forge_url = ""       # self-hosted instance URL is a CLI/library feature
 wikidata = True      # always on — a cheap, broadly-useful role source
@@ -471,6 +479,40 @@ def _feedback_buttons(result, uname, forge, data_opts):
     if not USER_LOGIN:
         st.caption("_Submitting requires a GitHub account — the buttons open a "
                    "pre-filled issue you post under your own GitHub login._")
+
+
+def _trash_cache_entry(cache_id, username):
+    """Admin Trash callback: drop a user's shared cached result so the next scan
+    of that user is fresh (doesn't touch other users' cache)."""
+    ok = service.trash_cache_entry(cache_id)
+    st.session_state["admin_flash"] = (
+        f"🗑 Cleared cached scan for {username} — the next scan will be fresh."
+        if ok else f"Couldn't clear the cached scan for {username}.")
+
+
+def _render_admin_frame():
+    """The admin frame (end of page, admins only): a list of cached scans with a
+    per-row Trash to force a fresh re-scan. Gated by _ADMIN_USERS + sign-in."""
+    st.divider()
+    st.subheader("🔧 Admin")
+    st.caption(f"Signed in as @{USER_LOGIN} · admin.")
+    if (flash := st.session_state.pop("admin_flash", None)):
+        st.success(flash)
+    st.markdown("**Cached scans** — Trash an entry to force a fresh scan on the "
+                "shared cache (affects only that user).")
+    rows = service.cache_catalog()
+    if not rows:
+        st.caption("No cached scans recorded yet.")
+        return
+    now = time.time()
+    for r in rows:
+        c1, c2, c3 = st.columns([3, 2, 1], vertical_alignment="center")
+        c1.markdown(f"{r['forge']} · **{r['username']}**")
+        age = humanize_wait(int(now - r["created"])) if r.get("created") else "?"
+        c2.caption(f"updated {age} ago")
+        c3.button("🗑 Trash", key=f"trash_{r['cache_id']}",
+                  on_click=_trash_cache_entry, args=(r["cache_id"], r["username"]),
+                  use_container_width=True)
 
 
 def _run_scan(username, data_opts, token_options, exhausted, status_ph, hint=""):
@@ -714,6 +756,10 @@ else:
             with results_box.container():
                 _show(result, uname)
                 _feedback_buttons(result, uname, a_forge, a_opts)
+
+# --- Admin frame (end of main page; admins only) ------------------------------
+if IS_ADMIN:
+    _render_admin_frame()
 
 # --- External data-source diagnostics (?diag) ---------------------------------
 # Open `praiser.streamlit.app/?diag` to see, FROM THIS HOST, whether the external
