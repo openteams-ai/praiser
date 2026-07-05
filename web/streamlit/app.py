@@ -490,6 +490,20 @@ def _trash_cache_entry(cache_id, username):
         if ok else f"Couldn't clear the cached scan for {username}.")
 
 
+def _clear_tracked_scans():
+    n = service.clear_tracked_scans()
+    st.session_state["admin_confirm"] = False
+    st.session_state["admin_flash"] = (
+        f"Cleared {n} tracked cached scan(s); founder cache + reverse-index kept.")
+
+
+def _wipe_all_cache():
+    n = service.wipe_all_cache()
+    st.session_state["admin_confirm"] = False
+    st.session_state["admin_flash"] = (
+        f"Wiped {n} cache key(s) — clean slate (founder cache + reverse-index too).")
+
+
 def _render_admin_frame():
     """The admin frame (end of page, admins only): a list of cached scans with a
     per-row Trash to force a fresh re-scan. Gated by _ADMIN_USERS + sign-in."""
@@ -503,16 +517,36 @@ def _render_admin_frame():
     rows = service.cache_catalog()
     if not rows:
         st.caption("No cached scans recorded yet.")
-        return
-    now = time.time()
-    for r in rows:
-        c1, c2, c3 = st.columns([3, 2, 1], vertical_alignment="center")
-        c1.markdown(f"{r['forge']} · **{r['username']}**")
-        age = humanize_wait(int(now - r["created"])) if r.get("created") else "?"
-        c2.caption(f"updated {age} ago")
-        c3.button("🗑 Trash", key=f"trash_{r['cache_id']}",
-                  on_click=_trash_cache_entry, args=(r["cache_id"], r["username"]),
-                  use_container_width=True)
+    else:
+        now = time.time()
+        for r in rows:
+            c1, c2, c3 = st.columns([3, 2, 1], vertical_alignment="center")
+            c1.markdown(f"{r['forge']} · **{r['username']}**")
+            age = humanize_wait(int(now - r["created"])) if r.get("created") else "?"
+            c2.caption(f"updated {age} ago")
+            c3.button("🗑 Trash", key=f"trash_{r['cache_id']}",
+                      on_click=_trash_cache_entry, args=(r["cache_id"], r["username"]),
+                      use_container_width=True)
+    _render_admin_danger_zone()
+
+
+def _render_admin_danger_zone():
+    """Global cache-reset controls, gated behind a confirm checkbox (destructive,
+    affect ALL users): Clear tracked scans vs Wipe the whole namespace."""
+    st.markdown("---")
+    st.markdown("**Danger zone** — these affect every user, not just one.")
+    confirm = st.checkbox("Yes, I'm sure (enables the buttons below)",
+                          key="admin_confirm")
+    b1, b2 = st.columns(2)
+    b1.button("Clear cached scans", disabled=not confirm, on_click=_clear_tracked_scans,
+              use_container_width=True,
+              help="Delete tracked scan results (+ catalog) so everyone re-scans "
+                   "fresh; keeps the founder cache + reverse-index.")
+    b2.button("Wipe ALL cache", disabled=not confirm, on_click=_wipe_all_cache,
+              use_container_width=True, type="primary",
+              help="Wipe the entire praiser cache namespace — a clean slate, "
+                   "including the founder cache + reverse-index (rebuilt on next "
+                   "scans; founder re-resolution is WDQS-throttled).")
 
 
 def _run_scan(username, data_opts, token_options, exhausted, status_ph, hint=""):

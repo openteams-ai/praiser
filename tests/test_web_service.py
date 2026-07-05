@@ -194,6 +194,29 @@ def test_cache_catalog_lists_entries_and_trash_removes_one(monkeypatch, tmp_path
     assert [(r["username"], r["cache_id"]) for r in left] == [("bob", "keyB")]
 
 
+def test_clear_tracked_scans_removes_tracked_entries_and_catalog(monkeypatch, tmp_path):
+    _clock(monkeypatch)
+    rc = Cache(tmp_path)
+    rc.set("keyA", "rA")
+    service._catalog_record(rc, "github", "alice", "keyA")
+    rc.set("keyB", "rB")
+    service._catalog_record(rc, "gitlab", "bob", "keyB")
+    n = service.clear_tracked_scans(result_cache=rc)
+    assert n == 2
+    assert rc.get("keyA") is None and rc.get("keyB") is None
+    assert service.cache_catalog(result_cache=rc) == []
+
+
+def test_wipe_all_cache_clears_local_dir(tmp_path):
+    rc = Cache(tmp_path)
+    rc.set("k1", "v1")
+    rc.set("k2", "v2")
+    rc.set("k3", "v3")
+    n = service.wipe_all_cache(result_cache=rc)
+    assert n == 3
+    assert rc.get("k1") is None and rc.get("k2") is None and rc.get("k3") is None
+
+
 def test_feedback_links_prefill_title_body_and_labels():
     import urllib.parse
     links = service.feedback_links(

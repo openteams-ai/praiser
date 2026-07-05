@@ -76,3 +76,19 @@ class Cache:
             self._path(key).unlink(missing_ok=True)
         except OSError:
             pass
+
+    def clear(self) -> int:
+        """Remove every cached entry in this cache's directory; return the count.
+        Best-effort (skips files it can't unlink)."""
+        n = 0
+        try:
+            entries = list(self.dir.glob("*.json"))
+        except OSError:
+            return 0
+        for p in entries:
+            try:
+                p.unlink()
+                n += 1
+            except OSError:
+                pass
+        return n
