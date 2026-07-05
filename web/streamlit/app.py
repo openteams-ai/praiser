@@ -196,7 +196,7 @@ st.caption("Find the open-source projects where someone holds an elevated role �
 # One "About praiser" dropdown at the top holds both the intro and the role
 # glossary — so the meaning of every role is one obvious place to look (the result
 # cards point here). Kept out of the main flow so the landing screen stays lean.
-with st.expander("About praiser"):
+with st.expander("About praiser & role definitions"):
     st.markdown(
         "**praiser** records the projects where a person is an **author, "
         "maintainer, code owner, steering-council member, standards author, "
@@ -341,9 +341,10 @@ _ROLE_BADGE_COLOR = {
     "release_manager": "orange",  # gold-ish
     "core_contributor": "gray",   # neutral — the ubiquitous role
 }
-# A hoverable ⓘ after the badges points to the glossary in "About praiser".
-_ROLE_HINT = ('&nbsp;<span title="See “About praiser” (top of page) for what each '
-              'role means" style="cursor:help;opacity:0.5">ⓘ</span>')
+# A hoverable ⓘ after the badges points to the glossary in the About expander.
+_ROLE_HINT = ('&nbsp;<span title="See “About praiser & role definitions” (top of '
+              'page) for what each role means" style="cursor:help;opacity:0.5">ⓘ'
+              '</span>')
 
 
 def _role_badges(rec) -> str:
