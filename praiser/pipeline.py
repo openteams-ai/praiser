@@ -60,6 +60,10 @@ class RunResult:
     # praiser build that produced this record — so a stored result says which
     # code ran (no more guessing whether a deploy landed).
     version: str = __version__
+    # Count of projects the person genuinely contributed to (commits/PRs) that
+    # earned NO elevated role — surfaced so "few/no results" reads as "seen but
+    # below the bar", not "praiser missed my work" (#172).
+    below_bar_count: int = 0
 
 
 def _log(config: Config, msg: str) -> None:
@@ -115,6 +119,12 @@ def _dedupe(records: list[ProjectRecord]) -> list[ProjectRecord]:
 # --refresh to re-fetch it (that's the org-membership over-collection that blows
 # the rate limit — a user in ~30 orgs pulls ~30×30 such repos they never touched).
 _SPECULATIVE_SOURCES = {"org-repo", "registry"}
+
+# Discovery sources that mean the person *actually* contributed code (GitHub's own
+# contributed-to set + per-year commit history) — as opposed to speculative or
+# name/handle-search leads. Used to count genuine contributions that earned no
+# elevated role, so the UI can say "seen but below the bar" (#172).
+_GENUINE_CONTRIB_SOURCES = {"contributed", "history"}
 
 
 def _is_speculative(cand) -> bool:
@@ -190,7 +200,7 @@ def _scan_forge(
     if config.refresh and cache is not None:
         anchored = [c for c in candidates if not _is_speculative(c)]
         speculative = [c for c in candidates if _is_speculative(c)]
-        records, reset_in = _attribute(config, anchored, ctx, progress)
+        records, reset_in, below_bar = _attribute(config, anchored, ctx, progress)
         if speculative and reset_in is None:
             _log(config, f"{label}{len(speculative)} speculative repo(s) served "
                          "from cache (not refreshed)")
@@ -201,13 +211,13 @@ def _scan_forge(
             try:
                 # Don't name these repos in progress — a registry seed like
                 # kubernetes/kubernetes isn't a claim that this person is involved.
-                spec_records, reset_in = _attribute(
+                spec_records, reset_in, _ = _attribute(
                     config, speculative, ctx, progress, name_candidates=False)
             finally:
                 cache.refresh = orig_refresh
             records += spec_records
     else:
-        records, reset_in = _attribute(config, candidates, ctx, progress)
+        records, reset_in, below_bar = _attribute(config, candidates, ctx, progress)
     _log(config, f"{label}{len(records)} repos with elevated-role evidence")
 
     # Feed the reverse-index with the rosters we just fetched, so future scans
@@ -241,7 +251,7 @@ def _scan_forge(
             contributors=(std[1] if std and not std[2] else None))
     for name, sources in ctx.discovered_sources().items():
         registry.add_role_sources(name, sources)
-    return records, secondary, reset_in, ctx.diag_notes()
+    return records, secondary, reset_in, ctx.diag_notes(), below_bar
 
 
 def run(config: Config, cache=None, progress_cb=None, index_cache=None,
@@ -300,12 +310,13 @@ def run(config: Config, cache=None, progress_cb=None, index_cache=None,
         all_records: list[ProjectRecord] = []
         all_secondary: list[ProjectRecord] = []
         all_diag: list[str] = []
+        below_bar = 0
         reset_in: int | None = None
         multi = len(ids) > 1
         for fname, login in ids:
             forge = factory(fname)
             label = f"[{fname}] " if multi else ""
-            recs, sec, r_in, diag = _scan_forge(
+            recs, sec, r_in, diag, bbar = _scan_forge(
                 forge, login, identity, config, registry, llm, progress,
                 is_anchor=(fname == config.forge and login == config.username),
                 label=label, index=index, populate_index=populate_index,
@@ -314,6 +325,7 @@ def run(config: Config, cache=None, progress_cb=None, index_cache=None,
             all_records += recs
             all_secondary += sec
             all_diag += diag
+            below_bar += bbar
             if r_in is not None and reset_in is None:
                 reset_in = r_in
         progress.done()
@@ -342,6 +354,7 @@ def run(config: Config, cache=None, progress_cb=None, index_cache=None,
         return RunResult(
             records=records, secondary=secondary, partial_reset_in=reset_in,
             identity=identity, diag=all_diag, version=__version__,
+            below_bar_count=below_bar,
         )
     finally:
         for f in open_forges.values():
@@ -370,12 +383,14 @@ def _scan_one(extractors, cand, ctx, config) -> list[Evidence]:
 
 def _attribute(
     config, candidates, ctx, progress: Progress, *, name_candidates: bool = True
-) -> tuple[list[ProjectRecord], int | None]:
+) -> tuple[list[ProjectRecord], int | None, int]:
     """Attribute roles across candidates concurrently (I/O-bound network work).
 
-    Returns (records, reset_in). ``reset_in`` is the seconds-until-reset when a
-    rate limit cut the scan short (None otherwise). Workers only do network; the
-    progress display and record list are updated solely on this thread.
+    Returns (records, reset_in, below_bar). ``reset_in`` is the seconds-until-reset
+    when a rate limit cut the scan short (None otherwise). ``below_bar`` counts
+    candidates the person *genuinely contributed to* (commits/PRs) that earned no
+    elevated role (#172). Workers only do network; the progress display and record
+    list are updated solely on this thread.
 
     ``name_candidates=False`` shows a generic progress line without the repo name
     — used for the speculative seed/org-membership pass, where naming individual
@@ -385,6 +400,7 @@ def _attribute(
     extractors = all_extractors()
     records: list[ProjectRecord] = []
     reset_in: int | None = None
+    below_bar = 0
     total = len(candidates)
     done = 0
 
@@ -428,7 +444,11 @@ def _attribute(
                     ))
                     _log(config, f"  + {cand.name_with_owner}: "
                                  f"{[f'{e.source}:{e.role}' for e in evidence]}")
+                elif cand.sources & _GENUINE_CONTRIB_SOURCES:
+                    # Genuinely contributed (GitHub says so) but no elevated role —
+                    # count it so the UI can say "seen, below the bar" (#172).
+                    below_bar += 1
         finally:
             for f in futures:  # don't start work we no longer need
                 f.cancel()
-    return records, reset_in
+    return records, reset_in, below_bar
