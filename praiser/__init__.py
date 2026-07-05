@@ -5,7 +5,7 @@ member, standards author, release manager, and core contributor. Plain drive-by
 contributors are intentionally excluded.
 """
 
-_BASE_VERSION = "0.4.0"
+_BASE_VERSION = "0.5.0"
 
 
 def _git_revision() -> str | None:

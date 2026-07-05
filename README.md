@@ -6,10 +6,10 @@
 
 **🌟 Try the web demo: <https://praiser.streamlit.app/>**
 
-Given a username, **praiser** records the popular open-source projects where
-that person holds an **elevated role** — author/creator, maintainer, code owner,
-steering-council member, standards (PEP/RFC) author, release manager, or core
-contributor — with
+Given a username (or, on GitHub, a **full name** to look up), **praiser** records
+the popular open-source projects where that person holds an **elevated role** —
+author/creator, maintainer, code owner, steering-council member, standards
+(PEP/RFC) author, release manager, or core contributor — with
 a clickable **evidence link** and a **confidence** score for every claim. Plain
 drive-by contributors are intentionally excluded (the record would otherwise be
 enormous and low-signal). By default it prints a compact **highlights** summary;
@@ -87,10 +87,18 @@ Requires Python 3.11+ (for the stdlib `tomllib`).
 ```bash
 export GITHUB_TOKEN=ghp_...        # a PAT; raises rate limits and enables search
 praiser torvalds                 # default: the highlights summary (below)
+praiser "Linus Torvalds"         # a full name (GitHub): resolves to a username, or
+                                 #   lists candidates to re-run with the exact one
 praiser gvanrossum --format md   # the full report (Markdown)
 praiser gvanrossum --format json -o gvanrossum.json   # full report as JSON
 praiser someuser --no-discover-roles --no-llm         # skip the LLM/web features
 ```
+
+An input with a space is treated as a **full name** and resolved to a GitHub
+username first (GitHub only): a confident single match is scanned; several matches
+are listed so you can re-run with the exact handle (praiser never scans a guess);
+none prints guidance. `--no-wikidata` disables the opt-in Wikidata fallback used
+for notable people whose profile name differs from their real name.
 
 By default `praiser <username>` prints a compact **highlights** summary — the
 top roles, one line each, plus breadth stats. Use `--format md|json` for the
@@ -242,9 +250,12 @@ different frontend (FastAPI, Gradio, …) can reuse the core unchanged.
    (`ownership`, `codeowners`, `maintainers`, `manifests`, `enhancement_proposals`,
    `governance`, `contributors`, `subcomponents`, `authors`, `web_roles`,
    `packages`, `wikidata`, `wikipedia`, `releases`). The
-   `contributors` signal measures size by commits **and** merged-PR count
-   (robust to squash/ghstack one-commit-per-PR workflows and unlinked commit
-   emails); `subcomponents` credits leading/authoring a *part* of a monorepo via
+   `contributors` signal measures size by commit count and contributor rank
+   (deliberately a **simple, commit-based bar** — a commit/PR's real value is too
+   variable to tune precisely; merged-PR count is consulted only for
+   `--add-repo` repos). Contributions below the bar aren't force-fit into a role —
+   the web app reports them as a count ("also contributed to N projects below the
+   elevated bar") so nothing looks missed. `subcomponents` credits leading/authoring a *part* of a monorepo via
    commit-path analysis (e.g. f2py in NumPy, sparse tensors in PyTorch) — seeded
    in the registry and extendable with `--add-repo owner/repo:path`. `packages`
    credits **maintainer** of an npm/crates.io package (keyed on the user's login)
