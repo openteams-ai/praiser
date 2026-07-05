@@ -285,6 +285,8 @@ CACHE_VERSION = 6
 # "recent scans" picker. Soft-capped (oldest evicted) to bound the value size.
 _CATALOG_KEY = Cache.key("cache-catalog")
 _CATALOG_CAP = 1000
+# Pre-#181 recent-scans index key — abandoned, cleaned up by the admin clear.
+_LEGACY_RECENT_KEY = Cache.key("recent-scans-index")
 
 
 def _catalog_record(rcache, forge: str, username: str, cache_id: str) -> None:
@@ -341,6 +343,45 @@ def trash_cache_entry(cache_id: str, result_cache=None) -> bool:
         return True
     except Exception:
         return False
+
+
+def clear_tracked_scans(result_cache=None) -> int:
+    """Admin: delete every result entry the catalog tracks (+ the catalog and the
+    legacy recent-index), forcing a fresh scan for those users. Keeps the
+    expensive shared data (per-repo founder cache, contributor reverse-index).
+    Returns the number of scan entries cleared. Note: cache keys are opaque
+    hashes, so this can only clear entries recorded since the catalog existed —
+    older result blobs are indistinguishable from founder keys and just TTL out
+    (use wipe_all_cache for a true clean slate)."""
+    rcache = result_cache if result_cache is not None else make_result_cache()
+    if rcache is None:
+        return 0
+    rows = cache_catalog(rcache)
+    try:
+        for r in rows:
+            rcache.delete(r["cache_id"])
+        rcache.delete(_CATALOG_KEY)
+        rcache.delete(_LEGACY_RECENT_KEY)
+    except Exception:
+        pass
+    return len(rows)
+
+
+def wipe_all_cache(result_cache=None) -> int:
+    """Admin: wipe the ENTIRE praiser cache namespace — result entries, catalog,
+    founder cache, contributor reverse-index, everything — for a clean slate.
+    Returns the number of keys/entries removed (best-effort)."""
+    rcache = result_cache if result_cache is not None else make_result_cache()
+    if rcache is None:
+        return 0
+    try:
+        if hasattr(rcache, "clear_all"):     # RedisCache: SCAN + DEL praiser:*
+            return rcache.clear_all()
+        if hasattr(rcache, "clear"):         # local file Cache: wipe the dir
+            return rcache.clear()
+    except Exception:
+        pass
+    return 0
 
 
 def recent_scans(result_cache=None) -> list[dict]:

@@ -80,6 +80,25 @@ class RedisCache:
         """Remove a cached entry (best-effort; no-op if absent)."""
         self._command(["DEL", _PREFIX + key])
 
+    def clear_all(self) -> int:
+        """Delete EVERY praiser-namespaced key (SCAN + DEL). Returns the count
+        deleted. Best-effort; the keys are enumerable even though not reversible
+        to usernames. Used by the admin 'wipe all cache' action."""
+        deleted = 0
+        cursor = "0"
+        while True:
+            res = self._command(
+                ["SCAN", cursor, "MATCH", _PREFIX + "*", "COUNT", "500"])
+            if not isinstance(res, list) or len(res) != 2:
+                break
+            cursor, keys = res[0], res[1]
+            if keys:
+                self._command(["DEL", *keys])   # keys already include the prefix
+                deleted += len(keys)
+            if str(cursor) == "0":
+                break
+        return deleted
+
     def close(self) -> None:
         try:
             self._client.close()
