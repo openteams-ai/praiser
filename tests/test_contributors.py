@@ -103,9 +103,10 @@ def test_contributor_signal_kept_on_canonical_repo():
     assert ev and ev[0].role == "core_contributor"
 
 
-def test_merged_pr_rescue_elevates_undercounted_contributor():
-    # Commit count says plain contributor (5, rank ~50), but the user has many
-    # merged PRs (squash/ghstack, or unlinked email) -> elevated via PR count.
+def test_merged_pr_rescue_is_manual_only():
+    # The merged-PR rescue now fires ONLY for an explicitly-vouched (--add-repo)
+    # repo. Same undercounted contributor (5 commits, rank ~50, 150 merged PRs):
+    # elevated when manual, but NOT for a normal popular-repo scan (goes below-bar).
     from praiser.extractors.contributors import ContributorsExtractor
 
     class C:
@@ -114,20 +115,29 @@ def test_merged_pr_rescue_elevates_undercounted_contributor():
                    [ContributorCount("pearu", 5)]
         def merged_pr_count(self, o, r, login):
             return 150
+    # Not manual -> commit count (5) is below the bar, no PR rescue -> excluded.
     ctx = ExtractContext(
         identity=Identity(primary_login="pearu"), forge=C(),
+        registry=KnownProjects(projects={}), popularity_floor=50)
+    assert ContributorsExtractor().extract(Candidate("big/repo", stars=20000), ctx) == []
+    # Manual (--add-repo) -> PR rescue runs -> elevated via merged PRs.
+    mctx = ExtractContext(
+        identity=Identity(primary_login="pearu"), forge=C(),
         registry=KnownProjects(projects={}), popularity_floor=50,
-    )
-    ev = ContributorsExtractor().extract(Candidate("big/repo", stars=20000), ctx)
+        manual_repos={"big/repo"})
+    ev = ContributorsExtractor().extract(Candidate("big/repo", stars=20000), mctx)
     assert ev and ev[0].role == "core_contributor"
     assert "merged PRs" in ev[0].detail
 
 
-def test_merged_pr_rescue_credits_small_genuine_contribution():
-    # #169: a modest committer (8 commits, rank ~#31) to a SMALL project (53★,
-    # below the star gate) discovered via genuine contribution is credited when
-    # they have >= MIN_MERGED_PRS merged PRs — the star gate no longer blocks it.
+def test_small_genuine_contribution_below_bar_is_not_rescued():
+    # #169/#170 reverted: a modest committer (8 commits, rank ~#31) to a small
+    # project, discovered via genuine contribution, is NOT auto-rescued via PRs on
+    # a normal scan — the bar stays simple/commit-only; the repo is instead
+    # reported as a below-bar contribution (#172).
     from praiser.extractors.contributors import ContributorsExtractor
+
+    calls = {"pr": 0}
 
     class C:
         def repo_contributors(self, o, r, max_pages=2):
@@ -135,29 +145,13 @@ def test_merged_pr_rescue_credits_small_genuine_contribution():
                     + [ContributorCount("postmath", 8)]
                     + [ContributorCount(f"v{i}", 3) for i in range(70)])
         def merged_pr_count(self, o, r, login):
+            calls["pr"] += 1
             return 8
     ctx = ExtractContext(identity=Identity(primary_login="postmath"), forge=C(),
                          registry=KnownProjects(projects={}))
     cand = Candidate("torch-spyre/torch-spyre", stars=53, sources={"contributed"})
-    ev = ContributorsExtractor().extract(cand, ctx)
-    assert ev and ev[0].role == "core_contributor"
-    assert "8 merged PRs" in ev[0].detail
-
-
-def test_below_min_merged_prs_small_project_still_excluded():
-    # Fewer than MIN_MERGED_PRS merged PRs on a small project stays drive-by.
-    from praiser.extractors.contributors import ContributorsExtractor
-
-    class C:
-        def repo_contributors(self, o, r, max_pages=2):
-            return ([ContributorCount(f"u{i}", 50) for i in range(30)]
-                    + [ContributorCount("postmath", 3), ContributorCount("z", 1)])
-        def merged_pr_count(self, o, r, login):
-            return 3
-    ctx = ExtractContext(identity=Identity(primary_login="postmath"), forge=C(),
-                         registry=KnownProjects(projects={}))
-    cand = Candidate("small/proj", stars=53, sources={"contributed"})
     assert ContributorsExtractor().extract(cand, ctx) == []
+    assert calls["pr"] == 0     # no search-API call spent on a normal scan
 
 
 class _CappedForge:

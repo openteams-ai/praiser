@@ -97,9 +97,17 @@ meta-file), `llm.py` (optional, gated), `models.py` (roles + dataclasses).
 - **LLM is optional and gated** — heuristics/regex first, Claude only as a
   fallback or for `--discover-roles`. Supports an API key *or* a Claude
   subscription OAuth token. Code must degrade silently when no LLM is available.
-- **Contribution size** is measured by commits + contributor rank + merged-PR
-  count + path-scoped commits. A LOC-diff axis is **intentionally deferred** —
-  don't add it without a concrete need.
+- **Contribution size** is measured by commits + contributor rank + path-scoped
+  commits. A LOC-diff axis is **intentionally deferred** — don't add it without a
+  concrete need.
+- **The value of a commit/PR is extremely variable** (one commit can be a rewrite,
+  another a typo fix), so the core-contributor bar is deliberately **simple and
+  commit-only** — don't over-optimize the threshold or spend scarce API calls
+  (e.g. merged-PR search, 30/min) chasing marginal cases. Everything below the bar
+  is reported as a below-bar contribution count (#172), so nothing is "missed".
+  Merged-PR count is consulted only for explicitly-vouched `--add-repo` repos.
+  Corollary for the UI: **"Total commits" is a rough scale, never a comparative
+  measure between people** — message it that way.
 
 ## Recipe: add a new role-extractor
 
