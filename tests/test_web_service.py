@@ -178,8 +178,10 @@ def test_catalog_records_case_insensitively(monkeypatch, tmp_path):
 def test_cache_catalog_lists_entries_and_trash_removes_one(monkeypatch, tmp_path):
     _clock(monkeypatch)
     rc = Cache(tmp_path)
-    rc.set("keyA", "resultA"); service._catalog_record(rc, "github", "alice", "keyA")
-    rc.set("keyB", "resultB"); service._catalog_record(rc, "gitlab", "bob", "keyB")
+    rc.set("keyA", "resultA")
+    service._catalog_record(rc, "github", "alice", "keyA")
+    rc.set("keyB", "resultB")
+    service._catalog_record(rc, "gitlab", "bob", "keyB")
     rows = service.cache_catalog(result_cache=rc)
     assert {(r["forge"], r["username"], r["cache_id"]) for r in rows} == {
         ("github", "alice", "keyA"), ("gitlab", "bob", "keyB")}
