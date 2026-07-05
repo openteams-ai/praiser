@@ -183,8 +183,12 @@ def _resolve_username(args, token) -> int | None:
               "exact username, add more of their name, or find their handle on "
               "their GitHub profile / personal site / Wikidata.", file=sys.stderr)
         return 1
-    print(f"“{args.username}” matches several GitHub accounts — re-run with the "
-          "exact username:", file=sys.stderr)
+    lead = (f"“{args.username}” didn't confidently match a GitHub account. "
+            if len(candidates) == 1 else
+            f"“{args.username}” matches several GitHub accounts. ")
+    print(lead + "Re-run with the exact username if one of these is right "
+          "(else find their handle on their GitHub profile / site):",
+          file=sys.stderr)
     for c in candidates:
         print(f"  {c.login:20} — {c.name or ''}".rstrip(), file=sys.stderr)
     return 1
