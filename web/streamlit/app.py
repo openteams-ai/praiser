@@ -343,8 +343,7 @@ _ROLE_BADGE_COLOR = {
 }
 # A hoverable ⓘ after the badges points to the glossary in the About expander.
 _ROLE_HINT = ('&nbsp;<span title="See “About praiser & role definitions” (top of '
-              'page) for what each role means" style="cursor:help;opacity:0.5">ⓘ'
-              '</span>')
+              'page)" style="cursor:help;opacity:0.5">ⓘ</span>')
 
 
 def _role_badges(rec) -> str:
