@@ -227,7 +227,10 @@ def test_clear_tracked_scans_removes_tracked_entries_and_catalog(monkeypatch, tm
     service._catalog_record(rc, "gitlab", "bob", "keyB")
     n = service.clear_tracked_scans(result_cache=rc)
     assert n == 2
-    assert rc.get("keyA") is None and rc.get("keyB") is None
+    # Trash-all: each entry becomes a one-shot refresh marker (not deleted), so the
+    # next scan of each user re-fetches live instead of serving stale HTTP cache.
+    assert rc.get("keyA") == service._REFRESH_MARKER
+    assert rc.get("keyB") == service._REFRESH_MARKER
     assert service.cache_catalog(result_cache=rc) == []
 
 

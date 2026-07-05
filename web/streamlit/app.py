@@ -511,7 +511,8 @@ def _clear_tracked_scans():
     _clear_session_lru()
     st.session_state["admin_confirm"] = False
     st.session_state["admin_flash"] = (
-        f"Cleared {n} tracked cached scan(s); founder cache + reverse-index kept.")
+        f"Cleared {n} tracked cached scan(s) — each user's next scan re-fetches live; "
+        "founder cache + reverse-index kept.")
 
 
 def _wipe_all_cache():
@@ -587,8 +588,9 @@ def _render_admin_danger_zone():
     b1, b2 = st.columns(2)
     b1.button("Clear cached scans", disabled=not confirm, on_click=_clear_tracked_scans,
               use_container_width=True,
-              help="Delete tracked scan results (+ catalog) so everyone re-scans "
-                   "fresh; keeps the founder cache + reverse-index.")
+              help="Trash every tracked user — each one's next scan re-fetches live "
+                   "(same as per-row Trash, in bulk); keeps the founder cache + "
+                   "reverse-index.")
     b2.button("Wipe ALL cache", disabled=not confirm, on_click=_wipe_all_cache,
               use_container_width=True, type="primary",
               help="Wipe the entire praiser cache namespace — a clean slate, "
