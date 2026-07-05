@@ -361,9 +361,11 @@ def _below_bar_note(result, uname):
     n = getattr(result, "below_bar_count", 0) or 0
     if not n:
         return ""
-    return (f"praiser also saw **{n}** project(s) {uname} contributed to that "
-            "don't rise to an elevated role (drive-by / modest contributions) — "
-            "these are intentionally not listed.")
+    return (f"praiser also saw **{n}** other project(s) {uname} contributed to "
+            "where the number of commits attributed to them is below praiser's "
+            "threshold for an elevated role, so none is listed — this is a commit-"
+            "count threshold, not a judgment of the work (attributed commits can "
+            "undercount real contributions).")
 
 
 def _show_highlights(result, uname, controls_shown=True):
