@@ -69,3 +69,10 @@ class Cache:
             tmp.replace(path)
         finally:
             tmp.unlink(missing_ok=True)
+
+    def delete(self, key: str) -> None:
+        """Remove a cached entry (no-op if absent). Best-effort."""
+        try:
+            self._path(key).unlink(missing_ok=True)
+        except OSError:
+            pass

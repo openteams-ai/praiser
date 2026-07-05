@@ -76,6 +76,10 @@ class RedisCache:
     def has(self, key: str) -> bool:
         return self._command(["EXISTS", _PREFIX + key]) == 1
 
+    def delete(self, key: str) -> None:
+        """Remove a cached entry (best-effort; no-op if absent)."""
+        self._command(["DEL", _PREFIX + key])
+
     def close(self) -> None:
         try:
             self._client.close()

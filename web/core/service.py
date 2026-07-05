@@ -9,6 +9,7 @@ import base64
 import functools
 import os
 import pickle
+import time
 import urllib.parse
 
 from praiser.cache import Cache
@@ -276,55 +277,83 @@ def search_people(name: str, *, forge: str = "github", token: str | None = None,
 # pearu's Author) for 30 days — the real cause of #108.
 CACHE_VERSION = 6
 
-# A small index of recently-scanned (forge, login) pairs — the cache keys are
-# hashed and can't be enumerated, so we track names separately for a UI picker.
-_RECENT_KEY = Cache.key("recent-scans-index")
-_RECENT_CAP = 50
+# Cache catalog: a durable index of the result-cache entries we've written, so the
+# admin UI can list and individually invalidate them (the cache keys are hashed and
+# otherwise un-enumerable). One shared value keyed by cache_id — works on both
+# backends via get/set (no backend-specific commands). Flat, extensible record per
+# entry: {forge, username, created} keyed by the entry's cache_id. Also backs the
+# "recent scans" picker. Soft-capped (oldest evicted) to bound the value size.
+_CATALOG_KEY = Cache.key("cache-catalog")
+_CATALOG_CAP = 1000
 
 
-def _record_recent(rcache, forge: str, username: str) -> None:
-    """Prepend (forge, username) to the recent-scans index (best-effort).
-
-    Forge usernames are case-insensitive, so store the canonical lowercase handle
-    and dedupe case-insensitively — "Pearu" and "pearu" are one entry."""
+def _catalog_record(rcache, forge: str, username: str, cache_id: str) -> None:
+    """Record a written result-cache entry in the catalog (best-effort)."""
     if rcache is None:
         return
     try:
-        idx = rcache.get(_RECENT_KEY) or []
-        entry = [forge, username.lower()]
-        idx = [entry] + [e for e in idx if not _same_scan(e, entry)]
-        rcache.set(_RECENT_KEY, idx[:_RECENT_CAP])
+        cat = rcache.get(_CATALOG_KEY) or {}
+        if not isinstance(cat, dict):
+            cat = {}
+        cat[cache_id] = {"forge": forge, "username": username.lower(),
+                         "created": time.time()}
+        if len(cat) > _CATALOG_CAP:      # evict oldest by created
+            keep = sorted(cat.items(), key=lambda kv: kv[1].get("created", 0),
+                          reverse=True)[:_CATALOG_CAP]
+            cat = dict(keep)
+        rcache.set(_CATALOG_KEY, cat)
     except Exception:
         pass
 
 
-def _same_scan(a, b) -> bool:
-    """Whether two recent-index entries name the same (forge, user), case-insensitively."""
-    return (isinstance(a, list) and len(a) == 2
-            and a[0] == b[0] and str(a[1]).lower() == str(b[1]).lower())
-
-
-def recent_scans(result_cache=None) -> list[dict]:
-    """Recently-scanned ``[{"forge", "username"}]``, most-recent-first (for a UI
-    picker). Reads the shared index once; degrades to [] on any error. Dedupes
-    case-insensitively so pre-existing mixed-case entries collapse to one."""
+def cache_catalog(result_cache=None) -> list[dict]:
+    """Recorded result-cache entries, most-recent-first:
+    ``[{"forge", "username", "cache_id", "created"}]``. [] on any error."""
     rcache = result_cache if result_cache is not None else make_result_cache()
     if rcache is None:
         return []
     try:
-        idx = rcache.get(_RECENT_KEY) or []
+        cat = rcache.get(_CATALOG_KEY) or {}
     except Exception:
         return []
+    if not isinstance(cat, dict):
+        return []
+    rows = [{"forge": r.get("forge"), "username": r.get("username"),
+             "cache_id": cid, "created": r.get("created", 0)}
+            for cid, r in cat.items() if isinstance(r, dict)]
+    rows.sort(key=lambda r: r["created"], reverse=True)
+    return rows
+
+
+def trash_cache_entry(cache_id: str, result_cache=None) -> bool:
+    """Admin: delete one cached result + its catalog row so the next scan of that
+    user is fresh. Touches only this entry (never other users' cache or the shared
+    founder/reverse-index data). Returns True on best-effort success."""
+    rcache = result_cache if result_cache is not None else make_result_cache()
+    if rcache is None:
+        return False
+    try:
+        rcache.delete(cache_id)
+        cat = rcache.get(_CATALOG_KEY) or {}
+        if isinstance(cat, dict) and cache_id in cat:
+            del cat[cache_id]
+            rcache.set(_CATALOG_KEY, cat)
+        return True
+    except Exception:
+        return False
+
+
+def recent_scans(result_cache=None) -> list[dict]:
+    """Recently-scanned ``[{"forge", "username"}]``, most-recent-first, distinct
+    (for a UI picker) — derived from the cache catalog."""
     out: list[dict] = []
     seen: set[tuple[str, str]] = set()
-    for e in idx:
-        if not (isinstance(e, list) and len(e) == 2):
-            continue
-        key = (e[0], str(e[1]).lower())
+    for r in cache_catalog(result_cache):
+        key = (r["forge"], str(r["username"]).lower())
         if key in seen:
             continue
         seen.add(key)
-        out.append({"forge": e[0], "username": e[1]})
+        out.append({"forge": r["forge"], "username": r["username"]})
     return out
 
 
@@ -411,7 +440,7 @@ def collect(
     # must not be frozen for the cache TTL; let a later retry get the full data.
     if rcache is not None and result.partial_reset_in is None:
         rcache.set(rkey, _dumps(result))
-        _record_recent(rcache, forge, username)
+        _catalog_record(rcache, forge, username, rkey)
     return result
 
 

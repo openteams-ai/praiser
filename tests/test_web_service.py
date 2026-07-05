@@ -138,10 +138,17 @@ def test_cache_version_bump_invalidates_stored_results(monkeypatch, tmp_path):
     assert runs["n"] == 2   # new version -> cache miss -> re-scanned
 
 
+def _clock(monkeypatch, start=1000.0):
+    """Monkeypatch service.time.time to a strictly-increasing counter so
+    created-timestamp ordering is deterministic in tests."""
+    seq = iter(range(10**6))
+    monkeypatch.setattr(service.time, "time", lambda: start + next(seq))
+
+
 def test_recent_scans_records_on_scan_most_recent_first(monkeypatch, tmp_path):
-    # The cache keys are hashed, so this index is the only way to enumerate
-    # scanned names. Recorded on an actual scan (a cache HIT is not re-recorded,
-    # to avoid extra shared-cache commands per view).
+    # The cache keys are hashed, so the catalog is the only way to enumerate
+    # scanned names. Recorded on an actual scan (a cache HIT is not re-recorded).
+    _clock(monkeypatch)
     monkeypatch.setattr(service, "run",
                         lambda config, cache=None, progress_cb=None, index_cache=None, populate_index=True:
                         RunResult(records=[_rec("a/b", 100)], secondary=[]))
@@ -154,26 +161,37 @@ def test_recent_scans_records_on_scan_most_recent_first(monkeypatch, tmp_path):
     assert len(recent) == 2                                     # no dup from the hit
 
 
-def test_record_recent_dedupes_to_front(tmp_path):
-    rc = Cache(tmp_path)
-    service._record_recent(rc, "github", "alice")
-    service._record_recent(rc, "gitlab", "bob")
-    service._record_recent(rc, "github", "alice")  # re-scan -> moves to front
-    assert [r["username"] for r in service.recent_scans(result_cache=rc)] == \
-        ["alice", "bob"]
-
-
 def test_recent_scans_empty_when_no_index(tmp_path):
     assert service.recent_scans(result_cache=Cache(tmp_path)) == []
 
 
-def test_record_recent_is_case_insensitive(tmp_path):
+def test_catalog_records_case_insensitively(monkeypatch, tmp_path):
     # "Pearu" (phone autocapitalization) and "pearu" are the same account.
+    _clock(monkeypatch)
     rc = Cache(tmp_path)
-    service._record_recent(rc, "github", "Pearu")
-    service._record_recent(rc, "github", "pearu")
+    service._catalog_record(rc, "github", "Pearu", "key1")
+    service._catalog_record(rc, "github", "pearu", "key2")
     recent = service.recent_scans(result_cache=rc)
     assert [(r["forge"], r["username"]) for r in recent] == [("github", "pearu")]
+
+
+def test_cache_catalog_lists_entries_and_trash_removes_one(monkeypatch, tmp_path):
+    _clock(monkeypatch)
+    rc = Cache(tmp_path)
+    rc.set("keyA", "resultA")
+    service._catalog_record(rc, "github", "alice", "keyA")
+    rc.set("keyB", "resultB")
+    service._catalog_record(rc, "gitlab", "bob", "keyB")
+    rows = service.cache_catalog(result_cache=rc)
+    assert {(r["forge"], r["username"], r["cache_id"]) for r in rows} == {
+        ("github", "alice", "keyA"), ("gitlab", "bob", "keyB")}
+    assert all("created" in r for r in rows)
+    # Trash alice: her cache entry + catalog row gone; bob untouched.
+    assert service.trash_cache_entry("keyA", result_cache=rc) is True
+    assert rc.get("keyA") is None
+    assert rc.get("keyB") == "resultB"
+    left = service.cache_catalog(result_cache=rc)
+    assert [(r["username"], r["cache_id"]) for r in left] == [("bob", "keyB")]
 
 
 def test_feedback_links_prefill_title_body_and_labels():
@@ -218,16 +236,6 @@ def test_feedback_body_truncated_under_url_cap():
     assert all(len(ln["url"]) < 8000 for ln in links)              # under GitHub's GET cap
     body = urllib.parse.parse_qs(links[0]["url"].split("?", 1)[1])["body"][0]
     assert "(truncated)" in body                                   # oversized result trimmed
-
-
-def test_recent_scans_collapses_preexisting_mixed_case(tmp_path):
-    # An index written before the fix (mixed case + duplicate) collapses on read.
-    rc = Cache(tmp_path)
-    rc.set(service._RECENT_KEY,
-           [["github", "Pearu"], ["github", "pearu"], ["gitlab", "bob"]])
-    recent = service.recent_scans(result_cache=rc)
-    assert [(r["forge"], r["username"]) for r in recent] == \
-        [("github", "Pearu"), ("gitlab", "bob")]   # first occurrence's display kept
 
 
 def test_render_result_highlights_respects_top_n():
