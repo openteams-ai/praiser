@@ -135,3 +135,71 @@ def test_owning_only_the_codeowners_file_yields_no_code_owner_role():
         Candidate("o/r", stars=15000),
         _ctx(Identity(primary_login="bob"), _Forge("CODEOWNERS  @bob\n")))
     assert ev == []
+
+
+def test_github_comment_gating_and_fallback():
+    # Only section-style comments are kept as scope labels; others fall back to path.
+    text = (
+        "# Pavithra, Tania & Ralf as default reviewers for Labs blogs and assets\n"
+        "blog/  @bob\n"
+        "\n"
+        "# Build related files\n"
+        "build/  @bob\n"
+        "\n"
+        "# *.js @someone\n"
+        "src/  @bob\n"
+        "\n"
+        "# Dev CLI\n"
+        "cli/  @bob\n"
+        "\n"
+        "# Testing infrastructure\n"
+        "test/  @bob\n"
+        "\n"
+        "# Meson\n"
+        "meson.build  @bob\n"
+        "\n"
+        "# Frontend & Backend\n"
+        "web/  @bob\n"
+        "\n"
+        "# Build and Release\n"
+        "rel/  @bob\n"
+        "\n"
+        "# Docs and Tutorials\n"
+        "docs/  @bob\n"
+        "\n"
+        "# Docs as code\n"
+        "docs2/  @bob\n"
+        "\n"
+        "*  @bob\n"
+    )
+    evs = CodeownersExtractor().extract(
+        Candidate("o/r", stars=15000), _ctx(Identity(primary_login="bob"), _Forge(text))
+    )
+    quals = set(e.qualifier for e in evs)
+    expected = {
+        "blog/", "src/", None,  # fallbacks
+        "Build related files", "Dev CLI", "Testing infrastructure", "Meson",
+        "Frontend & Backend", "Build and Release", "Docs and Tutorials", "Docs as code"
+    }
+    assert quals == expected
+    # Assert personal names did not leak
+    assert not any(q and "Pavithra" in q for q in quals)
+
+
+def test_gitlab_sections():
+    # GitLab sections are parsed natively and override github fallback logic
+    text = (
+        "[Payments]\n"
+        "pay/  @bob\n"
+        "\n"
+        "^[Optional]\n"
+        "opt/  @bob\n"
+        "\n"
+        "[Docs][2]\n"
+        "docs/  @bob\n"
+    )
+    evs = CodeownersExtractor().extract(
+        Candidate("o/r", stars=15000), _ctx(Identity(primary_login="bob"), _Forge(text))
+    )
+    quals = set(e.qualifier for e in evs)
+    assert quals == {"Payments", "Optional", "Docs"}
