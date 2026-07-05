@@ -288,6 +288,27 @@ _CATALOG_CAP = 1000
 # Pre-#181 recent-scans index key — abandoned, cleaned up by the admin clear.
 _LEGACY_RECENT_KEY = Cache.key("recent-scans-index")
 
+# Usage counters (admin summary). Cheap: a couple of INCRs per *actual* scan
+# (cache hits don't count — see collect). The per-day key self-expires so the
+# breakdown stays a rolling window without unbounded growth.
+_SCANS_TOTAL_KEY = Cache.key("stats-scans-total")
+_SCANS_DAY_TTL = 120 * 86_400   # keep ~4 months of daily buckets
+
+
+def _scans_day_key(day: str | None = None) -> str:
+    return Cache.key("stats-scans-day", day or time.strftime("%Y-%m-%d", time.gmtime()))
+
+
+def _record_scan_metric(rcache) -> None:
+    """Count one completed scan (best-effort; never breaks a scan)."""
+    if rcache is None:
+        return
+    try:
+        rcache.incr(_SCANS_TOTAL_KEY)
+        rcache.incr(_scans_day_key(), ttl=_SCANS_DAY_TTL)
+    except Exception:
+        pass
+
 
 def _catalog_record(rcache, forge: str, username: str, cache_id: str) -> None:
     """Record a written result-cache entry in the catalog (best-effort)."""
@@ -382,6 +403,46 @@ def wipe_all_cache(result_cache=None) -> int:
     except Exception:
         pass
     return 0
+
+
+def usage_summary(result_cache=None) -> dict:
+    """Cheap admin cache/usage stats — a handful of O(1) reads, nothing that runs
+    during a scan. Returns::
+
+        {"keys": int|None,          # total keys in the cache DB (DBSIZE)
+         "tracked_scans": int,      # entries the catalog tracks (a subset of keys)
+         "scans_total": int|None,   # lifetime completed scans (counter)
+         "scans_today": int|None,   # completed scans today (UTC, rolling counter)
+         "newest": float|None,      # newest tracked-scan created ts
+         "oldest": float|None}      # oldest tracked-scan created ts
+
+    Per-category memory (results vs founder cache vs contributor reverse-index)
+    is deliberately absent: keys are opaque SHA hashes, so those categories can't
+    be told apart without an O(N) MEMORY-USAGE sweep — too costly for a summary.
+    """
+    rcache = result_cache if result_cache is not None else make_result_cache()
+    out = {"keys": None, "tracked_scans": 0, "scans_total": None,
+           "scans_today": None, "newest": None, "oldest": None}
+    if rcache is None:
+        return out
+    rows = cache_catalog(rcache)
+    out["tracked_scans"] = len(rows)
+    if rows:
+        out["newest"] = rows[0].get("created")
+        out["oldest"] = rows[-1].get("created")
+    try:
+        if hasattr(rcache, "key_count"):
+            out["keys"] = rcache.key_count()
+    except Exception:
+        pass
+    for field, key in (("scans_total", _SCANS_TOTAL_KEY),
+                       ("scans_today", _scans_day_key())):
+        try:
+            v = rcache.get(key)
+            out[field] = int(v) if v is not None else None
+        except Exception:
+            pass
+    return out
 
 
 def recent_scans(result_cache=None) -> list[dict]:
@@ -482,6 +543,7 @@ def collect(
     if rcache is not None and result.partial_reset_in is None:
         rcache.set(rkey, _dumps(result))
         _catalog_record(rcache, forge, username, rkey)
+        _record_scan_metric(rcache)
     return result
 
 

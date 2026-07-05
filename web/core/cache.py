@@ -99,6 +99,22 @@ class RedisCache:
                 break
         return deleted
 
+    def incr(self, key: str, ttl: int | None = None) -> int | None:
+        """Atomically increment a counter (INCR) and return the new value. On the
+        first increment (value becomes 1) set ``ttl`` seconds of expiry if given,
+        so rolling counters (e.g. per-day scan counts) self-expire. One command
+        (two on the first hit). Best-effort — None on backend error."""
+        n = self._command(["INCR", _PREFIX + key])
+        if ttl and n == 1:
+            self._command(["EXPIRE", _PREFIX + key, str(int(ttl))])
+        return n if isinstance(n, int) else None
+
+    def key_count(self) -> int | None:
+        """Number of keys in the Redis DB (DBSIZE — one command). Counts the
+        whole DB; on a praiser-dedicated Upstash DB that equals the namespace."""
+        n = self._command(["DBSIZE"])
+        return n if isinstance(n, int) else None
+
     def close(self) -> None:
         try:
             self._client.close()

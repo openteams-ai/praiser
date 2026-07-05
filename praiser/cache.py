@@ -77,6 +77,25 @@ class Cache:
         except OSError:
             pass
 
+    def incr(self, key: str, ttl: float | None = None) -> int | None:
+        """Increment an integer counter and return the new value (starts at 1).
+        ``ttl`` is accepted for interface parity with the Redis backend and
+        ignored here (file entries expire via the cache-wide ttl). Best-effort;
+        non-atomic (single-process file cache), returns None on error."""
+        try:
+            n = int(self.get(key) or 0) + 1
+        except (TypeError, ValueError):
+            n = 1
+        self.set(key, n)
+        return n
+
+    def key_count(self) -> int | None:
+        """Number of entries in this cache directory (best-effort)."""
+        try:
+            return len(list(self.dir.glob("*.json")))
+        except OSError:
+            return None
+
     def clear(self) -> int:
         """Remove every cached entry in this cache's directory; return the count.
         Best-effort (skips files it can't unlink)."""

@@ -512,6 +512,7 @@ def _render_admin_frame():
     st.caption(f"Signed in as @{USER_LOGIN} · admin.")
     if (flash := st.session_state.pop("admin_flash", None)):
         st.success(flash)
+    _render_admin_summary()
     st.markdown("**Cached scans** — Trash an entry to force a fresh scan on the "
                 "shared cache (affects only that user).")
     rows = service.cache_catalog()
@@ -528,6 +529,33 @@ def _render_admin_frame():
                       on_click=_trash_cache_entry, args=(r["cache_id"], r["username"]),
                       use_container_width=True)
     _render_admin_danger_zone()
+
+
+def _render_admin_summary():
+    """Cheap cache/usage stats (a few O(1) reads; nothing that runs per scan)."""
+    s = service.usage_summary()
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Scans (total)", s["scans_total"] if s["scans_total"] is not None else "—")
+    m2.metric("Scans (today)", s["scans_today"] if s["scans_today"] is not None else "0")
+    m3.metric("Tracked scans", s["tracked_scans"])
+    m4.metric("Cache keys", s["keys"] if s["keys"] is not None else "—")
+    now = time.time()
+    span = ""
+    if s["newest"]:
+        span = f" · newest {humanize_wait(int(now - s['newest']))} ago"
+    if s["oldest"] and s["oldest"] != s["newest"]:
+        span += f", oldest {humanize_wait(int(now - s['oldest']))} ago"
+    rb = _rate_budget(USER_TOKEN)
+    present = [(lbl, *rb[res]) for res, lbl in _BUDGET_BUCKETS if res in rb]
+    rl = ""
+    if present:
+        rl = " · rate budget: " + ", ".join(
+            f"{lbl} {rem}/{lim}" for lbl, rem, lim, _ in present)
+    st.caption(
+        f"'Scans' count actual data-collection runs (cache hits don't count). "
+        f"'Cache keys' is the whole cache DB — results, per-repo founder cache and "
+        f"the contributor reverse-index share one opaque namespace, so per-category "
+        f"memory isn't broken out.{span}{rl}")
 
 
 def _render_admin_danger_zone():

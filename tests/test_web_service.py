@@ -217,6 +217,35 @@ def test_wipe_all_cache_clears_local_dir(tmp_path):
     assert rc.get("k1") is None and rc.get("k2") is None and rc.get("k3") is None
 
 
+def test_scan_counters_count_actual_scans_not_cache_hits(monkeypatch, tmp_path):
+    _clock(monkeypatch)
+    monkeypatch.setattr(service, "run",
+                        lambda config, cache=None, progress_cb=None, index_cache=None, populate_index=True:
+                        RunResult(records=[_rec("a/b", 100)], secondary=[]))
+    rc, hc = Cache(tmp_path), Cache(tmp_path / "h")
+    service.collect("alice", forge="github", result_cache=rc, http_cache=hc)
+    service.collect("bob", forge="github", result_cache=rc, http_cache=hc)
+    service.collect("alice", forge="github", result_cache=rc, http_cache=hc)  # HIT
+    s = service.usage_summary(result_cache=rc)
+    assert s["scans_total"] == 2      # two actual scans; the hit didn't count
+    assert s["scans_today"] == 2
+    assert s["tracked_scans"] == 2
+
+
+def test_usage_summary_reports_cheap_stats(monkeypatch, tmp_path):
+    _clock(monkeypatch)
+    rc = Cache(tmp_path)
+    rc.set("keyA", "rA")
+    service._catalog_record(rc, "github", "alice", "keyA")
+    rc.set("keyB", "rB")
+    service._catalog_record(rc, "gitlab", "bob", "keyB")
+    s = service.usage_summary(result_cache=rc)
+    assert s["tracked_scans"] == 2
+    assert s["keys"] == rc.key_count()          # counts all files in the dir
+    assert s["newest"] is not None and s["oldest"] is not None
+    assert s["scans_total"] is None             # no scans recorded → no counter yet
+
+
 def test_feedback_links_prefill_title_body_and_labels():
     import urllib.parse
     links = service.feedback_links(
