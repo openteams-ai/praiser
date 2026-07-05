@@ -37,6 +37,29 @@ class SizeBoundedLRU:
     def total_bytes(self) -> int:
         return self._total
 
+    def pop(self, key, default=None):
+        """Remove ``key`` and return its value (``default`` if absent)."""
+        if key in self._d:
+            value, size = self._d.pop(key)
+            self._total -= size
+            return value
+        return default
+
+    def discard_where(self, predicate) -> int:
+        """Drop every entry whose key satisfies ``predicate(key)``; return the
+        count removed. Used to evict a user from a session after an admin trashes
+        their shared cache, so the next Praise re-scans instead of serving the
+        stale in-session copy."""
+        doomed = [k for k in self._d if predicate(k)]
+        for k in doomed:
+            self.pop(k)
+        return len(doomed)
+
+    def clear(self) -> None:
+        """Drop all entries."""
+        self._d.clear()
+        self._total = 0
+
     def put(self, key, value) -> None:
         size = len(pickle.dumps(value))
         if key in self._d:                    # replacing: drop the old size first

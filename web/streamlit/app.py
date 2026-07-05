@@ -481,17 +481,34 @@ def _feedback_buttons(result, uname, forge, data_opts):
                    "pre-filled issue you post under your own GitHub login._")
 
 
-def _trash_cache_entry(cache_id, username):
+def _trash_cache_entry(cache_id, username, forge="github"):
     """Admin Trash callback: drop a user's shared cached result so the next scan
     of that user is fresh (doesn't touch other users' cache)."""
     ok = service.trash_cache_entry(cache_id)
+    # Also evict this user from THIS admin's in-session LRU — otherwise the shared
+    # entry is gone but re-typing the name serves the stale in-memory copy (the
+    # session cache is checked before collect(), so no re-scan would fire).
+    lru = st.session_state.get("results")
+    if lru is not None:
+        lru.discard_where(
+            lambda k: isinstance(k, tuple) and k
+            and str(k[0]).lower() == str(username).lower()
+            and (len(k) < 2 or k[1] == forge))
     st.session_state["admin_flash"] = (
         f"🗑 Cleared cached scan for {username} — the next scan will be fresh."
         if ok else f"Couldn't clear the cached scan for {username}.")
 
 
+def _clear_session_lru():
+    """Wipe this admin's in-session result cache so bulk clears actually re-scan."""
+    lru = st.session_state.get("results")
+    if lru is not None:
+        lru.clear()
+
+
 def _clear_tracked_scans():
     n = service.clear_tracked_scans()
+    _clear_session_lru()
     st.session_state["admin_confirm"] = False
     st.session_state["admin_flash"] = (
         f"Cleared {n} tracked cached scan(s); founder cache + reverse-index kept.")
@@ -499,6 +516,7 @@ def _clear_tracked_scans():
 
 def _wipe_all_cache():
     n = service.wipe_all_cache()
+    _clear_session_lru()
     st.session_state["admin_confirm"] = False
     st.session_state["admin_flash"] = (
         f"Wiped {n} cache key(s) — clean slate (founder cache + reverse-index too).")
@@ -526,7 +544,8 @@ def _render_admin_frame():
             age = humanize_wait(int(now - r["created"])) if r.get("created") else "?"
             c2.caption(f"updated {age} ago")
             c3.button("🗑 Trash", key=f"trash_{r['cache_id']}",
-                      on_click=_trash_cache_entry, args=(r["cache_id"], r["username"]),
+                      on_click=_trash_cache_entry,
+                      args=(r["cache_id"], r["username"], r["forge"]),
                       use_container_width=True)
     _render_admin_danger_zone()
 
