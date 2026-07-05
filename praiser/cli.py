@@ -8,6 +8,7 @@ from . import __version__
 from . import llm as _llm
 from .config import Config, resolve_token
 from .github_client import RateLimitError
+from .nameresolve import looks_like_name, resolve_name
 from .pipeline import _humanize, run
 from .render import render, render_highlights
 
@@ -149,6 +150,46 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _resolve_username(args, token) -> int | None:
+    """Resolve ``args.username`` (a full name) to a login, in place.
+
+    Returns None to continue scanning ``args.username`` (a confident single match,
+    now rewritten to the login), or an exit code when there's nothing to scan
+    (ambiguous → print candidates; none → guidance; non-GitHub → not supported)."""
+    if args.forge != "github":
+        print(f"error: looking someone up by name is GitHub-only for now — enter "
+              f"the exact {args.forge} username, or use --forge github.",
+              file=sys.stderr)
+        return 1
+    from .cache import Cache
+    from .config import default_cache_dir
+    from .forge import GitHubForge
+    forge = GitHubForge(token, Cache(args.cache_dir or default_cache_dir()))
+    try:
+        confident, candidates = resolve_name(
+            forge, args.username, use_wikidata=args.wikidata)
+    except RateLimitError as exc:
+        print(f"error: GitHub rate limit reached during name lookup; wait "
+              f"{_humanize(exc.reset_in)} and retry.", file=sys.stderr)
+        return 1
+    finally:
+        forge.close()
+    if confident:
+        print(f"resolved “{args.username}” → @{confident}", file=sys.stderr)
+        args.username = confident
+        return None
+    if not candidates:
+        print(f"error: no GitHub account found for “{args.username}”. Enter the "
+              "exact username, add more of their name, or find their handle on "
+              "their GitHub profile / personal site / Wikidata.", file=sys.stderr)
+        return 1
+    print(f"“{args.username}” matches several GitHub accounts — re-run with the "
+          "exact username:", file=sys.stderr)
+    for c in candidates:
+        print(f"  {c.login:20} — {c.name or ''}".rstrip(), file=sys.stderr)
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
@@ -178,6 +219,14 @@ def main(argv: list[str] | None = None) -> int:
                 "--token for a usable scan.",
                 file=sys.stderr,
             )
+
+    # If the input looks like a full NAME (has a space — handles can't), resolve
+    # it to a username first. Same policy as the web: scan a confident single
+    # match, else print candidates to pick from (never auto-scan a guess). #142
+    if looks_like_name(args.username):
+        rc = _resolve_username(args, token)
+        if rc is not None:      # resolution didn't yield a single account to scan
+            return rc
 
     # Role discovery is on by default; only nag about missing creds/conflicts
     # when the user EXPLICITLY asked for it (default-on degrades silently).

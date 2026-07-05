@@ -9,7 +9,6 @@ import base64
 import functools
 import os
 import pickle
-import re
 import urllib.parse
 
 from praiser.cache import Cache
@@ -214,24 +213,9 @@ def _token_for(forge: str) -> str | None:
     return None
 
 
-def looks_like_name(query: str) -> bool:
-    """Whether ``query`` is a full name to resolve rather than a handle to scan.
-    Forge usernames never contain spaces, so a space is an unambiguous signal."""
-    return " " in query.strip()
-
-
-def name_matches(query: str, name: str | None) -> bool:
-    """Whether a candidate's profile ``name`` genuinely matches the searched
-    ``query`` — every query token present in the name (order/middle-name tolerant).
-    Used to decide whether a *single* search hit is safe to auto-scan: GitHub
-    ranks a loose hit first even when it's the wrong person (e.g. "Victor Fomin"
-    surfaces "FominVictor", not the person whose profile name is "vfdev"), so we
-    only auto-scan when the name really lines up; otherwise the user confirms."""
-    if not name:
-        return False
-    q = {t for t in re.split(r"[\s.]+", query.lower()) if t}
-    n = {t for t in re.split(r"[\s.]+", name.lower()) if t}
-    return bool(q) and q <= n
+# Name→username resolution lives in praiser core (shared with the CLI); re-exported
+# here so the web app keeps importing service.looks_like_name / service.name_matches.
+from praiser.nameresolve import looks_like_name, name_matches, resolve_name  # noqa: E402,F401
 
 
 def rate_budget(token: str | None = None) -> dict:
@@ -252,17 +236,20 @@ def rate_budget(token: str | None = None) -> dict:
 
 
 def search_people(name: str, *, forge: str = "github", token: str | None = None,
-                  limit: int = 8):
+                  use_wikidata: bool = True, limit: int = 8):
     """Resolve a full name → candidate accounts (login/name/bio) for the
     scan-by-name flow. GitHub-only for now (the one forge with user search wired
     up); other forges return [] so the caller shows guidance rather than guessing.
-    Returns [] on any error too."""
+    ``use_wikidata`` adds an opt-in P2037 fallback when the search finds nothing.
+    Returns [] on any error too (rate limits propagate — not "no match")."""
     if forge != "github":
         return []
     from praiser.forge import GitHubForge
     f = GitHubForge(token or _token_for("github"), local_cache())
     try:
-        return f.search_users(name, limit=limit)
+        _confident, candidates = resolve_name(
+            f, name, use_wikidata=use_wikidata, limit=limit)
+        return candidates
     except RateLimitError:
         raise                     # surfaced to the caller so it's not "no match"
     except Exception:
