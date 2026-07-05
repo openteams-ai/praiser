@@ -405,19 +405,33 @@ def clear_tracked_scans(result_cache=None) -> int:
 
 def wipe_all_cache(result_cache=None) -> int:
     """Admin: wipe the ENTIRE praiser cache namespace — result entries, catalog,
-    founder cache, contributor reverse-index, everything — for a clean slate.
-    Returns the number of keys/entries removed (best-effort)."""
+    founder cache, contributor reverse-index, everything — for a clean slate, then
+    re-mark the users that were tracked so each one's next scan re-fetches live
+    (the per-instance local HTTP fetch cache isn't wiped and would otherwise serve
+    stale fetches). Returns the number of keys/entries removed (best-effort).
+
+    The markers are one-shot: consumed on a user's first re-scan (overwritten by
+    the real result). Residue for a user who never returns is cleared by the next
+    wipe (which wipes markers too before re-marking the then-tracked set) and TTLs
+    out regardless — so wipe stays self-cleaning rather than accumulating markers."""
     rcache = result_cache if result_cache is not None else make_result_cache()
     if rcache is None:
         return 0
+    tracked = cache_catalog(rcache)          # capture BEFORE wiping (catalog goes too)
+    removed = 0
     try:
         if hasattr(rcache, "clear_all"):     # RedisCache: SCAN + DEL praiser:*
-            return rcache.clear_all()
-        if hasattr(rcache, "clear"):         # local file Cache: wipe the dir
-            return rcache.clear()
+            removed = rcache.clear_all()
+        elif hasattr(rcache, "clear"):       # local file Cache: wipe the dir
+            removed = rcache.clear()
     except Exception:
         pass
-    return 0
+    try:                                     # re-mark known users for a fresh re-scan
+        for r in tracked:
+            rcache.set(r["cache_id"], _REFRESH_MARKER)
+    except Exception:
+        pass
+    return removed
 
 
 def usage_summary(result_cache=None) -> dict:
