@@ -23,7 +23,7 @@ from praiser.render import render, render_highlights
 from .cache import local_cache, make_result_cache
 
 
-# External data sources praiser depends on, for the ?diag reachability panel.
+# External data sources praiser depends on, for the admin reachability panel.
 # The founder/creator roles come from Wikidata (WDQS) → Wikipedia; those hosts
 # rate-limit per IP and throttle shared cloud egress (e.g. Streamlit Community
 # Cloud) harder than residential IPs — so a role can be missing purely because
@@ -62,9 +62,9 @@ def _praiser_geturl_probe(url: str, accept: str):
 
 def diagnose_external_sources(probe=_praiser_geturl_probe):
     """Probe each external source from THIS host via praiser's real get_url — a
-    lightweight, opt-in (?diag) reachability check for the intermittent WDQS/
-    Wikipedia throttling of cloud IPs. ``probe`` is injectable for tests. Returns
-    ``{"user_agent", "checks": [{name, url, ok, detail}]}``."""
+    lightweight reachability check (shown in the admin frame) for the intermittent
+    WDQS/Wikipedia throttling of cloud IPs. ``probe`` is injectable for tests.
+    Returns ``{"user_agent", "checks": [{name, url, ok, detail}]}``."""
     checks = []
     for name, url, accept in _DIAG_SOURCES:
         ok, detail = probe(url, accept)
@@ -475,8 +475,8 @@ def usage_summary(result_cache=None) -> dict:
 
 
 def recent_scans(result_cache=None) -> list[dict]:
-    """Recently-scanned ``[{"forge", "username"}]``, most-recent-first, distinct
-    (for a UI picker) — derived from the cache catalog."""
+    """Recently-scanned ``[{"forge", "username"}]``, most-recent-first, distinct —
+    derived from the cache catalog."""
     out: list[dict] = []
     seen: set[tuple[str, str]] = set()
     for r in cache_catalog(result_cache):
@@ -486,6 +486,61 @@ def recent_scans(result_cache=None) -> list[dict]:
         seen.add(key)
         out.append({"forge": r["forge"], "username": r["username"]})
     return out
+
+
+# Seed catalog — a readable log of reverse-index seed runs (target + counts + when).
+# The per-repo seed markers (roster-seeded:<repo>) are opaque SHA hashes, so this is
+# the only way to show "what's been seeded". One shared key, updated per seed run
+# (rare, admin-triggered). Wiped by "Wipe ALL cache"; kept by "Clear cached scans".
+_SEED_CATALOG_KEY = Cache.key("seed-catalog")
+_SEED_CATALOG_CAP = 500
+
+
+def record_seed(result: dict, *, forge: str, kind: str, target: str,
+                result_cache=None) -> None:
+    """Record one seed run in the seed catalog (best-effort). Keyed by
+    forge:kind:target so re-seeding the same target updates its row."""
+    rcache = result_cache if result_cache is not None else make_result_cache()
+    if rcache is None:
+        return
+    try:
+        cat = rcache.get(_SEED_CATALOG_KEY) or {}
+        if not isinstance(cat, dict):
+            cat = {}
+        cat[f"{forge}:{kind}:{target}".lower()] = {
+            "forge": forge, "kind": kind, "target": target,
+            "seeded": result.get("seeded", 0),
+            "contributors": result.get("contributors_indexed", 0),
+            "created": time.time(),
+        }
+        if len(cat) > _SEED_CATALOG_CAP:      # evict oldest by created
+            keep = sorted(cat.items(), key=lambda kv: kv[1].get("created", 0),
+                          reverse=True)[:_SEED_CATALOG_CAP]
+            cat = dict(keep)
+        rcache.set(_SEED_CATALOG_KEY, cat)
+    except Exception:
+        pass
+
+
+def seed_catalog(result_cache=None) -> list[dict]:
+    """Recorded seed runs, most-recent-first:
+    ``[{"forge", "kind", "target", "seeded", "contributors", "created"}]``."""
+    rcache = result_cache if result_cache is not None else make_result_cache()
+    if rcache is None:
+        return []
+    try:
+        cat = rcache.get(_SEED_CATALOG_KEY) or {}
+    except Exception:
+        return []
+    if not isinstance(cat, dict):
+        return []
+    rows = [{"forge": r.get("forge"), "kind": r.get("kind"),
+             "target": r.get("target"), "seeded": r.get("seeded", 0),
+             "contributors": r.get("contributors", 0),
+             "created": r.get("created", 0)}
+            for r in cat.values() if isinstance(r, dict)]
+    rows.sort(key=lambda r: r["created"], reverse=True)
+    return rows
 
 
 # The options that affect DATA COLLECTION (a change here needs a re-scan). The

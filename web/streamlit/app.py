@@ -220,22 +220,8 @@ with st.expander("About praiser & role definitions"):
 # which this demo doesn't expose; the core library still supports it via CLI).
 DEMO_FORGES = [f for f in service.FORGES if f != "cgit"]
 
-# Recently-scanned names (loaded once per session — one shared-cache read — then
-# kept fresh locally). Picking one pre-fills the form via the on_change callback.
-if "recent" not in st.session_state:
-    st.session_state["recent"] = service.recent_scans()
-
-
-def _pick_recent():
-    choice = st.session_state.get("recent_pick")
-    if choice and " · " in choice:
-        forge_name, uname = choice.split(" · ", 1)
-        st.session_state["forge_sel"] = forge_name
-        st.session_state["uname"] = uname
-
-
 # LLM founder/role discovery spends the DEPLOYMENT's shared LLM budget, so it's
-# hidden on the public demo unless the deployer opts in (mirrors SEED_ENABLED).
+# hidden on the public demo unless the deployer opts in (LLM_DISCOVERY_ENABLED).
 _LLM_ENABLED = "LLM_DISCOVERY_ENABLED" in st.secrets
 
 # Options live in the sidebar (not the main form): they're rarely changed and have
@@ -276,19 +262,6 @@ IS_ADMIN = bool(USER_LOGIN) and USER_LOGIN.lower() in _ADMIN_USERS
 _render_budget_note(budget_slot, USER_TOKEN)
 forge_url = ""       # self-hosted instance URL is a CLI/library feature
 wikidata = True      # always on — a cheap, broadly-useful role source
-
-# Recent scans is a debugging aid (it lists other people's recently-scanned
-# accounts), so it's hidden by default — shown only with `?debug` in the URL.
-recent = st.session_state["recent"]
-if recent and "debug" in st.query_params:
-    with st.sidebar:
-        st.selectbox(
-            "Recent scans",
-            ["—", *(f"{r['forge']} · {r['username']}" for r in recent)],
-            key="recent_pick", on_change=_pick_recent,
-            help="Accounts scanned recently (this session + the shared cache). "
-                 "Pick one to pre-fill the form — a debugging convenience "
-                 "(append `?debug` to the URL to show this).")
 
 # The main form is just the hero: username + Praise. A scan runs only on submit.
 with st.form("q"):
@@ -525,14 +498,17 @@ def _wipe_all_cache():
 
 
 def _render_admin_frame():
-    """The admin frame (end of page, admins only): a list of cached scans with a
-    per-row Trash to force a fresh re-scan. Gated by _ADMIN_USERS + sign-in."""
+    """The unified admin/debug frame (end of page, admins only), gated by
+    _ADMIN_USERS + a non-spoofable GitHub sign-in: cache summary, external-source
+    diagnostics, cached-scan list (per-row Trash), reverse-index seeding + status,
+    and the cache danger zone."""
     st.divider()
     st.subheader("🔧 Admin")
     st.caption(f"Signed in as @{USER_LOGIN} · admin.")
     if (flash := st.session_state.pop("admin_flash", None)):
         st.success(flash)
     _render_admin_summary()
+    _render_admin_diag()
     st.markdown("**Cached scans** — Trash an entry to force a fresh scan on the "
                 "shared cache (affects only that user).")
     rows = service.cache_catalog()
@@ -549,7 +525,80 @@ def _render_admin_frame():
                       on_click=_trash_cache_entry,
                       args=(r["cache_id"], r["username"], r["forge"]),
                       use_container_width=True)
+    _render_admin_seed()
     _render_admin_danger_zone()
+
+
+def _render_admin_diag():
+    """External data-source reachability, probed from THIS host (was public ?diag).
+    Founder/creator roles come from Wikidata → Wikipedia, which throttle shared
+    cloud IPs harder than local ones, so a ❌ makes a 'missing role' visibly a
+    reachability problem rather than a guess."""
+    with st.expander("🩺 External data-source reachability"):
+        diag = service.diagnose_external_sources()
+        st.caption(f"Probed from this host via praiser's own client (UA "
+                   f"`{diag['user_agent']}`). Wikidata/Wikipedia feed the Author/"
+                   "founder roles and throttle cloud IPs; GitHub is the baseline. "
+                   "❌ on Wikidata/Wikipedia means founder roles are computed from "
+                   "cache only until reachability recovers.")
+        for c in diag["checks"]:
+            st.write(f"{'✅' if c['ok'] else '❌'} **{c['name']}** — {c['detail']}")
+
+
+def _render_admin_seed():
+    """Seed the shared contributor reverse-index (#65) + show what's been seeded.
+    Admin-login-gated (replaces the old ?seed + SEED_ENABLED gate). Seeding is
+    bounded, idempotent (30-day per-repo markers), additive, and spends the
+    deployment's bot quota."""
+    from web import seed as webseed
+    st.markdown("**Reverse-index seeding** — index an org's (or a repo's) "
+                "contributors so the app can discover them.")
+    seeded = service.seed_catalog()
+    if seeded:
+        now = time.time()
+        with st.expander(f"Seeded targets ({len(seeded)})"):
+            for r in seeded:
+                age = humanize_wait(int(now - r["created"])) if r.get("created") else "?"
+                st.caption(
+                    f"{r['forge']} · **{r['target']}** ({r['kind']}) — "
+                    f"{r['seeded']} repo(s), {r['contributors']} contributor "
+                    f"entries · {age} ago")
+    # The form lives in a placeholder so it can be CLEARED while seeding runs —
+    # otherwise Streamlit greys it out for the whole (long) operation.
+    seed_form = st.empty()
+    seed_status = st.empty()
+    with seed_form.container():
+        with st.expander("🌱 Seed a target"):
+            a_forge = st.selectbox("Forge", service.FORGES, key="seed_forge",
+                                   help="Only GitHub is functional today.")
+            a_kind = st.radio("Seed", ["org", "repo"], horizontal=True,
+                              key="seed_kind",
+                              help="An org's repos, or a single owner/repo.")
+            a_name = st.text_input(
+                "Org or owner/repo", key="seed_name",
+                placeholder="numpy" if a_kind == "org" else "pytorch/pytorch")
+            a_budget = st.number_input("Repos to seed (budget, org only)",
+                                       1, 200, 30, key="seed_budget")
+            go = st.button("Seed", key="seed_go")
+    if go:
+        if not a_name.strip():
+            seed_status.warning("Enter an org or owner/repo.")
+        else:
+            seed_form.empty()   # hide the form while seeding runs
+            with seed_status.container():
+                with st.spinner(f"Seeding {a_forge}/{a_name}…"):
+                    try:
+                        res = webseed.run_seed(a_name.strip(), a_forge,
+                                               int(a_budget), a_kind)
+                    except Exception as exc:
+                        st.error(f"Seed failed: {exc}")
+                        res = None
+                if res:
+                    st.success(
+                        f"Seeded {res['seeded']} repo(s), "
+                        f"{res['contributors_indexed']} contributor entries — "
+                        f"{res['stopped']}. Re-run to continue (resumes where it "
+                        "left off).")
 
 
 def _render_admin_summary():
@@ -803,11 +852,6 @@ if scan_target is not None:
         _from = f" — resolved “{_resolved_from}” → @{uname}" if _resolved_from else ""
         status_box.success(
             f"✅ Scan finished in {elapsed:.1f} seconds{_via}{_from}.")
-        # Reflect this scan in the recent-picker immediately (shared index is
-        # updated inside service.collect()).
-        entry = {"forge": forge, "username": uname}
-        st.session_state["recent"] = [entry] + [
-            r for r in st.session_state.get("recent", []) if r != entry][:49]
     st.session_state["active"] = (key, uname, forge, data_opts)
 
 # Ambiguous name → a pick-one list (issue #142) in place of results, so we never
@@ -843,77 +887,8 @@ else:
                 _feedback_buttons(result, uname, a_forge, a_opts)
 
 # --- Admin frame (end of main page; admins only) ------------------------------
+# Everything admin/debug lives here behind a (non-spoofable) GitHub-login gate:
+# cache summary + list, external-source diagnostics, reverse-index seeding + status,
+# and the cache danger zone. No ?diag / ?seed / ?debug URL gates any more.
 if IS_ADMIN:
     _render_admin_frame()
-
-# --- External data-source diagnostics (?diag) ---------------------------------
-# Open `praiser.streamlit.app/?diag` to see, FROM THIS HOST, whether the external
-# data sources praiser depends on are reachable. Founder/creator roles come from
-# Wikidata → Wikipedia, which throttle shared cloud IPs (Streamlit Community
-# Cloud) harder than local ones — so this makes a "missing role" visibly a
-# reachability problem rather than a guess. Read-only, safe to expose.
-if "diag" in st.query_params:
-    st.subheader("🩺 External data-source reachability")
-    diag = service.diagnose_external_sources()
-    st.caption(f"Probed from this host via praiser's own client (UA "
-               f"`{diag['user_agent']}`). Wikidata/Wikipedia feed the Author/"
-               "founder roles and throttle cloud IPs; GitHub is the baseline. "
-               "❌ on Wikidata/Wikipedia here means founder roles are computed "
-               "from cache only until reachability recovers.")
-    for c in diag["checks"]:
-        st.write(f"{'✅' if c['ok'] else '❌'} **{c['name']}** — {c['detail']}")
-
-
-# --- Seed the shared reverse-index (#65) --------------------------------------
-# Shown ONLY when the URL has `?seed` AND the deployer opted in (SEED_ENABLED in
-# secrets — one-time deployer config, not a secret the triggering user enters).
-# So normal users never see it; a knowledgeable user opens `?seed=github/numpy`
-# (org) or `?seed=github/pytorch/pytorch` (single repo) and clicks Seed — no
-# login, no secret. (Streamlit has no path routing, so the query param is the
-# `/seed/...` equivalent.) Seeding is bounded, idempotent (30-day per-repo
-# markers), additive, and spends the deployment's bot quota, not the user's.
-if "SEED_ENABLED" in st.secrets and "seed" in st.query_params:
-    from web import seed as webseed
-    _forge, _kind, _name = webseed.parse_seed_target(st.query_params.get("seed", ""))
-    if _name and "seed_name" not in st.session_state:
-        st.session_state["seed_name"] = _name             # pre-fill from the URL
-    # The form lives in a placeholder so it can be CLEARED while seeding runs —
-    # otherwise Streamlit shows the form greyed-out for the whole (long) operation.
-    seed_form = st.empty()
-    seed_status = st.empty()
-    with seed_form.container():
-        with st.expander("🌱 Seed reverse-index", expanded=True):
-            a_forge = st.selectbox("Forge", service.FORGES,
-                                   index=service.FORGES.index(_forge)
-                                   if _forge in service.FORGES else 0,
-                                   key="seed_forge",
-                                   help="Only GitHub is functional today.")
-            a_kind = st.radio("Seed", ["org", "repo"],
-                              index=0 if _kind == "org" else 1,
-                              horizontal=True, key="seed_kind",
-                              help="An org's repos, or a single owner/repo.")
-            a_name = st.text_input(
-                "Org or owner/repo", key="seed_name",
-                placeholder="numpy" if a_kind == "org" else "pytorch/pytorch")
-            a_budget = st.number_input("Repos to seed (budget, org only)",
-                                       1, 200, 30, key="seed_budget")
-            go = st.button("Seed", key="seed_go")
-    if go:
-        if not a_name.strip():
-            seed_status.warning("Enter an org or owner/repo.")
-        else:
-            seed_form.empty()   # hide the form while seeding runs
-            with seed_status.container():
-                with st.spinner(f"Seeding {a_forge}/{a_name}…"):
-                    try:
-                        res = webseed.run_seed(a_name.strip(), a_forge,
-                                               int(a_budget), a_kind)
-                    except Exception as exc:
-                        st.error(f"Seed failed: {exc}")
-                        res = None
-                if res:
-                    st.success(
-                        f"Seeded {res['seeded']} repo(s), "
-                        f"{res['contributors_indexed']} contributor entries — "
-                        f"{res['stopped']}. Re-run to continue (resumes where it "
-                        "left off).")
