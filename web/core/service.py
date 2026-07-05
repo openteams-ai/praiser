@@ -380,20 +380,22 @@ def trash_cache_entry(cache_id: str, result_cache=None) -> bool:
 
 
 def clear_tracked_scans(result_cache=None) -> int:
-    """Admin: delete every result entry the catalog tracks (+ the catalog and the
-    legacy recent-index), forcing a fresh scan for those users. Keeps the
+    """Admin: trash every user the catalog tracks — i.e. force each one's next scan
+    to re-fetch live (a one-shot refresh marker per entry, like ``trash_cache_entry``,
+    NOT a plain delete: a delete would let the still-warm local HTTP cache serve
+    stale fetches). Also drops the catalog and the legacy recent-index. Keeps the
     expensive shared data (per-repo founder cache, contributor reverse-index).
-    Returns the number of scan entries cleared. Note: cache keys are opaque
-    hashes, so this can only clear entries recorded since the catalog existed —
-    older result blobs are indistinguishable from founder keys and just TTL out
-    (use wipe_all_cache for a true clean slate)."""
+    Returns the number of tracked scans cleared. Note: cache keys are opaque hashes,
+    so this reaches only entries recorded since the catalog existed — older result
+    blobs are indistinguishable from founder keys and just TTL out (use
+    wipe_all_cache for a true clean slate)."""
     rcache = result_cache if result_cache is not None else make_result_cache()
     if rcache is None:
         return 0
     rows = cache_catalog(rcache)
     try:
         for r in rows:
-            rcache.delete(r["cache_id"])
+            rcache.set(r["cache_id"], _REFRESH_MARKER)   # trash-all: force fresh
         rcache.delete(_CATALOG_KEY)
         rcache.delete(_LEGACY_RECENT_KEY)
     except Exception:
