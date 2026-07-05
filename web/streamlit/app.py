@@ -520,7 +520,8 @@ def _wipe_all_cache():
     _clear_session_lru()
     st.session_state["admin_confirm"] = False
     st.session_state["admin_flash"] = (
-        f"Wiped {n} cache key(s) — clean slate (founder cache + reverse-index too).")
+        f"Wiped {n} cache key(s) — clean slate (founder cache + reverse-index too); "
+        "previously-scanned users re-fetch live on their next scan.")
 
 
 def _render_admin_frame():
@@ -595,7 +596,8 @@ def _render_admin_danger_zone():
               use_container_width=True, type="primary",
               help="Wipe the entire praiser cache namespace — a clean slate, "
                    "including the founder cache + reverse-index (rebuilt on next "
-                   "scans; founder re-resolution is WDQS-throttled).")
+                   "scans; founder re-resolution is WDQS-throttled). Previously-"
+                   "scanned users are re-marked to re-fetch live on next scan.")
 
 
 def _run_scan(username, data_opts, token_options, exhausted, status_ph, hint=""):

@@ -244,6 +244,22 @@ def test_wipe_all_cache_clears_local_dir(tmp_path):
     assert rc.get("k1") is None and rc.get("k2") is None and rc.get("k3") is None
 
 
+def test_wipe_all_cache_remarks_tracked_users_for_refresh(monkeypatch, tmp_path):
+    # Wipe is a clean slate BUT re-marks previously-tracked users so their next
+    # scan re-fetches live (the local HTTP cache it can't reach would be stale).
+    _clock(monkeypatch)
+    rc = Cache(tmp_path)
+    rc.set("keyA", "rA")
+    service._catalog_record(rc, "github", "alice", "keyA")
+    rc.set("keyB", "rB")
+    service._catalog_record(rc, "gitlab", "bob", "keyB")
+    service.wipe_all_cache(result_cache=rc)
+    # Catalog + founder/index gone, but each known user's key is a refresh marker.
+    assert service.cache_catalog(result_cache=rc) == []
+    assert rc.get("keyA") == service._REFRESH_MARKER
+    assert rc.get("keyB") == service._REFRESH_MARKER
+
+
 def test_scan_counters_count_actual_scans_not_cache_hits(monkeypatch, tmp_path):
     _clock(monkeypatch)
     monkeypatch.setattr(service, "run",
