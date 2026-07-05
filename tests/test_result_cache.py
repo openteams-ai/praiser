@@ -74,3 +74,32 @@ def test_newest_kept_even_if_larger_than_budget():
     c.put("big", _sized(5000))               # single entry exceeds budget
     assert c.get("big") == _sized(5000)      # still kept (never evict sole entry)
     assert len(c) == 1
+
+
+def test_pop_removes_and_returns_and_frees_bytes():
+    c = SizeBoundedLRU(10_000)
+    c.put("k", _sized(300))
+    assert c.pop("k") == _sized(300)
+    assert "k" not in c and c.total_bytes == 0
+    assert c.pop("missing", "d") == "d"       # default on absent
+
+
+def test_discard_where_evicts_matching_user_only():
+    # Admin trashed one user; only that user's session entries should drop.
+    c = SizeBoundedLRU(100_000)
+    c.put(("alice", "github"), "rA")
+    c.put(("alice", "gitlab"), "rA2")
+    c.put(("bob", "github"), "rB")
+    n = c.discard_where(lambda k: str(k[0]).lower() == "alice" and k[1] == "github")
+    assert n == 1
+    assert ("alice", "github") not in c
+    assert ("alice", "gitlab") in c and ("bob", "github") in c
+    assert c.total_bytes > 0
+
+
+def test_clear_empties_everything():
+    c = SizeBoundedLRU(100_000)
+    c.put("a", _sized(100))
+    c.put("b", _sized(100))
+    c.clear()
+    assert len(c) == 0 and c.total_bytes == 0 and "a" not in c

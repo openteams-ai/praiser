@@ -186,12 +186,36 @@ def test_cache_catalog_lists_entries_and_trash_removes_one(monkeypatch, tmp_path
     assert {(r["forge"], r["username"], r["cache_id"]) for r in rows} == {
         ("github", "alice", "keyA"), ("gitlab", "bob", "keyB")}
     assert all("created" in r for r in rows)
-    # Trash alice: her cache entry + catalog row gone; bob untouched.
+    # Trash alice: catalog row gone + a refresh marker replaces her result; bob
+    # untouched (still a normal cached result).
     assert service.trash_cache_entry("keyA", result_cache=rc) is True
-    assert rc.get("keyA") is None
+    assert rc.get("keyA") == service._REFRESH_MARKER
     assert rc.get("keyB") == "resultB"
     left = service.cache_catalog(result_cache=rc)
     assert [(r["username"], r["cache_id"]) for r in left] == [("bob", "keyB")]
+
+
+def test_trashed_user_next_scan_refreshes_only_that_user(monkeypatch, tmp_path):
+    _clock(monkeypatch)
+    seen = {}   # username -> config.refresh seen by the pipeline
+
+    def _fake_run(config, cache=None, progress_cb=None, index_cache=None, populate_index=True):
+        seen[config.username] = config.refresh
+        return RunResult(records=[_rec("a/b", 100)], secondary=[])
+
+    monkeypatch.setattr(service, "run", _fake_run)
+    rc, hc = Cache(tmp_path), Cache(tmp_path / "h")
+    service.collect("alice", forge="github", result_cache=rc, http_cache=hc)
+    service.collect("bob", forge="github", result_cache=rc, http_cache=hc)
+    # Trash alice, then re-scan both. Alice's next scan is forced-refresh; bob
+    # still serves from cache (run() not called again for him).
+    akey = next(r["cache_id"] for r in service.cache_catalog(result_cache=rc)
+                if r["username"] == "alice")
+    service.trash_cache_entry(akey, result_cache=rc)
+    seen.clear()
+    service.collect("alice", forge="github", result_cache=rc, http_cache=hc)
+    service.collect("bob", forge="github", result_cache=rc, http_cache=hc)
+    assert seen == {"alice": True}          # only alice re-ran, and with refresh=True
 
 
 def test_clear_tracked_scans_removes_tracked_entries_and_catalog(monkeypatch, tmp_path):

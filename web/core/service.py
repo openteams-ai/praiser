@@ -288,6 +288,16 @@ _CATALOG_CAP = 1000
 # Pre-#181 recent-scans index key — abandoned, cleaned up by the admin clear.
 _LEGACY_RECENT_KEY = Cache.key("recent-scans-index")
 
+# One-shot "refresh on next scan" marker. Admin Trash writes this in place of the
+# cached result (instead of just deleting): a plain delete only clears the shared
+# result, so the next scan could still be served stale from the still-warm local
+# HTTP fetch cache. The marker makes collect() force a live re-fetch for THAT user
+# (only — it lives at the user's own result key). Consumed by the next scan, which
+# overwrites the key with the real result. A real result is a base64 string, so a
+# dict is an unambiguous marker.
+_REFRESH_FLAG = "__praiser_refresh__"
+_REFRESH_MARKER = {_REFRESH_FLAG: True}
+
 # Usage counters (admin summary). Cheap: a couple of INCRs per *actual* scan
 # (cache hits don't count — see collect). The per-day key self-expires so the
 # breakdown stays a rolling window without unbounded growth.
@@ -349,14 +359,17 @@ def cache_catalog(result_cache=None) -> list[dict]:
 
 
 def trash_cache_entry(cache_id: str, result_cache=None) -> bool:
-    """Admin: delete one cached result + its catalog row so the next scan of that
-    user is fresh. Touches only this entry (never other users' cache or the shared
-    founder/reverse-index data). Returns True on best-effort success."""
+    """Admin: force the next scan of one user to re-fetch live, and drop its catalog
+    row. Writes a one-shot refresh marker over the cached result (see
+    ``_REFRESH_MARKER``) rather than a plain delete, so the next scan re-fetches
+    instead of being served stale from the warm local HTTP cache. Touches only this
+    entry (never other users' cache or the shared founder/reverse-index data).
+    Returns True on best-effort success."""
     rcache = result_cache if result_cache is not None else make_result_cache()
     if rcache is None:
         return False
     try:
-        rcache.delete(cache_id)
+        rcache.set(cache_id, _REFRESH_MARKER)
         cat = rcache.get(_CATALOG_KEY) or {}
         if isinstance(cat, dict) and cache_id in cat:
             del cat[cache_id]
@@ -503,9 +516,16 @@ def collect(
         "result", CACHE_VERSION, username, forge, forge_url or None,
         discover_roles, wikidata, package_registries, cross_forge,
     )
+    effective_refresh = refresh
     if rcache is not None and not refresh:      # refresh forces a re-scan
-        blob = rcache.get(rkey)
-        if blob is not None:
+        blob = rcache.get(rkey)                 # the read we'd do anyway (no extra op)
+        if isinstance(blob, dict) and blob.get(_REFRESH_FLAG):
+            effective_refresh = True    # trashed → re-fetch live for THIS user only
+            try:                        # consume: one-shot, so a rate-limit fallback
+                rcache.delete(rkey)     # token doesn't force-refresh too (see
+            except Exception:           # scan_with_fallback's refresh handling)
+                pass
+        elif blob is not None:
             try:
                 return _loads(blob)     # warm: no scan, no praiser HTTP calls
             except Exception:
@@ -522,13 +542,13 @@ def collect(
         use_wikidata=wikidata,
         use_package_registries=package_registries,
         cross_forge=cross_forge,
-        refresh=refresh,                 # scoped in the pipeline: anchored repos only
+        refresh=effective_refresh,       # scoped in the pipeline: anchored repos only
         quiet=True,
         save_registry=False,             # a shared service shouldn't mutate the registry
     )
     result = run(
         config,
-        cache=http_cache if http_cache is not None else local_cache(refresh=refresh),
+        cache=http_cache if http_cache is not None else local_cache(refresh=effective_refresh),
         progress_cb=progress,
         # The reverse-index (#59) rides the SHARED cache (rcache = Redis), so the
         # app READS what the org seeder (#65) populated. But we do NOT write it
