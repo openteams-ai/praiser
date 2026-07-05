@@ -354,6 +354,18 @@ def _role_badges(rec) -> str:
         for role in rec.roles)
 
 
+def _below_bar_note(result, uname):
+    """A reassurance line when praiser saw contributions that earned no elevated
+    role — so a short/empty result reads as 'seen, below the bar', not a bug
+    (#172). '' when there are none."""
+    n = getattr(result, "below_bar_count", 0) or 0
+    if not n:
+        return ""
+    return (f"praiser also saw **{n}** project(s) {uname} contributed to that "
+            "don't rise to an elevated role (drive-by / modest contributions) — "
+            "these are intentionally not listed.")
+
+
 def _show_highlights(result, uname, controls_shown=True):
     """The default view: summary metrics + one compact line per top project."""
     primary, secondary = service.filtered_records(result, min_stars=min_stars)
@@ -368,6 +380,8 @@ def _show_highlights(result, uname, controls_shown=True):
                     "stars** in the controls above to see more.")
         else:
             st.info(f"No elevated roles found for **{uname}**.")
+        if (note := _below_bar_note(result, uname)):
+            st.caption(note)
         return
     allrecs = [*primary, *secondary]
     communities = {
@@ -400,6 +414,8 @@ def _show_highlights(result, uname, controls_shown=True):
                     "with a notable role")
     if bits:
         st.caption("…plus " + "; ".join(bits) + ".")
+    if (note := _below_bar_note(result, uname)):
+        st.caption(note)
 
 
 def _export_view(result, uname):

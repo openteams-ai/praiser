@@ -46,7 +46,7 @@ def _run(monkeypatch, extract_fn, n=20, jobs=8):
 def test_all_candidates_scanned_concurrently(monkeypatch):
     def ev(cand):
         return [Evidence("fake", MAINTAINER, cand.url, 0.9, "")]
-    records, reset_in = _run(monkeypatch, ev, n=25, jobs=8)
+    records, reset_in, _below = _run(monkeypatch, ev, n=25, jobs=8)
     assert reset_in is None
     assert len(records) == 25
     assert {r.name_with_owner for r in records} == {f"org/repo{i}" for i in range(25)}
@@ -55,9 +55,30 @@ def test_all_candidates_scanned_concurrently(monkeypatch):
 def test_only_matching_candidates_become_records(monkeypatch):
     def ev(cand):
         return [Evidence("fake", MAINTAINER, cand.url, 0.9, "")] if "repo1" in cand.name_with_owner else []
-    records, _ = _run(monkeypatch, ev, n=20)
+    records, _, _below = _run(monkeypatch, ev, n=20)
     # repo1, repo10..repo19 -> 11
     assert len(records) == 11
+
+
+def test_below_bar_counts_genuine_contributions_without_a_role(monkeypatch):
+    # #172: a candidate genuinely contributed to (source contributed/history) that
+    # earns no elevated role is counted; one with a role, or a speculative one, is
+    # not.
+    def ev(cand):
+        return [Evidence("fake", MAINTAINER, cand.url, 0.9, "")] \
+            if "hasrole" in cand.name_with_owner else []
+    monkeypatch.setattr(pipeline, "all_extractors",
+                        lambda: [FakeExtractor(ev)])
+    cands = [
+        Candidate("o/hasrole", sources={"contributed"}),   # role → not below-bar
+        Candidate("o/belowbar", sources={"contributed"}),  # contributed, no role ✓
+        Candidate("o/fromhistory", sources={"history"}),   # history, no role ✓
+        Candidate("o/speculative", sources={"org-repo"}),  # not a genuine contrib
+    ]
+    records, _, below_bar = pipeline._attribute(
+        Config(username="u", jobs=2), cands, _ctx(), Progress(enabled=False))
+    assert {r.name_with_owner for r in records} == {"o/hasrole"}
+    assert below_bar == 2
 
 
 def test_speculative_pass_progress_hides_repo_names(monkeypatch):
@@ -80,7 +101,7 @@ def test_rate_limit_stops_with_reset(monkeypatch):
         if cand.name_with_owner == "org/repo5":
             raise RateLimitError("limit", reset_in=42)
         return [Evidence("fake", MAINTAINER, cand.url, 0.9, "")]
-    records, reset_in = _run(monkeypatch, ev, n=30, jobs=4)
+    records, reset_in, _below = _run(monkeypatch, ev, n=30, jobs=4)
     assert reset_in == 42  # partial run signalled with the reset time
 
 
@@ -120,7 +141,7 @@ def test_refresh_scopes_speculative_repos_to_cache(monkeypatch, tmp_path):
     def fake_attr(config, cands, ctx, progress, *, name_candidates=True):
         calls.append((cache.refresh,
                       sorted(c.name_with_owner for c in cands), name_candidates))
-        return [], None
+        return [], None, 0
     monkeypatch.setattr(pipeline, "_attribute", fake_attr)
 
     forge = _StubForge()
