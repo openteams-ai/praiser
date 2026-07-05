@@ -24,7 +24,9 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 class CodeownerRule:
     pattern: str
     owners: list[str]
-    section: str | None = None  # nearest preceding comment header, e.g. "Sparse Tensors"
+    section: str | None = (
+        None  # nearest preceding comment header, e.g. "Sparse Tensors"
+    )
 
 
 def parse_codeowners(text: str) -> list[CodeownerRule]:
@@ -42,10 +44,10 @@ def parse_codeowners(text: str) -> list[CodeownerRule]:
     for raw in text.splitlines():
         stripped = raw.strip()
         if not stripped:
-            section = None                       # blank line separates sections
+            section = None  # blank line separates sections
             continue
         if stripped.startswith("#"):
-            section = stripped.lstrip("#").strip() or None   # header for what follows
+            section = stripped.lstrip("#").strip() or None  # header for what follows
             continue
         line = stripped.split("#", 1)[0].strip()  # drop any inline comment
         if not line:
@@ -75,12 +77,57 @@ def _owns_codeowners_file(pattern: str) -> bool:
     return base.upper() == "CODEOWNERS"
 
 
+_ROLE_PLURALS = {
+    "reviewers": "reviewer",
+    "owners": "owner",
+    "maintainers": "maintainer",
+    "approvers": "approver",
+    "admins": "admin",
+}
+
+_NAME_TOKEN_RE = r"[A-Z][a-z]+"
+_SEP_RE = r"\s*(?:,|&|and|,\s*and)\s*"
+_NAME_LIST_RE = re.compile(rf"^{_NAME_TOKEN_RE}(?:{_SEP_RE}{_NAME_TOKEN_RE})*$")
+_ATTRIBUTION_SPLIT_RE = re.compile(r"\s+(?:as|are)\s+", re.IGNORECASE)
+
+
+def clean_codeowners_scope(raw: str) -> str | None:
+    val = raw.strip()
+    if val.startswith("#"):
+        val = val.lstrip("#").strip()
+    if not val:
+        return None
+
+    m = _ATTRIBUTION_SPLIT_RE.search(val)
+    if m:
+        left = val[: m.start()]
+        if _NAME_LIST_RE.match(left):
+            val = val[m.end() :]
+
+    for plural, singular in _ROLE_PLURALS.items():
+        val = re.sub(rf"\b{plural}\b", singular, val, flags=re.IGNORECASE)
+
+    val = re.sub(r"\s+", " ", val)
+    val = val.rstrip(".:").strip()
+    if not val:
+        return None
+
+    if _NAME_LIST_RE.match(val):
+        tokens = re.findall(_NAME_TOKEN_RE, val)
+        if len(tokens) >= 2:
+            return None
+
+    return val
+
+
 def _rule_scope(rule: "CodeownerRule") -> str | None:
     """The concise scope label for a rule's Code-owner evidence: the section
     header if the file provides one (e.g. "Sparse Tensors"), else the raw path
     pattern. A whole-repo catch-all ("*") is project-wide → None (shown bare)."""
     if rule.section:
-        return rule.section
+        cleaned = clean_codeowners_scope(rule.section)
+        if cleaned:
+            return cleaned
     return None if rule.pattern == "*" else rule.pattern
 
 
@@ -101,9 +148,7 @@ class CodeownersExtractor(Extractor):
     name = "codeowners"
 
     def extract(self, candidate, ctx: ExtractContext) -> list[Evidence]:
-        files = ctx.forge.get_files(
-            candidate.owner, candidate.repo, CODEOWNERS_PATHS
-        )
+        files = ctx.forge.get_files(candidate.owner, candidate.repo, CODEOWNERS_PATHS)
         for path in CODEOWNERS_PATHS:  # honour GitHub's location priority
             text = files.get(path)
             if text is not None:
@@ -143,10 +188,16 @@ class CodeownersExtractor(Extractor):
             if key in seen_quals:
                 continue
             seen_quals.add(key)
-            found.append(Evidence(
-                source=self.name, role=CODE_OWNER, url=url, confidence=0.9,
-                detail=detail, qualifier=qualifier,
-            ))
+            found.append(
+                Evidence(
+                    source=self.name,
+                    role=CODE_OWNER,
+                    url=url,
+                    confidence=0.9,
+                    detail=detail,
+                    qualifier=qualifier,
+                )
+            )
         return found
 
     def _rule_match_detail(self, ctx, path, rule, team_cache) -> str | None:
