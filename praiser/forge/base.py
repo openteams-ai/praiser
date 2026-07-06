@@ -206,8 +206,9 @@ class Forge(ABC):
         it can still be a verified *target* if some other forge links to it)."""
         return []
 
-    def organization_repositories(self, org: str) -> list[RepoMeta]:
-        """An org/group's repos. Default: none."""
+    def organization_repositories(self, org: str, limit: int = 30) -> list[RepoMeta]:
+        """An org/group's repos (most-notable first), up to ``limit``. Default:
+        none."""
         return []
 
     def user_commit_history(self, login: str) -> list[RepoMeta]:

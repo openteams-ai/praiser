@@ -26,6 +26,10 @@ from .github_client import RateLimitError
 SEED_PAGES = 5          # contributors pages (100 each) — GitHub caps ~500 anyway
 MIN_REST = 400          # stop if REST quota dips below this
 SEED_TTL = 2_592_000    # 30 days: re-seed a repo only after this (matches index TTL)
+# How many of an org's repos (most-starred first) seeding will consider. Well
+# above the UI budget so the budget is the real limit, and high enough that
+# resumed runs reach repos beyond the first budget's worth.
+SEED_ORG_LIST = 500
 
 
 def _rest_remaining(forge) -> int | None:
@@ -96,7 +100,7 @@ def seed_org(org, *, forge, index, cache, budget=50, log=lambda m: None) -> dict
     """
     cov_repos, cov_logins = _load_coverage(cache, org)
     try:
-        repos = forge.organization_repositories(org)
+        repos = forge.organization_repositories(org, limit=SEED_ORG_LIST)
     except RateLimitError as exc:
         return _seed_summary("org", org, 0, 0, 0,
                              cov_repos, cov_logins, f"rate limit ({exc.reset_in}s)")

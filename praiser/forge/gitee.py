@@ -162,8 +162,8 @@ class GiteeForge(Forge):
             return []
         return [o["login"] for o in data if o.get("login")]
 
-    def organization_repositories(self, org: str) -> list[RepoMeta]:
-        return self._paged_repos(f"orgs/{org}/repos")
+    def organization_repositories(self, org: str, limit: int = 30) -> list[RepoMeta]:
+        return self._paged_repos(f"orgs/{org}/repos")[:limit]
 
     # -- generic HTTP + housekeeping ----------------------------------------
     def get_url(

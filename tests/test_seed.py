@@ -42,8 +42,8 @@ class FakeForge:
             "acme/mid":  [ContributorCount("bob", 200), ContributorCount("jek", 60)],
             "acme/small": [ContributorCount("carol", 40)],
         }
-    def organization_repositories(self, org):
-        return [RepoMeta(n) for n in self._rosters]
+    def organization_repositories(self, org, limit=30):
+        return [RepoMeta(n) for n in self._rosters][:limit]
     def repo_contributors(self, owner, repo, max_pages=2):
         self.fetches.append(f"{owner}/{repo}")
         return self._rosters[f"{owner}/{repo}"]
