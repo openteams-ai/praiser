@@ -51,6 +51,23 @@ class FakeForge:
         return "REST 5000/5000"
 
 
+def test_seed_reports_distinct_coverage_across_repos(tmp_path):
+    cache = Cache(tmp_path)
+    idx = ContributorIndex(cache)
+    f = FakeForge()
+    res = seed_org("acme", forge=f, index=idx, cache=cache, budget=50)
+    # entries (sum, jek counted in big+mid): 2+2+1 = 5; distinct union
+    # {alice, jek, bob, carol} = 4 across 3 repos.
+    assert res["contributors_indexed"] == 5
+    assert res["contributors_distinct"] == 4
+    assert res["repos_distinct"] == 3
+    # A resumed no-op run still reports the cumulative distinct (from the coverage
+    # set), not 0 — the reported staleness bug's root cause.
+    res2 = seed_org("acme", forge=f, index=idx, cache=cache, budget=50)
+    assert res2["seeded"] == 0
+    assert res2["contributors_distinct"] == 4 and res2["repos_distinct"] == 3
+
+
 def test_seed_populates_reverse_index(tmp_path):
     cache = Cache(tmp_path)
     idx = ContributorIndex(cache)

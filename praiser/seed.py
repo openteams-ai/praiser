@@ -19,7 +19,7 @@ import sys
 
 from .cache import Cache
 from .config import default_cache_dir, resolve_token
-from .contribindex import ContributorIndex
+from .contribindex import MIN_COMMITS, ContributorIndex
 from .forge import GitHubForge
 from .github_client import RateLimitError
 
@@ -33,37 +33,59 @@ def _rest_remaining(forge) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def seed_repo(name_with_owner, *, forge, index, cache, force=False) -> int | None:
-    """Seed one repo's contributor roster into the index. Returns the number of
-    contributors indexed, or None if skipped (already seeded within SEED_TTL).
-    Raises RateLimitError to let the caller stop."""
+def _load_coverage(cache, target: str) -> tuple[set, set]:
+    """Per-target cumulative coverage (distinct repos + distinct indexed logins),
+    unioned across seed runs — the source of truth for the coverage report. Stored
+    under its own key so the (potentially large) login set never bloats the catalog
+    blob; a target's set is bounded (~500 contributors/repo × its repos)."""
+    data = cache.get(Cache.key("seed-coverage", target))
+    if not isinstance(data, dict):
+        return set(), set()
+    return set(data.get("repos", [])), set(data.get("logins", []))
+
+
+def _save_coverage(cache, target: str, repos: set, logins: set) -> None:
+    cache.set(Cache.key("seed-coverage", target),
+              {"repos": sorted(repos), "logins": sorted(logins)})
+
+
+def seed_repo(name_with_owner, *, forge, index, cache, force=False) -> set | None:
+    """Seed one repo's contributor roster into the index. Returns the set of
+    **indexed** contributor logins (those with >= MIN_COMMITS commits — i.e. the
+    ones actually made discoverable, possibly empty), or None if skipped (already
+    seeded within SEED_TTL). Raises RateLimitError to let the caller stop."""
     marker = Cache.key("roster-seeded", name_with_owner)
     if not force and cache.has(marker):
         return None  # seeded within SEED_TTL — skip (re-seeds once it expires)
     owner, _, repo = name_with_owner.partition("/")
     contribs = forge.repo_contributors(owner, repo, max_pages=SEED_PAGES)
-    n = 0
+    indexed: set = set()
     if contribs:
         roster = {c.login.lower(): c.contributions for c in contribs if c.login}
         index.record_rosters({name_with_owner: roster})
-        n = len(roster)
+        # Mirror record_rosters' threshold so the count reflects who's discoverable.
+        indexed = {login for login, commits in roster.items() if commits >= MIN_COMMITS}
     cache.set(marker, True)
-    return n
+    return indexed
 
 
 def seed_one(name_with_owner, *, forge, index, cache, log=lambda m: None) -> dict:
     """Seed a single specified repo (for when only one repo is of interest)."""
+    cov_repos, cov_logins = _load_coverage(cache, name_with_owner)
     try:
-        n = seed_repo(name_with_owner, forge=forge, index=index, cache=cache)
+        logins = seed_repo(name_with_owner, forge=forge, index=index, cache=cache)
     except RateLimitError as exc:
-        return {"repo": name_with_owner, "seeded": 0, "contributors_indexed": 0,
-                "repos_available": 1, "stopped": f"rate limit ({exc.reset_in}s)"}
-    if n is None:
-        return {"repo": name_with_owner, "seeded": 0, "contributors_indexed": 0,
-                "repos_available": 1, "stopped": "already seeded (within 30 days)"}
-    log(f"seeded {name_with_owner} ({n} contributors)")
-    return {"repo": name_with_owner, "seeded": 1, "contributors_indexed": n,
-            "repos_available": 1, "stopped": "all repos seeded"}
+        return _seed_summary("repo", name_with_owner, 0, 0, 1,
+                             cov_repos, cov_logins, f"rate limit ({exc.reset_in}s)")
+    if logins is None:
+        return _seed_summary("repo", name_with_owner, 0, 0, 1,
+                             cov_repos, cov_logins, "already seeded (within 30 days)")
+    cov_repos.add(name_with_owner)
+    cov_logins |= logins
+    _save_coverage(cache, name_with_owner, cov_repos, cov_logins)
+    log(f"seeded {name_with_owner} ({len(logins)} contributors)")
+    return _seed_summary("repo", name_with_owner, 1, len(logins), 1,
+                         cov_repos, cov_logins, "all repos seeded")
 
 
 def seed_org(org, *, forge, index, cache, budget=50, log=lambda m: None) -> dict:
@@ -72,12 +94,14 @@ def seed_org(org, *, forge, index, cache, budget=50, log=lambda m: None) -> dict
     Skips repos seeded within SEED_TTL (resumable across periodic runs); stops at
     ``budget`` newly-seeded repos or when the REST quota runs low.
     """
+    cov_repos, cov_logins = _load_coverage(cache, org)
     try:
         repos = forge.organization_repositories(org)
     except RateLimitError as exc:
-        return {"org": org, "seeded": 0, "stopped": f"rate limit ({exc.reset_in}s)"}
+        return _seed_summary("org", org, 0, 0, 0,
+                             cov_repos, cov_logins, f"rate limit ({exc.reset_in}s)")
 
-    seeded = indexed_contributors = 0
+    seeded = entries = 0
     stopped = None
     for meta in repos:
         if seeded >= budget:
@@ -88,19 +112,34 @@ def seed_org(org, *, forge, index, cache, budget=50, log=lambda m: None) -> dict
             stopped = f"low REST quota ({rem})"
             break
         try:
-            n = seed_repo(meta.name_with_owner, forge=forge, index=index, cache=cache)
+            logins = seed_repo(meta.name_with_owner, forge=forge, index=index, cache=cache)
         except RateLimitError as exc:
             stopped = f"rate limit ({exc.reset_in}s)"
             break
-        if n is None:
+        if logins is None:
             continue  # already seeded within SEED_TTL
-        indexed_contributors += n
+        entries += len(logins)
         seeded += 1
-        log(f"seeded {meta.name_with_owner} ({n} contributors)")
-    return {"org": org, "seeded": seeded,
-            "contributors_indexed": indexed_contributors,
-            "repos_available": len(repos),
-            "stopped": stopped or "all repos seeded"}
+        cov_repos.add(meta.name_with_owner)
+        cov_logins |= logins
+        log(f"seeded {meta.name_with_owner} ({len(logins)} contributors)")
+    if seeded:
+        _save_coverage(cache, org, cov_repos, cov_logins)
+    return _seed_summary("org", org, seeded, entries, len(repos),
+                         cov_repos, cov_logins, stopped or "all repos seeded")
+
+
+def _seed_summary(kind, target, seeded, entries, repos_available,
+                  cov_repos, cov_logins, stopped) -> dict:
+    """Build the seed result dict. ``seeded``/``contributors_indexed`` describe
+    THIS run (repos freshly seeded, sum of their indexed rosters); ``*_distinct``
+    are the cumulative distinct coverage for the target (from the coverage set), so
+    a no-op re-run still reports the true totals."""
+    return {kind: target, "seeded": seeded, "contributors_indexed": entries,
+            "repos_available": repos_available,
+            "repos_distinct": len(cov_repos),
+            "contributors_distinct": len(cov_logins),
+            "stopped": stopped}
 
 
 def main(argv=None) -> int:
@@ -130,9 +169,10 @@ def main(argv=None) -> int:
                           budget=args.budget, log=lambda m: print(f"[seed] {m}"))
     finally:
         forge.close()
-    print(f"[seed] {result['org']}: seeded {result['seeded']} repo(s), "
-          f"{result['contributors_indexed']} contributor entries "
-          f"(of {result['repos_available']} available) — {result['stopped']}")
+    print(f"[seed] {result['org']}: seeded {result['seeded']} repo(s) this run "
+          f"(of {result['repos_available']} available) — coverage: "
+          f"{result['repos_distinct']} repo(s), {result['contributors_distinct']} "
+          f"distinct contributors — {result['stopped']}")
     return 0
 
 

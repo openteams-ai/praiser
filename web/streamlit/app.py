@@ -559,12 +559,16 @@ def _render_admin_seed():
     if seeded:
         now = time.time()
         with st.expander(f"Seeded targets ({len(seeded)})"):
+            st.caption("Cumulative distinct coverage per target (contributors with "
+                       "≥15 commits — the discoverable ones). A re-run showing 0 "
+                       "new means those repos are already indexed (not lost).")
             for r in seeded:
-                age = humanize_wait(int(now - r["created"])) if r.get("created") else "?"
+                ts = r.get("updated") or r.get("created")
+                age = humanize_wait(int(now - ts)) if ts else "?"
                 st.caption(
                     f"{r['forge']} · **{r['target']}** ({r['kind']}) — "
-                    f"{r['seeded']} repo(s), {r['contributors']} contributor "
-                    f"entries · {age} ago")
+                    f"{r['repos']} repo(s), {r['contributors']} distinct "
+                    f"contributor(s) · last run {age} ago")
     # The form lives in a placeholder so it can be CLEARED while seeding runs —
     # otherwise Streamlit greys it out for the whole (long) operation.
     seed_form = st.empty()
@@ -597,10 +601,11 @@ def _render_admin_seed():
                         res = None
                 if res:
                     st.session_state["seed_msg"] = ("ok",
-                        f"Seeded {res['seeded']} repo(s), "
-                        f"{res['contributors_indexed']} contributor entries — "
-                        f"{res['stopped']}. Re-run to continue (resumes where it "
-                        "left off).")
+                        f"Seeded {res['seeded']} new repo(s) this run. Coverage now: "
+                        f"{res.get('repos_distinct', 0)} repo(s), "
+                        f"{res.get('contributors_distinct', 0)} distinct "
+                        f"contributors — {res['stopped']}. Re-run to continue "
+                        "(resumes where it left off).")
             # Re-render: refresh the seeded-targets list with the just-added row and
             # bring the (emptied) form back so an org seed can be continued without
             # re-login. The outcome shows via seed_msg above on this rerun.
