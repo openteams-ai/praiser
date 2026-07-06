@@ -156,11 +156,23 @@ def _rate_budget(token):
 
 
 def _public_stats():
-    """Non-identifying usage totals for the public footer, read once per session
+    """Non-identifying usage totals for the public line, read once per session
     (a couple of Redis reads), refreshed after a scan (see the scan-complete path)."""
     if "pub_stats" not in st.session_state:
         st.session_state["pub_stats"] = service.public_stats()
     return st.session_state["pub_stats"]
+
+
+def _render_public_stats(slot):
+    """Paint the discreet usage line into ``slot`` (a placeholder), so it can be
+    repainted in place after a scan without waiting for the next rerun. Hidden
+    until there's something to show."""
+    ps = _public_stats()
+    if ps.get("people"):
+        slot.caption(f"👤 {ps['people']:,} people scanned · "
+                     f"📦 {ps['repos']:,} elevated-role projects covered")
+    else:
+        slot.empty()
 
 
 def _ratio(rem, lim):
@@ -208,11 +220,10 @@ st.set_page_config(page_title="praiser", page_icon="🌟")
 st.title("🌟 praiser")
 st.caption("Find the open-source projects where someone holds an elevated role — "
            "with evidence for every claim.")
-# Discreet usage line (approximate, monotonic; hidden until there's something to show).
-_ps = _public_stats()
-if _ps.get("people"):
-    st.caption(f"👤 {_ps['people']:,} people scanned · "
-               f"📦 {_ps['repos']:,} elevated-role projects covered")
+# Discreet usage line (approximate, monotonic; hidden until there's something to
+# show). In a placeholder so a completed scan can repaint it in place (below).
+stats_slot = st.empty()
+_render_public_stats(stats_slot)
 # One "About praiser" dropdown at the top holds both the intro and the role
 # glossary — so the meaning of every role is one obvious place to look (the result
 # cards point here). Kept out of the main flow so the landing screen stays lean.
@@ -861,6 +872,7 @@ if scan_target is not None:
         # public usage line so it reflects this scan.
         st.session_state.pop("rate_budget", None)
         st.session_state.pop("pub_stats", None)
+        _render_public_stats(stats_slot)   # repaint the usage line in place
         if result.partial_reset_in is not None:
             # Every token hit its limit mid-scan → incomplete. Don't cache it;
             # show what we have with a clear warning + wait time.
