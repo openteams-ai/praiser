@@ -80,6 +80,24 @@ class RedisCache:
         """Remove a cached entry (best-effort; no-op if absent)."""
         self._command(["DEL", _PREFIX + key])
 
+    def delete_prefix(self, prefix: str) -> int:
+        """Delete every key named ``praiser:<prefix>*`` (SCAN + DEL); return the
+        count. The inverse of ``clear_all``'s protect — e.g. reset ``stats:``."""
+        match = _PREFIX + prefix + "*"
+        deleted = 0
+        cursor = "0"
+        while True:
+            res = self._command(["SCAN", cursor, "MATCH", match, "COUNT", "500"])
+            if not isinstance(res, list) or len(res) != 2:
+                break
+            cursor, keys = res[0], res[1]
+            if keys:
+                self._command(["DEL", *keys])
+                deleted += len(keys)
+            if str(cursor) == "0":
+                break
+        return deleted
+
     def clear_all(self, protect_prefix: str | None = None) -> int:
         """Delete EVERY praiser-namespaced key (SCAN + DEL). Returns the count
         deleted. Keys whose name (after the ``praiser:`` prefix) starts with

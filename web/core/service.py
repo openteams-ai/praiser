@@ -479,6 +479,22 @@ def wipe_all_cache(result_cache=None) -> int:
     return removed
 
 
+def reset_usage_stats(result_cache=None) -> int:
+    """Admin: zero the usage stats (people/repos/orgs + scan counters) — the public
+    line starts fresh. Kept SEPARATE from wipe_all_cache: the stats are monotonic
+    and unrecoverable, so a routine cache wipe preserves them and only an explicit
+    reset clears them. Returns the number of stat keys removed (best-effort)."""
+    rcache = result_cache if result_cache is not None else make_result_cache()
+    if rcache is None:
+        return 0
+    try:
+        if hasattr(rcache, "delete_prefix"):
+            return rcache.delete_prefix(_STATS_PREFIX)
+    except Exception:
+        pass
+    return 0
+
+
 def usage_summary(result_cache=None) -> dict:
     """Cheap admin cache/usage stats — a handful of O(1) reads, nothing that runs
     during a scan. Returns::

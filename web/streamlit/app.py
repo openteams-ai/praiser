@@ -538,7 +538,16 @@ def _wipe_all_cache():
     st.session_state["admin_confirm"] = False
     st.session_state["admin_flash"] = (
         f"Wiped {n} cache key(s) — clean slate (founder cache + reverse-index too); "
-        "previously-scanned users re-fetch live on their next scan.")
+        "previously-scanned users re-fetch live on their next scan. Usage stats kept.")
+
+
+def _reset_usage_stats():
+    n = service.reset_usage_stats()
+    st.session_state["admin_confirm"] = False
+    st.session_state.pop("pub_stats", None)      # public line re-reads (now 0)
+    st.session_state["admin_flash"] = (
+        f"Reset usage stats ({n} key(s)) — people/projects/organizations counts "
+        "start fresh. (History is not recoverable.)")
 
 
 def _render_admin_frame():
@@ -701,7 +710,13 @@ def _render_admin_danger_zone():
               help="Wipe the entire praiser cache namespace — a clean slate, "
                    "including the founder cache + reverse-index (rebuilt on next "
                    "scans; founder re-resolution is WDQS-throttled). Previously-"
-                   "scanned users are re-marked to re-fetch live on next scan.")
+                   "scanned users are re-marked to re-fetch live on next scan. "
+                   "Usage stats are kept (reset them separately below).")
+    st.button("Reset usage stats", disabled=not confirm, on_click=_reset_usage_stats,
+              use_container_width=True,
+              help="Zero the public usage counts (people / projects / organizations "
+                   "scanned). Separate from the cache wipe because these are "
+                   "monotonic metrics and can't be recovered once cleared.")
 
 
 def _run_scan(username, data_opts, token_options, exhausted, status_ph, hint=""):

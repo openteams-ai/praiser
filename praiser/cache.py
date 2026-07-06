@@ -111,6 +111,24 @@ class Cache:
         cur = self.get(key)
         return len(cur) if isinstance(cur, list) else 0
 
+    def delete_prefix(self, prefix: str) -> int:
+        """Remove every entry whose key starts with ``prefix`` (e.g. ``"stats:"``);
+        return the count. Best-effort."""
+        n = 0
+        try:
+            entries = list(self.dir.glob(f"{prefix}*.json"))
+        except OSError:
+            return 0
+        for p in entries:
+            if not p.stem.startswith(prefix):
+                continue
+            try:
+                p.unlink()
+                n += 1
+            except OSError:
+                pass
+        return n
+
     def clear(self, protect_prefix: str | None = None) -> int:
         """Remove every cached entry in this cache's directory; return the count.
         Entries whose key starts with ``protect_prefix`` are kept (e.g. usage
