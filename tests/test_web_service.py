@@ -273,7 +273,7 @@ def test_cache_pfadd_pfcount_and_clear_protects_stats(tmp_path):
     c.pfadd("stats:users", "c")
     assert c.pfcount("stats:users") == 3
     c.set("result-x", "v")
-    n = c.clear(protect_prefix="stats:")
+    n = c.clear(protect_prefixes=("stats:",))
     assert n == 1                           # only the non-stats entry removed
     assert c.get("result-x") is None
     assert c.pfcount("stats:users") == 3    # stats survived the wipe
@@ -291,6 +291,56 @@ def test_reset_usage_stats_clears_stats_only(monkeypatch, tmp_path):
     assert after == {"people": 0, "repos": 0, "orgs": 0, "scans": 0}  # all zeroed
     # The cached result itself is untouched (reset is stats-only, not a cache wipe).
     assert service.cache_catalog(result_cache=rc)      # alice's catalog row remains
+
+
+def test_seed_targets_set_get_normalizes(tmp_path):
+    rc = Cache(tmp_path)
+    saved = service.set_seed_targets(
+        " NumPy \nscipy\n\n# a comment\nscipy\npandas-dev", result_cache=rc)
+    assert saved == ["numpy", "scipy", "pandas-dev"]   # trim/lower/dedup/drop blanks+comments
+    assert service.get_seed_targets(result_cache=rc) == ["numpy", "scipy", "pandas-dev"]
+
+
+def test_next_seed_target_prefers_unseeded_then_oldest(monkeypatch, tmp_path):
+    _clock(monkeypatch)
+    rc = Cache(tmp_path)
+    service.set_seed_targets(["a", "b", "c"], result_cache=rc)
+    _row = {"repos_distinct": 1, "contributors_distinct": 1}
+    service.record_seed(_row, forge="github", kind="org", target="b", result_cache=rc)
+    assert service.next_seed_target(result_cache=rc) == "a"   # first never-seeded, in order
+    service.record_seed(_row, forge="github", kind="org", target="a", result_cache=rc)
+    service.record_seed(_row, forge="github", kind="org", target="c", result_cache=rc)
+    assert service.next_seed_target(result_cache=rc) == "b"   # all seeded → oldest-updated
+
+
+def test_seed_targets_status_joins_catalog(monkeypatch, tmp_path):
+    _clock(monkeypatch)
+    rc = Cache(tmp_path)
+    service.set_seed_targets(["a", "b"], result_cache=rc)
+    service.record_seed({"repos_distinct": 5, "contributors_distinct": 50},
+                        forge="github", kind="org", target="a", result_cache=rc)
+    status = {s["org"]: s for s in service.seed_targets_status(result_cache=rc)}
+    assert status["a"]["seeded"] and status["a"]["repos"] == 5
+    assert status["b"]["seeded"] is False
+
+
+def test_seed_targets_survive_wipe(monkeypatch, tmp_path):
+    _clock(monkeypatch)
+    monkeypatch.setattr(service, "run", _stats_run)
+    rc, hc = Cache(tmp_path), Cache(tmp_path / "h")
+    service.set_seed_targets(["numpy", "scipy"], result_cache=rc)
+    service.collect("alice", forge="github", result_cache=rc, http_cache=hc)
+    service.wipe_all_cache(result_cache=rc)
+    assert service.get_seed_targets(result_cache=rc) == ["numpy", "scipy"]  # config kept
+    assert service.cache_catalog(result_cache=rc) == []                     # cache wiped
+
+
+def test_cache_lock_acquire_release(tmp_path):
+    c = Cache(tmp_path)
+    assert c.acquire_lock("seed:lock", 300) is True
+    assert c.acquire_lock("seed:lock", 300) is False   # held
+    c.release_lock("seed:lock")
+    assert c.acquire_lock("seed:lock", 300) is True     # released
 
 
 def test_wipe_all_cache_preserves_usage_stats(monkeypatch, tmp_path):

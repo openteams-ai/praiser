@@ -178,6 +178,34 @@ def _render_public_stats(slot):
         slot.empty()
 
 
+def _bg_seed_once():
+    """Run one opportunistic background seed chunk (own thread; touches only Redis
+    + GitHub, never st.*). Self-limits via a Redis lease + REST watermark."""
+    try:
+        from web import seed as webseed
+        webseed.run_queue()
+    except Exception:
+        pass
+
+
+def _tick_background_seeder():
+    """On an app run, nudge the background seeder if the admin configured a target
+    list. Session-cached target check + a per-session cooldown keep it cheap; the
+    global Redis lease keeps actual seeding to ~one chunk at a time across sessions."""
+    if "has_seed_targets" not in st.session_state:
+        st.session_state["has_seed_targets"] = bool(service.get_seed_targets())
+    if not st.session_state["has_seed_targets"]:
+        return
+    now = time.time()
+    if now - st.session_state.get("_seed_tick_at", 0) < 60:
+        return
+    st.session_state["_seed_tick_at"] = now
+    try:
+        threading.Thread(target=_bg_seed_once, daemon=True).start()
+    except Exception:
+        pass
+
+
 def _ratio(rem, lim):
     return rem / lim if lim else 1.0
 
@@ -541,6 +569,14 @@ def _wipe_all_cache():
         "previously-scanned users re-fetch live on their next scan. Usage stats kept.")
 
 
+def _save_seed_targets():
+    saved = service.set_seed_targets(st.session_state.get("seed_targets_text", ""))
+    st.session_state["has_seed_targets"] = bool(saved)   # start ticking this session
+    st.session_state["seed_msg"] = ("ok",
+        f"Saved {len(saved)} org(s) to background-seed. The app will work through "
+        "them on its own runs while GitHub quota is healthy.")
+
+
 def _reset_usage_stats():
     n = service.reset_usage_stats()
     st.session_state["admin_confirm"] = False
@@ -608,6 +644,31 @@ def _render_admin_seed():
                 "contributors so the app can discover them.")
     if (m := st.session_state.pop("seed_msg", None)):
         (st.success if m[0] == "ok" else st.error)(m[1])
+    # Background seeding: an admin-managed org list the app works through on its
+    # own runs (opportunistic — no cron; a fork's deployment gets it for free).
+    with st.expander("🌱 Background seeding (org list)"):
+        st.caption(
+            "One org per line. The app seeds them in the background on its own "
+            f"runs — one org at a time, only while GitHub REST quota is above "
+            f"{service.SEED_REST_START:,}, backing off below "
+            f"{service.SEED_REST_FLOOR:,}. Resumes across runs; re-seeds after 30 "
+            "days. Spends the deployment's bot quota.")
+        st.text_area("Orgs to seed (one per line)", key="seed_targets_text",
+                     value="\n".join(service.get_seed_targets()), height=140,
+                     placeholder="numpy\nscipy\npandas-dev\npytorch")
+        st.button("Save list", on_click=_save_seed_targets)
+        status = service.seed_targets_status()
+        if status:
+            now = time.time()
+            done = sum(1 for s in status if s["seeded"])
+            st.caption(f"{done}/{len(status)} seeded at least once:")
+            for s in status:
+                if s["seeded"]:
+                    age = humanize_wait(int(now - s["updated"])) if s["updated"] else "?"
+                    st.caption(f"✅ **{s['org']}** — {s['repos']} repo(s), "
+                               f"{s['contributors']} contributor(s) · {age} ago")
+                else:
+                    st.caption(f"⏳ **{s['org']}** — pending")
     seeded = service.seed_catalog()
     if seeded:
         now = time.time()
@@ -965,3 +1026,8 @@ else:
 # and the cache danger zone. No ?diag / ?seed / ?debug URL gates any more.
 if IS_ADMIN:
     _render_admin_frame()
+
+# Opportunistic background seeding — progresses the admin's org list on ordinary
+# app runs when GitHub quota is healthy (self-limited by a Redis lease + REST
+# watermark). Runs for any visitor's activity, not just admins.
+_tick_background_seeder()

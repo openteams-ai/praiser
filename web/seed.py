@@ -23,6 +23,11 @@ from praiser.pipeline import FORGES  # noqa: E402
 from praiser.seed import seed_one, seed_org  # noqa: E402
 from web.core.cache import local_cache, make_result_cache  # noqa: E402
 
+# Background seeder tuning. A "chunk" is one org, budget-capped, so a single
+# opportunistic tick stays bounded. The lease TTL must exceed one chunk's runtime.
+SEED_CHUNK_BUDGET = 30
+SEED_LOCK_TTL = 300
+
 # Forge-aware interface so URLs like ?seed=github/numpy never need to change, but
 # functional seeding is GitHub-only today: most forges don't implement
 # organization_repositories + repo_contributors, and the pipeline consults the
@@ -85,6 +90,51 @@ def run_seed(name: str, forge: str = "github", budget: int = 30,
     from web.core import service       # log the run for the admin "seed status" view
     service.record_seed(res, forge=forge, kind=kind, target=name, result_cache=shared)
     return res
+
+
+def run_queue(budget: int = SEED_CHUNK_BUDGET, log=lambda m: None) -> dict:
+    """Opportunistic background chunk: seed the next org from the admin's list, if
+    GitHub REST quota is healthy. Bounded to ONE org (``budget`` repos), guarded by
+    a Redis lease so concurrent app sessions don't run it at once. Safe to call on
+    every app run — it's a cheap no-op unless a chunk is actually due.
+
+    Returns ``{"ran": bool, "reason"/"org"/…}``. Never raises (best-effort)."""
+    from web.core import service
+    shared = make_result_cache()
+    if shared is None:
+        return {"ran": False, "reason": "no shared cache"}
+    # Lease: only one seeder at a time; TTL auto-releases if this process dies.
+    if hasattr(shared, "acquire_lock") and not shared.acquire_lock(
+            service._SEED_LOCK_KEY, SEED_LOCK_TTL):
+        return {"ran": False, "reason": "another seeder is running"}
+    try:
+        org = service.next_seed_target(shared)
+        if not org:
+            return {"ran": False, "reason": "no targets"}
+        # Start watermark: only begin a chunk when REST is comfortably high (free
+        # /rate_limit read). The per-repo FLOOR (SEED_REST_FLOOR) is enforced
+        # inside seed_org, so it backs off mid-chunk if quota drops.
+        budget_info = service.rate_budget(_token("github")) or {}
+        rest = (budget_info.get("core") or (None,))[0]
+        if rest is not None and rest < service.SEED_REST_START:
+            return {"ran": False, "reason": f"rest low ({rest})", "org": org}
+        f = FORGES["github"](_token("github"), local_cache())
+        try:
+            res = seed_org(org, forge=f, index=ContributorIndex(shared), cache=shared,
+                           budget=budget, min_rest=service.SEED_REST_FLOOR, log=log)
+        finally:
+            f.close()
+        res["forge"] = "github"
+        service.record_seed(res, forge="github", kind="org", target=org,
+                            result_cache=shared)
+        return {"ran": True, "org": org, "seeded": res.get("seeded"),
+                "stopped": res.get("stopped"),
+                "contributors": res.get("contributors_distinct")}
+    except Exception as exc:      # background: never surface
+        return {"ran": False, "reason": f"error: {exc}"}
+    finally:
+        if hasattr(shared, "release_lock"):
+            shared.release_lock(service._SEED_LOCK_KEY)
 
 
 def main(argv=None) -> int:

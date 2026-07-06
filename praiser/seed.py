@@ -92,12 +92,13 @@ def seed_one(name_with_owner, *, forge, index, cache, log=lambda m: None) -> dic
                          cov_repos, cov_logins, "all repos seeded")
 
 
-def seed_org(org, *, forge, index, cache, budget=50, log=lambda m: None) -> dict:
+def seed_org(org, *, forge, index, cache, budget=50, min_rest=MIN_REST,
+             log=lambda m: None) -> dict:
     """Seed the reverse-index from ``org``'s repos. Returns a small summary.
 
     Skips repos seeded within SEED_TTL (resumable across periodic runs); stops at
-    ``budget`` newly-seeded repos or when the REST quota runs low.
-    """
+    ``budget`` newly-seeded repos or when REST quota drops below ``min_rest``
+    (the background seeder passes a high floor so it backs off early)."""
     cov_repos, cov_logins = _load_coverage(cache, org)
     try:
         repos = forge.organization_repositories(org, limit=SEED_ORG_LIST)
@@ -112,7 +113,7 @@ def seed_org(org, *, forge, index, cache, budget=50, log=lambda m: None) -> dict
             stopped = f"budget ({budget} repos)"
             break
         rem = _rest_remaining(forge)
-        if rem is not None and rem < MIN_REST:
+        if rem is not None and rem < min_rest:
             stopped = f"low REST quota ({rem})"
             break
         try:

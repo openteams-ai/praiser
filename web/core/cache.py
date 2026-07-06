@@ -98,12 +98,22 @@ class RedisCache:
                 break
         return deleted
 
-    def clear_all(self, protect_prefix: str | None = None) -> int:
+    def acquire_lock(self, key: str, ttl: int) -> bool:
+        """Atomic lease (SET NX EX): True if acquired, False if already held. The
+        TTL auto-releases if the holder dies — used to keep concurrent app sessions
+        from running the background seeder at once."""
+        return self._command(
+            ["SET", _PREFIX + key, "1", "NX", "EX", str(int(ttl))]) == "OK"
+
+    def release_lock(self, key: str) -> None:
+        self._command(["DEL", _PREFIX + key])
+
+    def clear_all(self, protect_prefixes: tuple = ()) -> int:
         """Delete EVERY praiser-namespaced key (SCAN + DEL). Returns the count
-        deleted. Keys whose name (after the ``praiser:`` prefix) starts with
-        ``protect_prefix`` are kept — e.g. ``"stats:"`` so usage metrics survive a
-        wipe. Best-effort; keys are enumerable though not reversible to usernames."""
-        skip = (_PREFIX + protect_prefix) if protect_prefix else None
+        deleted. Keys whose name (after the ``praiser:`` prefix) starts with any of
+        ``protect_prefixes`` are kept — e.g. ``"stats:"``/``"seed:"`` so usage
+        metrics and the seed target list survive a wipe. Best-effort."""
+        skip = tuple(_PREFIX + p for p in protect_prefixes)
         deleted = 0
         cursor = "0"
         while True:
