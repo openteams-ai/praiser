@@ -466,9 +466,9 @@ def wipe_all_cache(result_cache=None) -> int:
         # Keep usage stats (stats:*) — they're metrics, not cache; a wipe is a
         # cache reset, not a usage-history reset.
         if hasattr(rcache, "clear_all"):     # RedisCache: SCAN + DEL praiser:*
-            removed = rcache.clear_all(protect_prefix=_STATS_PREFIX)
+            removed = rcache.clear_all(protect_prefixes=(_STATS_PREFIX, _SEED_PREFIX))
         elif hasattr(rcache, "clear"):       # local file Cache: wipe the dir
-            removed = rcache.clear(protect_prefix=_STATS_PREFIX)
+            removed = rcache.clear(protect_prefixes=(_STATS_PREFIX, _SEED_PREFIX))
     except Exception:
         pass
     try:                                     # re-mark known users for a fresh re-scan
@@ -624,6 +624,85 @@ def seed_catalog(result_cache=None) -> list[dict]:
             for r in cat.values() if isinstance(r, dict)]
     rows.sort(key=lambda r: r["updated"], reverse=True)
     return rows
+
+
+# --- Background-seeder state (admin-managed org list) --------------------------
+# Config, not cache: readable ``seed:`` keys, kept out of "Wipe ALL cache" (see
+# wipe_all_cache's protect list). The GitHub seeder is opportunistic — the app
+# seeds a chunk on its own runs when quota is healthy (no external cron needed, so
+# a fork's deployment gets it for free).
+_SEED_PREFIX = "seed:"
+_SEED_TARGETS_KEY = "seed:targets"       # the admin's org list (JSON list)
+_SEED_LOCK_KEY = "seed:lock"             # lease so sessions don't double-run
+# REST-quota watermarks (hysteresis): start a chunk only when comfortably high;
+# back off (stop adding repos) when it drops low. Prevents on/off flapping.
+SEED_REST_START = 4500
+SEED_REST_FLOOR = 2000
+
+
+def get_seed_targets(result_cache=None) -> list[str]:
+    """The admin's ordered list of org logins to background-seed ([] if unset)."""
+    rcache = result_cache if result_cache is not None else make_result_cache()
+    if rcache is None:
+        return []
+    try:
+        val = rcache.get(_SEED_TARGETS_KEY)
+    except Exception:
+        return []
+    return [str(x) for x in val] if isinstance(val, list) else []
+
+
+def set_seed_targets(orgs, result_cache=None) -> list[str]:
+    """Store the seed org list (normalised: stripped, lowercased, de-duped, order
+    kept; blanks/comments dropped). ``orgs`` may be a list or a newline/comma text.
+    Returns the stored list."""
+    if isinstance(orgs, str):
+        orgs = orgs.replace(",", "\n").splitlines()
+    out: list[str] = []
+    seen: set[str] = set()
+    for o in orgs or []:
+        o = str(o).strip().strip("/").lower()
+        if not o or o.startswith("#") or o in seen:
+            continue
+        seen.add(o)
+        out.append(o)
+    rcache = result_cache if result_cache is not None else make_result_cache()
+    if rcache is not None:
+        try:
+            rcache.set(_SEED_TARGETS_KEY, out)
+        except Exception:
+            pass
+    return out
+
+
+def seed_targets_status(result_cache=None) -> list[dict]:
+    """Per-target progress for the admin view: ``[{"org", "seeded" (bool),
+    "repos", "contributors", "updated"}]`` in list order, joined with the seed
+    catalog (org entries)."""
+    rcache = result_cache if result_cache is not None else make_result_cache()
+    cat = {r["target"]: r for r in seed_catalog(rcache) if r.get("kind") == "org"}
+    out = []
+    for org in get_seed_targets(rcache):
+        c = cat.get(org)
+        out.append({"org": org, "seeded": c is not None,
+                    "repos": (c or {}).get("repos", 0),
+                    "contributors": (c or {}).get("contributors", 0),
+                    "updated": (c or {}).get("updated", 0)})
+    return out
+
+
+def next_seed_target(result_cache=None) -> str | None:
+    """The org to seed next: any never-seeded one (in list order) first, else the
+    one seeded longest ago — so a periodic chunk round-robins the whole list."""
+    rcache = result_cache if result_cache is not None else make_result_cache()
+    targets = get_seed_targets(rcache)
+    if not targets:
+        return None
+    cat = {r["target"]: r for r in seed_catalog(rcache) if r.get("kind") == "org"}
+    for org in targets:
+        if org not in cat:
+            return org
+    return min(targets, key=lambda o: cat[o].get("updated", 0))
 
 
 # The options that affect DATA COLLECTION (a change here needs a re-scan). The

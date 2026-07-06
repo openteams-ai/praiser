@@ -129,17 +129,29 @@ class Cache:
                 pass
         return n
 
-    def clear(self, protect_prefix: str | None = None) -> int:
+    def acquire_lock(self, key: str, ttl: int | None = None) -> bool:
+        """Best-effort lease for the single-process local cache: True unless the
+        key is already set. ``ttl`` is ignored (Redis provides the real TTL lease);
+        the caller releases via ``release_lock``."""
+        if self.get(key) is not None:
+            return False
+        self.set(key, True)
+        return True
+
+    def release_lock(self, key: str) -> None:
+        self.delete(key)
+
+    def clear(self, protect_prefixes: tuple = ()) -> int:
         """Remove every cached entry in this cache's directory; return the count.
-        Entries whose key starts with ``protect_prefix`` are kept (e.g. usage
-        stats survive a wipe). Best-effort (skips files it can't unlink)."""
+        Entries whose key starts with any of ``protect_prefixes`` are kept (e.g.
+        usage stats / seed config survive a wipe). Best-effort."""
         n = 0
         try:
             entries = list(self.dir.glob("*.json"))
         except OSError:
             return 0
         for p in entries:
-            if protect_prefix and p.stem.startswith(protect_prefix):
+            if protect_prefixes and p.stem.startswith(tuple(protect_prefixes)):
                 continue
             try:
                 p.unlink()
