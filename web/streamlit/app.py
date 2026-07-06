@@ -232,8 +232,10 @@ with st.expander("About praiser & role definitions"):
         "**praiser** records the projects where a person is an **author, "
         "maintainer, code owner, steering-council member, standards author, "
         "release manager, or core contributor** — each with a clickable "
-        "**evidence link** and a **confidence** score. It works across GitHub, "
-        "GitLab, Codeberg, Gitee, Bitbucket and cgit hosts.\n\n"
+        "**evidence link** and a **confidence** score. **GitHub is the primary, "
+        "best-supported target**; it also scans GitLab, Codeberg, Gitee, Bitbucket "
+        "and cgit, though non-GitHub support is less complete (thinner discovery, "
+        "and ranking on hosts without a stars metric) and still improving.\n\n"
         f"ℹ️ More: [{REPO_URL.split('//', 1)[1]}]({REPO_URL}) · "
         f"praiser v{PRAISER_VERSION}")
     st.markdown("---")

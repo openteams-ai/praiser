@@ -34,6 +34,15 @@ or Savannah (`--forge cgit`) — including **self-hosted instances** with
 pipeline talks to a neutral `Forge` interface, so adding another host is a
 self-contained addition.
 
+**GitHub is the primary, best-supported target** — the other forges work through
+the same interface, but reaching equivalent quality on them is ongoing work, not
+a solved problem. Discovery is tuned to GitHub's APIs (some hosts expose narrower
+user/commit search, so fewer projects surface), and ranking assumes a **stars**
+metric that not every host has (cgit has none and falls back to forks — see
+[#4](https://github.com/openteams-ai/praiser/issues/4)). So on non-GitHub forges
+expect thinner discovery and different ranking — treat those gaps as known
+limitations rather than bugs.
+
 People use different usernames on different forges, so `--cross-forge` follows
 the links a person publishes on their own profile — and on the personal site
 those profiles point to — to their accounts elsewhere, keeping only links
