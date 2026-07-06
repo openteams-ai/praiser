@@ -234,39 +234,45 @@ def test_clear_tracked_scans_removes_tracked_entries_and_catalog(monkeypatch, tm
     assert service.cache_catalog(result_cache=rc) == []
 
 
-def test_seed_catalog_records_runs_and_accumulates_by_target(monkeypatch, tmp_path):
+def test_seed_catalog_records_authoritative_distinct(monkeypatch, tmp_path):
     _clock(monkeypatch)
     rc = Cache(tmp_path)
-    service.record_seed({"seeded": 3, "contributors_indexed": 120},
+    service.record_seed({"seeded": 3, "contributors_indexed": 120,
+                         "repos_distinct": 3, "contributors_distinct": 110},
                         forge="github", kind="org", target="numpy", result_cache=rc)
-    service.record_seed({"seeded": 1, "contributors_indexed": 40},
+    service.record_seed({"seeded": 1, "contributors_indexed": 40,
+                         "repos_distinct": 1, "contributors_distinct": 40},
                         forge="github", kind="repo", target="pytorch/pytorch",
                         result_cache=rc)
     rows = service.seed_catalog(result_cache=rc)
-    assert {(r["target"], r["kind"], r["seeded"], r["contributors"]) for r in rows} == {
-        ("numpy", "org", 3, 120), ("pytorch/pytorch", "repo", 1, 40)}
-    # Re-seeding numpy ACCUMULATES onto its row (same key), not a dup or overwrite.
-    service.record_seed({"seeded": 5, "contributors_indexed": 200},
+    assert {(r["target"], r["kind"], r["repos"], r["contributors"]) for r in rows} == {
+        ("numpy", "org", 3, 110), ("pytorch/pytorch", "repo", 1, 40)}
+    # A later run reports the grown cumulative distinct (from the coverage set),
+    # which OVERWRITES with the authoritative total (never a sum).
+    service.record_seed({"seeded": 2, "contributors_indexed": 90,
+                         "repos_distinct": 5, "contributors_distinct": 200},
                         forge="github", kind="org", target="numpy", result_cache=rc)
     rows = service.seed_catalog(result_cache=rc)
     assert len(rows) == 2
     numpy = next(r for r in rows if r["target"] == "numpy")
-    assert numpy["seeded"] == 8 and numpy["contributors"] == 320
+    assert numpy["repos"] == 5 and numpy["contributors"] == 200
     assert numpy["updated"] >= numpy["created"]     # created kept, updated advanced
 
 
-def test_seed_catalog_noop_rerun_preserves_count(monkeypatch, tmp_path):
-    # The reported bug: a re-seed skips already-indexed repos (seeded=0), which
-    # must NOT clobber the earlier productive count to 0 — data isn't lost.
+def test_seed_catalog_noop_rerun_keeps_coverage(monkeypatch, tmp_path):
+    # The reported bug: a re-seed skips already-indexed repos, but the coverage set
+    # still holds the totals, so the authoritative distinct count doesn't regress.
     _clock(monkeypatch)
     rc = Cache(tmp_path)
-    service.record_seed({"seeded": 30, "contributors_indexed": 804},
+    service.record_seed({"seeded": 30, "contributors_indexed": 804,
+                         "repos_distinct": 30, "contributors_distinct": 700},
                         forge="github", kind="org", target="scipy", result_cache=rc)
-    service.record_seed({"seeded": 0, "contributors_indexed": 0},
+    service.record_seed({"seeded": 0, "contributors_indexed": 0,
+                         "repos_distinct": 30, "contributors_distinct": 700},
                         forge="github", kind="org", target="scipy", result_cache=rc)
     scipy = next(r for r in service.seed_catalog(result_cache=rc)
                  if r["target"] == "scipy")
-    assert scipy["seeded"] == 30 and scipy["contributors"] == 804
+    assert scipy["repos"] == 30 and scipy["contributors"] == 700
 
 
 def test_seed_catalog_empty_when_none(tmp_path):

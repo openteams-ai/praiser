@@ -499,11 +499,11 @@ _SEED_CATALOG_CAP = 500
 def record_seed(result: dict, *, forge: str, kind: str, target: str,
                 result_cache=None) -> None:
     """Record one seed run in the seed catalog (best-effort). Keyed by
-    forge:kind:target, and **cumulative**: counts ADD to the target's existing
-    row. A re-seed skips repos already indexed (their 30-day markers are still
-    valid) and so returns ``seeded=0`` — accumulating means that no-op re-run adds
-    0 and the count holds, instead of clobbering a productive run's total to 0.
-    Tracks first-seen (``created``) and last-run (``updated``) timestamps."""
+    forge:kind:target. Stores the **authoritative cumulative distinct coverage**
+    (``repos_distinct`` / ``contributors_distinct``, computed by praiser.seed from
+    the per-target coverage set) — which never regresses because that set only
+    grows, so a no-op re-run (0 new) still reports the full totals. Tracks
+    first-seen (``created``) and last-run (``updated``) timestamps."""
     rcache = result_cache if result_cache is not None else make_result_cache()
     if rcache is None:
         return
@@ -515,11 +515,14 @@ def record_seed(result: dict, *, forge: str, kind: str, target: str,
         prev = cat.get(ckey)
         prev = prev if isinstance(prev, dict) else {}
         now = time.time()
+        # Authoritative distinct totals; fall back to the previous row (never a
+        # this-run count) if a run didn't report them, so we never regress.
+        repos = int(result.get("repos_distinct", prev.get("repos", 0)) or 0)
+        contribs = int(result.get("contributors_distinct",
+                                  prev.get("contributors", 0)) or 0)
         cat[ckey] = {
             "forge": forge, "kind": kind, "target": target,
-            "seeded": int(prev.get("seeded", 0) or 0) + int(result.get("seeded", 0) or 0),
-            "contributors": (int(prev.get("contributors", 0) or 0)
-                             + int(result.get("contributors_indexed", 0) or 0)),
+            "repos": repos, "contributors": contribs,
             "created": prev.get("created", now),   # first seen
             "updated": now,                        # last run
         }
@@ -535,8 +538,8 @@ def record_seed(result: dict, *, forge: str, kind: str, target: str,
 
 def seed_catalog(result_cache=None) -> list[dict]:
     """Recorded seed runs, most-recently-run first: ``[{"forge", "kind", "target",
-    "seeded", "contributors", "created", "updated"}]``. Counts are cumulative
-    across runs (see ``record_seed``)."""
+    "repos", "contributors", "created", "updated"}]``. ``repos``/``contributors``
+    are the cumulative distinct coverage for the target (see ``record_seed``)."""
     rcache = result_cache if result_cache is not None else make_result_cache()
     if rcache is None:
         return []
@@ -547,7 +550,8 @@ def seed_catalog(result_cache=None) -> list[dict]:
     if not isinstance(cat, dict):
         return []
     rows = [{"forge": r.get("forge"), "kind": r.get("kind"),
-             "target": r.get("target"), "seeded": r.get("seeded", 0),
+             "target": r.get("target"),
+             "repos": r.get("repos", r.get("seeded", 0)),   # legacy row fallback
              "contributors": r.get("contributors", 0),
              "created": r.get("created", 0),
              "updated": r.get("updated", r.get("created", 0))}
