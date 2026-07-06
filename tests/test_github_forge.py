@@ -183,6 +183,32 @@ def test_organization_repositories():
     assert _forge().organization_repositories("numpy")[0].name_with_owner == "numpy/numpy"
 
 
+def test_organization_repositories_paginates_and_respects_limit():
+    class _Paged(_FakeClient):
+        def __init__(self):
+            super().__init__()
+            self.pages = 0
+
+        def graphql(self, query, variables):
+            if "organization(login" in query:
+                self.pages += 1
+                if variables.get("after") is None:
+                    return {"organization": {"repositories": {
+                        "nodes": [_node(f"o/r{i}") for i in range(100)],
+                        "pageInfo": {"hasNextPage": True, "endCursor": "C1"}}}}
+                return {"organization": {"repositories": {
+                    "nodes": [_node(f"o/r{100 + i}") for i in range(50)],
+                    "pageInfo": {"hasNextPage": False, "endCursor": None}}}}
+            return super().graphql(query, variables)
+
+    fake = _Paged()
+    repos = _forge(fake).organization_repositories("o", limit=120)
+    assert len(repos) == 120 and fake.pages == 2      # followed the cursor, capped
+    fake2 = _Paged()
+    assert len(_forge(fake2).organization_repositories("o", limit=10)) == 10
+    assert fake2.pages == 1                            # small limit → one page, no over-fetch
+
+
 def test_repository_rest_adapter():
     meta = _forge().repository("numpy", "numpy")
     assert meta == RepoMeta("numpy/numpy", stars=32000, forks=11000,

@@ -65,10 +65,12 @@ query($login:String!) {
 """
 
 _ORG_REPOS_QUERY = f"""
-query($org:String!) {{
+query($org:String!, $first:Int!, $after:String) {{
   organization(login:$org) {{
-    repositories(first:30, orderBy:{{field:STARGAZERS, direction:DESC}}){{
+    repositories(first:$first, after:$after,
+                 orderBy:{{field:STARGAZERS, direction:DESC}}){{
       nodes{{ {_REPO_FIELDS} }}
+      pageInfo{{ hasNextPage endCursor }}
     }}
   }}
 }}
@@ -264,10 +266,24 @@ class GitHubForge(Forge):
                 self._orgs[login] = []   # e.g. INSUFFICIENT_SCOPES
         return self._orgs[login]
 
-    def organization_repositories(self, org: str) -> list[RepoMeta]:
-        data = self._client.graphql(_ORG_REPOS_QUERY, {"org": org})
-        org_node = (data or {}).get("organization") or {}
-        return _metas_from_nodes((org_node.get("repositories") or {}).get("nodes"))
+    def organization_repositories(self, org: str, limit: int = 30) -> list[RepoMeta]:
+        """The org's repos, most-starred first, up to ``limit`` (paginated in pages
+        of 100). Discovery uses the small default; seeding passes a high limit so
+        its budget is effective."""
+        metas: list[RepoMeta] = []
+        after = None
+        while len(metas) < limit:
+            first = min(limit - len(metas), 100)
+            data = self._client.graphql(
+                _ORG_REPOS_QUERY, {"org": org, "first": first, "after": after})
+            repos = ((data or {}).get("organization") or {}).get("repositories") or {}
+            nodes = repos.get("nodes") or []
+            metas += _metas_from_nodes(nodes)
+            page = repos.get("pageInfo") or {}
+            if not nodes or not page.get("hasNextPage"):
+                break
+            after = page.get("endCursor")
+        return metas[:limit]
 
     def user_commit_history(self, login: str) -> list[RepoMeta]:
         prof = self._client.graphql(
