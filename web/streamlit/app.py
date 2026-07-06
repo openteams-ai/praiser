@@ -249,45 +249,57 @@ with st.expander("About praiser & role definitions"):
 # which this demo doesn't expose; the core library still supports it via CLI).
 DEMO_FORGES = [f for f in service.FORGES if f != "cgit"]
 
-# LLM founder/role discovery spends the DEPLOYMENT's shared LLM budget, so it's
-# hidden on the public demo unless the deployer opts in (LLM_DISCOVERY_ENABLED).
-_LLM_ENABLED = "LLM_DISCOVERY_ENABLED" in st.secrets
+# An LLM key must be configured for founder/role discovery to do anything; the
+# option is admin-only regardless (it spends the deployment's shared LLM budget).
+_LLM_KEY = bool(os.environ.get("ANTHROPIC_API_KEY")
+                or os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"))
 
 # Options live in the sidebar (not the main form): they're rarely changed and have
 # good defaults, so the main area stays a clean username + Praise. They're plain
 # widgets read at submit time — toggling one just reruns (re-rendering the cached
-# result); a scan still runs only on the Praise button.
+# result); a scan still runs only on the Praise button. Sign-in renders FIRST so
+# the admin-only options below can gate on it. Advanced/resource-spending knobs
+# (refresh, cross-forge, LLM) are admin-only; regular users get sensible defaults.
 with st.sidebar:
     st.markdown("### Options")
+    # GitHub sign-in — scan on your own rate limit instead of the shared demo one
+    # (no-op unless the OAuth app is configured). Also establishes admin status.
+    USER_LOGIN, USER_TOKEN = github_account()
+    IS_ADMIN = bool(USER_LOGIN) and USER_LOGIN.lower() in _ADMIN_USERS
+    if "GITHUB_OAUTH_CLIENT_ID" in st.secrets:
+        st.divider()
     forge = st.selectbox("Forge", DEMO_FORGES, key="forge_sel",
                          help="GitHub by default; switch to scan another host.")
-    refresh = st.checkbox(
-        "Refresh (ignore cache)", value=False,
-        help="Force a fresh re-scan instead of a cached result. Only repos "
-             "you're actually connected to are re-fetched, so a refresh won't "
-             "exhaust the API rate limit.")
     package_registries = st.checkbox(
         "Package registries", value=True,
         help="Also check PyPI / npm / crates.io: credit the person as author "
              "(PyPI) or maintainer (npm/crates) of a package — but only when "
              "the package's metadata links back to a repo praiser found.")
-    cross_forge = st.checkbox(
-        "Cross-forge", value=False,
-        help="Follow the person's own profile links to their accounts on other "
-             "forges and merge into one record. Rarely needed.")
-    discover_roles = (st.checkbox(
-        "LLM founder/role discovery", value=False,
-        help="Use an LLM to infer founders/roles in hard cases. Slower, and "
-             "spends the deployment's shared LLM budget.")
-        if _LLM_ENABLED else False)
-    # GitHub sign-in is itself an option — scan on your own rate limit instead of
-    # the shared demo one. Rendered here as the last Options item (no-op unless
-    # the OAuth app is configured). The divider only shows when there's a control.
-    if "GITHUB_OAUTH_CLIENT_ID" in st.secrets:
-        st.divider()
-    USER_LOGIN, USER_TOKEN = github_account()
+    # Refresh is for signed-in users only: they scan on their OWN GitHub quota, so
+    # a forced re-fetch doesn't burn the shared demo budget. (Admins are signed in,
+    # so they get it too.)
+    if USER_TOKEN:
+        refresh = st.checkbox(
+            "Refresh (ignore cache)", value=False,
+            help="Force a fresh re-scan instead of a cached result (runs on your "
+                 "own GitHub quota). Only repos you're actually connected to are "
+                 "re-fetched.")
+    else:
+        refresh = False
+    # Admin-only knobs: shared LLM budget / advanced, rarely-needed multi-forge.
+    if IS_ADMIN:
+        cross_forge = st.checkbox(
+            "Cross-forge", value=False,
+            help="Follow the person's own profile links to their accounts on "
+                 "other forges and merge into one record. Rarely needed.")
+        discover_roles = (st.checkbox(
+            "LLM founder/role discovery", value=False,
+            help="Use an LLM to infer founders/roles in hard cases. Slower, and "
+                 "spends the deployment's shared LLM budget.")
+            if _LLM_KEY else False)
+    else:
+        cross_forge = discover_roles = False
     budget_slot = st.empty()            # a scan clears this, then repaints it
-IS_ADMIN = bool(USER_LOGIN) and USER_LOGIN.lower() in _ADMIN_USERS
 _render_budget_note(budget_slot, USER_TOKEN)
 forge_url = ""       # self-hosted instance URL is a CLI/library feature
 wikidata = True      # always on — a cheap, broadly-useful role source
