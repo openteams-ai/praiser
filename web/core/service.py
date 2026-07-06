@@ -298,26 +298,56 @@ _LEGACY_RECENT_KEY = Cache.key("recent-scans-index")
 _REFRESH_FLAG = "__praiser_refresh__"
 _REFRESH_MARKER = {_REFRESH_FLAG: True}
 
-# Usage counters (admin summary). Cheap: a couple of INCRs per *actual* scan
-# (cache hits don't count — see collect). The per-day key self-expires so the
-# breakdown stays a rolling window without unbounded growth.
-_SCANS_TOTAL_KEY = Cache.key("stats-scans-total")
-_SCANS_DAY_TTL = 120 * 86_400   # keep ~4 months of daily buckets
+# Usage stats, all under a readable ``stats:`` sub-namespace so they can be kept
+# out of "Wipe ALL cache" by prefix (they're metrics, not cache) — see
+# ``wipe_all_cache``. Cheap: a couple of writes per *actual* scan (cache hits
+# don't count — see collect). Counters are plain INCRs; distinct people/repos use
+# HyperLogLog (approx-distinct, ~12KB fixed, monotonic, deduped across users —
+# a repo covered for many users counts once). None store the raw username/repo.
+_STATS_PREFIX = "stats:"                 # protected from wipe
+_STATS_SCANS = "stats:scans"             # total completed scans (INCR)
+_STATS_USERS = "stats:users"             # distinct forge:username queried (HLL)
+_STATS_REPOS = "stats:repos"             # distinct elevated-role repos covered (HLL)
+_STATS_DAY_TTL = 120 * 86_400            # keep ~4 months of daily buckets
 
 
-def _scans_day_key(day: str | None = None) -> str:
-    return Cache.key("stats-scans-day", day or time.strftime("%Y-%m-%d", time.gmtime()))
+def _stats_day_key(day: str | None = None) -> str:
+    return f"stats:scans:{day or time.strftime('%Y-%m-%d', time.gmtime())}"
 
 
-def _record_scan_metric(rcache) -> None:
-    """Count one completed scan (best-effort; never breaks a scan)."""
+def _record_scan_metric(rcache, forge: str, username: str, result) -> None:
+    """Record one completed scan in the usage stats (best-effort; never breaks a
+    scan): total + per-day counters, distinct people, distinct elevated-role repos."""
     if rcache is None:
         return
     try:
-        rcache.incr(_SCANS_TOTAL_KEY)
-        rcache.incr(_scans_day_key(), ttl=_SCANS_DAY_TTL)
+        rcache.incr(_STATS_SCANS)
+        rcache.incr(_stats_day_key(), ttl=_STATS_DAY_TTL)
+        rcache.pfadd(_STATS_USERS, f"{forge}:{username.lower()}")
+        repos = [r.name_with_owner for r in getattr(result, "records", [])
+                 if getattr(r, "name_with_owner", None)]
+        if repos:
+            rcache.pfadd(_STATS_REPOS, *repos)
     except Exception:
         pass
+
+
+def public_stats(result_cache=None) -> dict:
+    """Cheap, non-identifying usage totals for the public page: distinct people
+    scanned, distinct elevated-role projects covered, and total scans. A few O(1)
+    reads (cache once per session on the frontend). Zeroes on any error/miss."""
+    rcache = result_cache if result_cache is not None else make_result_cache()
+    out = {"people": 0, "repos": 0, "scans": 0}
+    if rcache is None:
+        return out
+    try:
+        if hasattr(rcache, "pfcount"):
+            out["people"] = rcache.pfcount(_STATS_USERS)
+            out["repos"] = rcache.pfcount(_STATS_REPOS)
+        out["scans"] = int(rcache.get(_STATS_SCANS) or 0)
+    except Exception:
+        pass
+    return out
 
 
 def _catalog_record(rcache, forge: str, username: str, cache_id: str) -> None:
@@ -420,10 +450,12 @@ def wipe_all_cache(result_cache=None) -> int:
     tracked = cache_catalog(rcache)          # capture BEFORE wiping (catalog goes too)
     removed = 0
     try:
+        # Keep usage stats (stats:*) — they're metrics, not cache; a wipe is a
+        # cache reset, not a usage-history reset.
         if hasattr(rcache, "clear_all"):     # RedisCache: SCAN + DEL praiser:*
-            removed = rcache.clear_all()
+            removed = rcache.clear_all(protect_prefix=_STATS_PREFIX)
         elif hasattr(rcache, "clear"):       # local file Cache: wipe the dir
-            removed = rcache.clear()
+            removed = rcache.clear(protect_prefix=_STATS_PREFIX)
     except Exception:
         pass
     try:                                     # re-mark known users for a fresh re-scan
@@ -442,6 +474,8 @@ def usage_summary(result_cache=None) -> dict:
          "tracked_scans": int,      # entries the catalog tracks (a subset of keys)
          "scans_total": int|None,   # lifetime completed scans (counter)
          "scans_today": int|None,   # completed scans today (UTC, rolling counter)
+         "people": int,             # distinct usernames queried (HLL)
+         "repos": int,              # distinct elevated-role repos covered (HLL)
          "newest": float|None,      # newest tracked-scan created ts
          "oldest": float|None}      # oldest tracked-scan created ts
 
@@ -451,7 +485,8 @@ def usage_summary(result_cache=None) -> dict:
     """
     rcache = result_cache if result_cache is not None else make_result_cache()
     out = {"keys": None, "tracked_scans": 0, "scans_total": None,
-           "scans_today": None, "newest": None, "oldest": None}
+           "scans_today": None, "people": 0, "repos": 0,
+           "newest": None, "oldest": None}
     if rcache is None:
         return out
     rows = cache_catalog(rcache)
@@ -464,13 +499,15 @@ def usage_summary(result_cache=None) -> dict:
             out["keys"] = rcache.key_count()
     except Exception:
         pass
-    for field, key in (("scans_total", _SCANS_TOTAL_KEY),
-                       ("scans_today", _scans_day_key())):
+    for field, key in (("scans_total", _STATS_SCANS),
+                       ("scans_today", _stats_day_key())):
         try:
             v = rcache.get(key)
             out[field] = int(v) if v is not None else None
         except Exception:
             pass
+    ps = public_stats(rcache)
+    out["people"], out["repos"] = ps["people"], ps["repos"]
     return out
 
 
@@ -651,7 +688,7 @@ def collect(
     if rcache is not None and result.partial_reset_in is None:
         rcache.set(rkey, _dumps(result))
         _catalog_record(rcache, forge, username, rkey)
-        _record_scan_metric(rcache)
+        _record_scan_metric(rcache, forge, username, result)
     return result
 
 

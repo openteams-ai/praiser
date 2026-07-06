@@ -96,15 +96,33 @@ class Cache:
         except OSError:
             return None
 
-    def clear(self) -> int:
+    def pfadd(self, key: str, *items) -> None:
+        """Approx-distinct add. Local fallback for the Redis HyperLogLog: keeps an
+        exact set (fine for a single-process dev cache). No-op without items."""
+        if not items:
+            return
+        cur = self.get(key)
+        s = set(cur) if isinstance(cur, list) else set()
+        s.update(items)
+        self.set(key, sorted(s))
+
+    def pfcount(self, key: str) -> int:
+        """Distinct-count of what pfadd stored (exact, local fallback)."""
+        cur = self.get(key)
+        return len(cur) if isinstance(cur, list) else 0
+
+    def clear(self, protect_prefix: str | None = None) -> int:
         """Remove every cached entry in this cache's directory; return the count.
-        Best-effort (skips files it can't unlink)."""
+        Entries whose key starts with ``protect_prefix`` are kept (e.g. usage
+        stats survive a wipe). Best-effort (skips files it can't unlink)."""
         n = 0
         try:
             entries = list(self.dir.glob("*.json"))
         except OSError:
             return 0
         for p in entries:
+            if protect_prefix and p.stem.startswith(protect_prefix):
+                continue
             try:
                 p.unlink()
                 n += 1
