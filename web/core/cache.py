@@ -98,12 +98,13 @@ class RedisCache:
                 break
         return deleted
 
-    def acquire_lock(self, key: str, ttl: int) -> bool:
+    def acquire_lock(self, key: str, ttl: int, value=None) -> bool:
         """Atomic lease (SET NX EX): True if acquired, False if already held. The
-        TTL auto-releases if the holder dies — used to keep concurrent app sessions
-        from running the background seeder at once."""
+        TTL auto-releases if the holder dies. ``value`` (JSON-serialisable) is
+        stored so a blocked caller can read who holds it via ``get(key)``."""
+        payload = json.dumps(value) if value is not None else "1"
         return self._command(
-            ["SET", _PREFIX + key, "1", "NX", "EX", str(int(ttl))]) == "OK"
+            ["SET", _PREFIX + key, payload, "NX", "EX", str(int(ttl))]) == "OK"
 
     def release_lock(self, key: str) -> None:
         self._command(["DEL", _PREFIX + key])

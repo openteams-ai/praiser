@@ -14,6 +14,7 @@ per-repo markers go to the shared cache.
 import argparse
 import os
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root
@@ -92,20 +93,32 @@ def run_seed(name: str, forge: str = "github", budget: int = 30,
     return res
 
 
-def run_queue(budget: int | None = None, log=lambda m: None) -> dict:
+def run_queue(budget: int | None = None, source: str = "background",
+              log=lambda m: None) -> dict:
     """Opportunistic background chunk: seed the next org from the admin's list, if
     GitHub REST quota is healthy. Bounded to ONE org (``budget`` repos), guarded by
-    a Redis lease so concurrent app sessions don't run it at once. Safe to call on
-    every app run — it's a cheap no-op unless a chunk is actually due.
-
-    Returns ``{"ran": bool, "reason"/"org"/…}``. Never raises (best-effort)."""
+    a Redis lease so concurrent app sessions don't run it at once. ``source``
+    ("background"/"manual") is recorded in the lease so a blocked caller can say
+    who's holding it. Safe to call on every app run. Never raises (best-effort)."""
     from web.core import service
     shared = make_result_cache()
     if shared is None:
         return {"ran": False, "reason": "no shared cache"}
+    now = time.time()
     # Lease: only one seeder at a time; TTL auto-releases if this process dies.
     if hasattr(shared, "acquire_lock") and not shared.acquire_lock(
-            service._SEED_LOCK_KEY, SEED_LOCK_TTL):
+            service._SEED_LOCK_KEY, SEED_LOCK_TTL,
+            value={"source": source, "started": now}):
+        held = {}
+        try:
+            held = shared.get(service._SEED_LOCK_KEY) or {}
+        except Exception:
+            pass
+        if isinstance(held, dict) and held.get("started"):
+            ago = max(0, int(now - held["started"]))
+            who = held.get("source", "another")
+            return {"ran": False,
+                    "reason": f"a {who} seeder is already running (started {ago}s ago)"}
         return {"ran": False, "reason": "another seeder is running"}
     try:
         org = service.next_seed_target(shared)

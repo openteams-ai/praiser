@@ -683,7 +683,8 @@ def _render_admin_seed():
     if seed_now:
         with st.spinner("Seeding the next pending org…"):
             res = webseed.run_queue(
-                budget=int(st.session_state.get("seed_budget_bg", service.SEED_CHUNK_BUDGET)))
+                budget=int(st.session_state.get("seed_budget_bg", service.SEED_CHUNK_BUDGET)),
+                source="manual")
         if res.get("ran"):
             st.session_state["seed_msg"] = ("ok",
                 f"Seeded **{res['org']}**: {res.get('seeded', 0)} new repo(s), "

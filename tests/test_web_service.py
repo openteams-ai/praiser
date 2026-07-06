@@ -346,10 +346,11 @@ def test_seed_budget_default_set_and_clamp(tmp_path):
 
 def test_cache_lock_acquire_release(tmp_path):
     c = Cache(tmp_path)
-    assert c.acquire_lock("seed:lock", 300) is True
-    assert c.acquire_lock("seed:lock", 300) is False   # held
+    assert c.acquire_lock("seed:lock", 300, value={"source": "manual"}) is True
+    assert c.acquire_lock("seed:lock", 300) is False    # held
+    assert c.get("seed:lock") == {"source": "manual"}   # holder identity readable
     c.release_lock("seed:lock")
-    assert c.acquire_lock("seed:lock", 300) is True     # released
+    assert c.acquire_lock("seed:lock", 300) is True      # released
 
 
 def test_wipe_all_cache_preserves_usage_stats(monkeypatch, tmp_path):
