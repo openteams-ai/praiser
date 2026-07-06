@@ -311,20 +311,27 @@ _STATS_REPOS = "stats:repos"             # distinct elevated-role repos covered 
 _STATS_ORGS = "stats:orgs"               # distinct repo owners, minus the scanned
                                          # user's own account (communities) (HLL)
 _STATS_DAY_TTL = 120 * 86_400            # keep ~4 months of daily buckets
+_STATS_HOUR_TTL = 3 * 3_600              # short-lived: just a recent-load gauge
 
 
 def _stats_day_key(day: str | None = None) -> str:
     return f"stats:scans:{day or time.strftime('%Y-%m-%d', time.gmtime())}"
 
 
+def _stats_hour_key(hour: str | None = None) -> str:
+    # Current UTC clock-hour bucket (like the day bucket) — a cheap load-rate gauge.
+    return f"stats:scans:h:{hour or time.strftime('%Y-%m-%d-%H', time.gmtime())}"
+
+
 def _record_scan_metric(rcache, forge: str, username: str, result) -> None:
     """Record one completed scan in the usage stats (best-effort; never breaks a
-    scan): total + per-day counters, distinct people, distinct elevated-role repos."""
+    scan): total + per-day + per-hour counters, distinct people/repos/orgs."""
     if rcache is None:
         return
     try:
         rcache.incr(_STATS_SCANS)
         rcache.incr(_stats_day_key(), ttl=_STATS_DAY_TTL)
+        rcache.incr(_stats_hour_key(), ttl=_STATS_HOUR_TTL)
         rcache.pfadd(_STATS_USERS, f"{forge}:{username.lower()}")
         repos = [r.name_with_owner for r in getattr(result, "records", [])
                  if getattr(r, "name_with_owner", None)]
@@ -502,7 +509,8 @@ def usage_summary(result_cache=None) -> dict:
         {"keys": int|None,          # total keys in the cache DB (DBSIZE)
          "tracked_scans": int,      # entries the catalog tracks (a subset of keys)
          "scans_total": int|None,   # lifetime completed scans (counter)
-         "scans_today": int|None,   # completed scans today (UTC, rolling counter)
+         "scans_today": int|None,   # completed scans today (UTC calendar day)
+         "scans_hour": int|None,    # completed scans this UTC hour (load gauge)
          "people": int,             # distinct usernames queried (HLL)
          "repos": int,              # distinct elevated-role repos covered (HLL)
          "newest": float|None,      # newest tracked-scan created ts
@@ -514,8 +522,8 @@ def usage_summary(result_cache=None) -> dict:
     """
     rcache = result_cache if result_cache is not None else make_result_cache()
     out = {"keys": None, "tracked_scans": 0, "scans_total": None,
-           "scans_today": None, "people": 0, "repos": 0, "orgs": 0,
-           "newest": None, "oldest": None}
+           "scans_today": None, "scans_hour": None, "people": 0, "repos": 0,
+           "orgs": 0, "newest": None, "oldest": None}
     if rcache is None:
         return out
     rows = cache_catalog(rcache)
@@ -529,7 +537,8 @@ def usage_summary(result_cache=None) -> dict:
     except Exception:
         pass
     for field, key in (("scans_total", _STATS_SCANS),
-                       ("scans_today", _stats_day_key())):
+                       ("scans_today", _stats_day_key()),
+                       ("scans_hour", _stats_hour_key())):
         try:
             v = rcache.get(key)
             out[field] = int(v) if v is not None else None
