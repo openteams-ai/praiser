@@ -249,6 +249,22 @@ def test_public_stats_distinct_people_and_repos_deduped(monkeypatch, tmp_path):
     assert ps["scans"] == 2      # two actual scans (the hit doesn't count)
     assert ps["people"] == 2     # alice, bob (distinct)
     assert ps["repos"] == 2      # a/b, c/d — same repos both scans, counted once
+    assert ps["orgs"] == 2       # owners a, c (distinct)
+
+
+def test_org_stat_skips_scanned_users_own_account(monkeypatch, tmp_path):
+    # The scanned person's own namespace is personal, not a community — skip it;
+    # keep real org owners (numpy).
+    _clock(monkeypatch)
+    monkeypatch.setattr(service, "run",
+                        lambda config, cache=None, progress_cb=None, index_cache=None, populate_index=True:
+                        RunResult(records=[_rec("torvalds/linux", 100),
+                                           _rec("numpy/numpy", 200)], secondary=[]))
+    rc, hc = Cache(tmp_path), Cache(tmp_path / "h")
+    service.collect("torvalds", forge="github", result_cache=rc, http_cache=hc)
+    ps = service.public_stats(result_cache=rc)
+    assert ps["repos"] == 2      # both repos still counted as projects
+    assert ps["orgs"] == 1       # only numpy — torvalds (own account) skipped
 
 
 def test_cache_pfadd_pfcount_and_clear_protects_stats(tmp_path):
@@ -270,6 +286,7 @@ def test_wipe_all_cache_preserves_usage_stats(monkeypatch, tmp_path):
     service.collect("alice", forge="github", result_cache=rc, http_cache=hc)
     before = service.public_stats(result_cache=rc)
     assert before["scans"] == 1 and before["people"] == 1 and before["repos"] == 2
+    assert before["orgs"] == 2      # owners a, c
     service.wipe_all_cache(result_cache=rc)
     after = service.public_stats(result_cache=rc)
     assert after == before                  # usage stats survive a full cache wipe

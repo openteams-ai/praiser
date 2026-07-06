@@ -308,6 +308,8 @@ _STATS_PREFIX = "stats:"                 # protected from wipe
 _STATS_SCANS = "stats:scans"             # total completed scans (INCR)
 _STATS_USERS = "stats:users"             # distinct forge:username queried (HLL)
 _STATS_REPOS = "stats:repos"             # distinct elevated-role repos covered (HLL)
+_STATS_ORGS = "stats:orgs"               # distinct repo owners, minus the scanned
+                                         # user's own account (communities) (HLL)
 _STATS_DAY_TTL = 120 * 86_400            # keep ~4 months of daily buckets
 
 
@@ -327,23 +329,34 @@ def _record_scan_metric(rcache, forge: str, username: str, result) -> None:
         repos = [r.name_with_owner for r in getattr(result, "records", [])
                  if getattr(r, "name_with_owner", None)]
         if repos:
-            rcache.pfadd(_STATS_REPOS, *repos)
+            rcache.pfadd(_STATS_REPOS, *(r.lower() for r in repos))
+            # Distinct owning namespaces, as a "communities" proxy — but skip the
+            # scanned person's OWN account: a personal namespace (dominant, and
+            # not a community). Real orgs (numpy, pytorch) have a different owner
+            # and are kept. Rare miss: a community under a personal account being
+            # scanned (torvalds/linux) — acceptable.
+            owners = {r.split("/", 1)[0].lower() for r in repos if "/" in r}
+            owners.discard(username.lower())
+            if owners:
+                rcache.pfadd(_STATS_ORGS, *owners)
     except Exception:
         pass
 
 
 def public_stats(result_cache=None) -> dict:
     """Cheap, non-identifying usage totals for the public page: distinct people
-    scanned, distinct elevated-role projects covered, and total scans. A few O(1)
-    reads (cache once per session on the frontend). Zeroes on any error/miss."""
+    scanned, distinct elevated-role projects covered, distinct owning orgs, and
+    total scans. A few O(1) reads (cache once per session on the frontend).
+    Zeroes on any error/miss."""
     rcache = result_cache if result_cache is not None else make_result_cache()
-    out = {"people": 0, "repos": 0, "scans": 0}
+    out = {"people": 0, "repos": 0, "orgs": 0, "scans": 0}
     if rcache is None:
         return out
     try:
         if hasattr(rcache, "pfcount"):
             out["people"] = rcache.pfcount(_STATS_USERS)
             out["repos"] = rcache.pfcount(_STATS_REPOS)
+            out["orgs"] = rcache.pfcount(_STATS_ORGS)
         out["scans"] = int(rcache.get(_STATS_SCANS) or 0)
     except Exception:
         pass
@@ -485,7 +498,7 @@ def usage_summary(result_cache=None) -> dict:
     """
     rcache = result_cache if result_cache is not None else make_result_cache()
     out = {"keys": None, "tracked_scans": 0, "scans_total": None,
-           "scans_today": None, "people": 0, "repos": 0,
+           "scans_today": None, "people": 0, "repos": 0, "orgs": 0,
            "newest": None, "oldest": None}
     if rcache is None:
         return out
@@ -507,7 +520,7 @@ def usage_summary(result_cache=None) -> dict:
         except Exception:
             pass
     ps = public_stats(rcache)
-    out["people"], out["repos"] = ps["people"], ps["repos"]
+    out["people"], out["repos"], out["orgs"] = ps["people"], ps["repos"], ps["orgs"]
     return out
 
 
