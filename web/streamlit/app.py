@@ -752,11 +752,12 @@ def _render_admin_seed():
 def _render_admin_summary():
     """Cheap cache/usage stats (a few O(1) reads; nothing that runs per scan)."""
     s = service.usage_summary()
-    m1, m2, m3, m4 = st.columns(4)
+    m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Scans (total)", s["scans_total"] if s["scans_total"] is not None else "—")
     m2.metric("Scans (today)", s["scans_today"] if s["scans_today"] is not None else "0")
-    m3.metric("Tracked scans", s["tracked_scans"])
-    m4.metric("Cache keys", s["keys"] if s["keys"] is not None else "—")
+    m3.metric("Scans (this hr)", s["scans_hour"] if s["scans_hour"] is not None else "0")
+    m4.metric("Tracked scans", s["tracked_scans"])
+    m5.metric("Cache keys", s["keys"] if s["keys"] is not None else "—")
     now = time.time()
     span = ""
     if s["newest"]:
@@ -770,7 +771,8 @@ def _render_admin_summary():
         rl = " · rate budget: " + ", ".join(
             f"{lbl} {rem}/{lim}" for lbl, rem, lim, _ in present)
     st.caption(
-        f"'Scans' count actual data-collection runs (cache hits don't count). "
+        f"'Scans' count actual data-collection runs (cache hits don't count); "
+        f"'today'/'this hr' are UTC calendar buckets — a recent-load gauge. "
         f"'Cache keys' is the whole cache DB — results, per-repo founder cache and "
         f"the contributor reverse-index share one opaque namespace, so per-category "
         f"memory isn't broken out.{span}{rl}")

@@ -449,6 +449,7 @@ def test_scan_counters_count_actual_scans_not_cache_hits(monkeypatch, tmp_path):
     s = service.usage_summary(result_cache=rc)
     assert s["scans_total"] == 2      # two actual scans; the hit didn't count
     assert s["scans_today"] == 2
+    assert s["scans_hour"] == 2       # recent-load gauge (this UTC hour)
     assert s["tracked_scans"] == 2
 
 
