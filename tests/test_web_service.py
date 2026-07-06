@@ -279,6 +279,20 @@ def test_cache_pfadd_pfcount_and_clear_protects_stats(tmp_path):
     assert c.pfcount("stats:users") == 3    # stats survived the wipe
 
 
+def test_reset_usage_stats_clears_stats_only(monkeypatch, tmp_path):
+    _clock(monkeypatch)
+    monkeypatch.setattr(service, "run", _stats_run)
+    rc, hc = Cache(tmp_path), Cache(tmp_path / "h")
+    service.collect("alice", forge="github", result_cache=rc, http_cache=hc)
+    assert service.public_stats(result_cache=rc)["people"] == 1
+    n = service.reset_usage_stats(result_cache=rc)
+    assert n >= 1
+    after = service.public_stats(result_cache=rc)
+    assert after == {"people": 0, "repos": 0, "orgs": 0, "scans": 0}  # all zeroed
+    # The cached result itself is untouched (reset is stats-only, not a cache wipe).
+    assert service.cache_catalog(result_cache=rc)      # alice's catalog row remains
+
+
 def test_wipe_all_cache_preserves_usage_stats(monkeypatch, tmp_path):
     _clock(monkeypatch)
     monkeypatch.setattr(service, "run", _stats_run)
