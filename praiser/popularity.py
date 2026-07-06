@@ -1,13 +1,24 @@
-"""Phase 3 — popularity filter.
+"""Phase 3 — project-standing filter.
 
-Enriches records that lack star counts (registry seeds, code-search hits), then
-splits the elevated-role records into:
+A project's standing has two distinct axes, not one "popularity" number:
 
-* **primary** — popular enough for the headline record, and
-* **secondary** — below the popularity bar but still *widely used and
-  maintained* (real fork engagement + recently pushed). These are summarised
-  (at minimum a count) so the report doesn't silently drop projects where the
-  user holds a real role on a smaller-but-active library.
+* **adoption** — how widely it's *used and valued* (stars here; ideally also
+  downloads / dependents). A consumer-side signal.
+* **developer engagement** — how much others *build on or with* it (forks,
+  contributors). A producer-side signal.
+
+They're not interchangeable: a repo can be high-adoption / low-engagement (a
+polished tool many star, few hack on) or the reverse (a niche library with an
+active contributor core). This phase uses **adoption (stars)** as the headline
+bar and **developer engagement (forks)** as the secondary "still worth it"
+signal. It enriches records lacking star counts (registry seeds, code-search
+hits), then splits the elevated-role records into:
+
+* **primary** — enough *adoption* (stars) for the headline record, and
+* **secondary** — below the adoption bar but with real *developer engagement*
+  (forks) and recent maintenance. These are summarised (at minimum a count) so
+  the report doesn't silently drop projects where the user holds a real role on
+  a smaller-but-active library.
 """
 
 from datetime import datetime, timezone
@@ -25,7 +36,8 @@ from .registry import KnownProjects
 # Roles strong enough to survive the star threshold on their own.
 HIGH_SIGNAL_ROLES = frozenset({STEERING_COUNCIL, STANDARDS_AUTHOR, MAINTAINER})
 
-# A secondary project must show real use (forks) and recent maintenance.
+# A secondary project must show real developer engagement (forks) + recent
+# maintenance — i.e. it earns its place on the engagement axis, not adoption.
 SECONDARY_MIN_FORKS = 5
 MAINTAINED_MONTHS = 24
 
@@ -43,7 +55,8 @@ def _is_maintained(pushed_at: str | None) -> bool:
 
 
 def is_widely_used_and_maintained(rec: ProjectRecord, min_stars: int) -> bool:
-    """A below-threshold project that still looks worth recording."""
+    """Below the adoption bar, but still worth recording: real developer
+    engagement (forks) — or partial adoption — plus recent maintenance."""
     used = rec.forks >= SECONDARY_MIN_FORKS or rec.popularity >= max(5, min_stars // 5)
     return used and _is_maintained(rec.pushed_at)
 

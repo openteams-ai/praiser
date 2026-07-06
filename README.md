@@ -59,7 +59,7 @@ praiser reports **software-engineering authorship and stewardship** — a factua
 - **Core contributor** — A substantial builder of a widely-used project. Being listed in an AUTHORS / all-contributors file lands here, not under Author. _Evidence:_ A substantial amount of work in absolute terms — heavy or solid commit volume — or a top-of-project rank backed by real work (not a relative ranking alone); substantial commits to a named subcomponent; or an AUTHORS / all-contributors listing.
 <!-- ROLE-GLOSSARY:END -->
 
-Roles display in project-lifecycle order (origination → governance → building → maintenance), a person may hold several on one project, and the headline uses the strongest-evidenced role (`popularity × role weight × confidence`).
+Roles display in project-lifecycle order (origination → governance → building → maintenance), a person may hold several on one project, and the headline uses the strongest-evidenced role (`adoption × role weight × confidence`, where adoption = stars).
 
 ## Install
 
@@ -277,11 +277,14 @@ different frontend (FastAPI, Gradio, …) can reuse the core unchanged.
    matches (`CODEOWNERS`/`AUTHORS`) are corroborated with **copy-resistant**
    signals — affiliation or being the canonical popular project — so a repo that
    *vendored* an upstream's history and role files isn't a false positive.
-4. **Popularity filter** — `--min-stars`, with an override so high-signal roles
-   on smaller-but-notable standards projects survive. Elevated-role projects
-   that miss the bar but are **widely used and maintained** (real fork
-   engagement + recently pushed) are reported as a secondary group with a count.
-5. **Render** — ranked by popularity × role weight × confidence. Live
+4. **Standing filter** — a project's standing has two axes: **adoption** (how
+   widely used/valued — `--min-stars` gates on stars) and **developer
+   engagement** (how much others build on it — forks). An override lets
+   high-signal roles on smaller-but-notable standards projects survive the
+   adoption bar. Elevated-role projects below the bar but with real developer
+   engagement (forks) + recent maintenance are reported as a secondary group
+   with a count.
+5. **Render** — ranked by adoption (stars) × role weight × confidence. Live
    rate-limit dynamics (REST/GraphQL remaining) are shown during the scan.
 
 ## The known-projects registry
@@ -312,7 +315,8 @@ popular/important projects together with:
   like a heavy committer) is not mistaken for a real role: role-file and
   contributor signals are trusted only on the user's own/org repos or the
   canonical popular project, never on a small unaffiliated copy.
-* **`popularity`** — cached/curated stars/forks plus `min_stars_override` for
+* **`popularity`** — cached/curated standing metrics: **adoption** (stars,
+  downloads) and **developer engagement** (forks), plus `min_stars_override` for
   high-signal-but-small standards projects;
 * **`importance`** — a human label (`critical`, `high`, ...).
 

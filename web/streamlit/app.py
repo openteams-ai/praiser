@@ -305,7 +305,10 @@ def _render_controls():
         # whole range on tiny values. select_slider gives a logarithmic feel.
         min_stars = dc3.select_slider(
             "Min stars", options=_MIN_STAR_STEPS, value=50, key="minstars",
-            format_func=lambda n: (f"{n / 1000:g}k" if n >= 1000 else str(n)))
+            format_func=lambda n: (f"{n / 1000:g}k" if n >= 1000 else str(n)),
+            help="Adoption bar (stars = how widely used/valued). Projects below "
+                 "it but with real developer engagement (forks) + maintenance "
+                 "still appear as a secondary group.")
 
 
 # Role → badge color, tuned toward the OpenTeams brand family (Streamlit only
