@@ -553,6 +553,8 @@ def _render_admin_seed():
     from web import seed as webseed
     st.markdown("**Reverse-index seeding** — index an org's (or a repo's) "
                 "contributors so the app can discover them.")
+    if (m := st.session_state.pop("seed_msg", None)):
+        (st.success if m[0] == "ok" else st.error)(m[1])
     seeded = service.seed_catalog()
     if seeded:
         now = time.time()
@@ -591,14 +593,18 @@ def _render_admin_seed():
                         res = webseed.run_seed(a_name.strip(), a_forge,
                                                int(a_budget), a_kind)
                     except Exception as exc:
-                        st.error(f"Seed failed: {exc}")
+                        st.session_state["seed_msg"] = ("err", f"Seed failed: {exc}")
                         res = None
                 if res:
-                    st.success(
+                    st.session_state["seed_msg"] = ("ok",
                         f"Seeded {res['seeded']} repo(s), "
                         f"{res['contributors_indexed']} contributor entries — "
                         f"{res['stopped']}. Re-run to continue (resumes where it "
                         "left off).")
+            # Re-render: refresh the seeded-targets list with the just-added row and
+            # bring the (emptied) form back so an org seed can be continued without
+            # re-login. The outcome shows via seed_msg above on this rerun.
+            st.rerun()
 
 
 def _render_admin_summary():
