@@ -571,6 +571,7 @@ def _wipe_all_cache():
 
 def _save_seed_targets():
     saved = service.set_seed_targets(st.session_state.get("seed_targets_text", ""))
+    service.set_seed_budget(st.session_state.get("seed_budget_bg", service.SEED_CHUNK_BUDGET))
     st.session_state["has_seed_targets"] = bool(saved)   # start ticking this session
     st.session_state["seed_msg"] = ("ok",
         f"Saved {len(saved)} org(s) to background-seed. The app will work through "
@@ -656,7 +657,17 @@ def _render_admin_seed():
         st.text_area("Orgs to seed (one per line)", key="seed_targets_text",
                      value="\n".join(service.get_seed_targets()), height=140,
                      placeholder="numpy\nscipy\npandas-dev\npytorch")
-        st.button("Save list", on_click=_save_seed_targets)
+        st.number_input(
+            "Repos per org, per chunk", 1, 500, value=service.get_seed_budget(),
+            key="seed_budget_bg",
+            help="How many repos to seed for an org each chunk. Orgs with more "
+                 "repos fill in over repeated chunks (re-seeded oldest-first).")
+        q1, q2 = st.columns(2)
+        q1.button("Save list", on_click=_save_seed_targets, use_container_width=True)
+        seed_now = q2.button(
+            "Seed one now", use_container_width=True,
+            help="Seed the next pending org immediately (this run), using the "
+                 "budget above — for a quick start or to diagnose.")
         status = service.seed_targets_status()
         if status:
             now = time.time()
@@ -669,6 +680,17 @@ def _render_admin_seed():
                                f"{s['contributors']} contributor(s) · {age} ago")
                 else:
                     st.caption(f"⏳ **{s['org']}** — pending")
+    if seed_now:
+        with st.spinner("Seeding the next pending org…"):
+            res = webseed.run_queue(
+                budget=int(st.session_state.get("seed_budget_bg", service.SEED_CHUNK_BUDGET)))
+        if res.get("ran"):
+            st.session_state["seed_msg"] = ("ok",
+                f"Seeded **{res['org']}**: {res.get('seeded', 0)} new repo(s), "
+                f"{res.get('contributors', 0)} distinct contributors — {res.get('stopped')}.")
+        else:
+            st.session_state["seed_msg"] = ("err", f"Didn't seed: {res.get('reason', '?')}.")
+        st.rerun()
     seeded = service.seed_catalog()
     if seeded:
         now = time.time()

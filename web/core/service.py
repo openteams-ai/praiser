@@ -633,7 +633,9 @@ def seed_catalog(result_cache=None) -> list[dict]:
 # a fork's deployment gets it for free).
 _SEED_PREFIX = "seed:"
 _SEED_TARGETS_KEY = "seed:targets"       # the admin's org list (JSON list)
+_SEED_BUDGET_KEY = "seed:budget"         # repos per org per chunk (admin-tunable)
 _SEED_LOCK_KEY = "seed:lock"             # lease so sessions don't double-run
+SEED_CHUNK_BUDGET = 30                   # default repos per org per background chunk
 # REST-quota watermarks (hysteresis): start a chunk only when comfortably high;
 # back off (stop adding repos) when it drops low. Prevents on/off flapping.
 SEED_REST_START = 4500
@@ -673,6 +675,34 @@ def set_seed_targets(orgs, result_cache=None) -> list[str]:
         except Exception:
             pass
     return out
+
+
+def get_seed_budget(result_cache=None) -> int:
+    """Repos-per-org-per-chunk for the background seeder (admin-tunable; default
+    ``SEED_CHUNK_BUDGET``). Bigger = more repos covered per chunk, more REST/chunk."""
+    rcache = result_cache if result_cache is not None else make_result_cache()
+    if rcache is None:
+        return SEED_CHUNK_BUDGET
+    try:
+        v = rcache.get(_SEED_BUDGET_KEY)
+        return int(v) if v else SEED_CHUNK_BUDGET
+    except Exception:
+        return SEED_CHUNK_BUDGET
+
+
+def set_seed_budget(n, result_cache=None) -> int:
+    """Store the per-chunk budget, clamped to 1..500. Returns the stored value."""
+    try:
+        n = max(1, min(500, int(n)))
+    except (TypeError, ValueError):
+        n = SEED_CHUNK_BUDGET
+    rcache = result_cache if result_cache is not None else make_result_cache()
+    if rcache is not None:
+        try:
+            rcache.set(_SEED_BUDGET_KEY, n)
+        except Exception:
+            pass
+    return n
 
 
 def seed_targets_status(result_cache=None) -> list[dict]:

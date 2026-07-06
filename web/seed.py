@@ -92,7 +92,7 @@ def run_seed(name: str, forge: str = "github", budget: int = 30,
     return res
 
 
-def run_queue(budget: int = SEED_CHUNK_BUDGET, log=lambda m: None) -> dict:
+def run_queue(budget: int | None = None, log=lambda m: None) -> dict:
     """Opportunistic background chunk: seed the next org from the admin's list, if
     GitHub REST quota is healthy. Bounded to ONE org (``budget`` repos), guarded by
     a Redis lease so concurrent app sessions don't run it at once. Safe to call on
@@ -111,6 +111,8 @@ def run_queue(budget: int = SEED_CHUNK_BUDGET, log=lambda m: None) -> dict:
         org = service.next_seed_target(shared)
         if not org:
             return {"ran": False, "reason": "no targets"}
+        if budget is None:
+            budget = service.get_seed_budget(shared)
         # Start watermark: only begin a chunk when REST is comfortably high (free
         # /rate_limit read). The per-repo FLOOR (SEED_REST_FLOOR) is enforced
         # inside seed_org, so it backs off mid-chunk if quota drops.

@@ -335,6 +335,15 @@ def test_seed_targets_survive_wipe(monkeypatch, tmp_path):
     assert service.cache_catalog(result_cache=rc) == []                     # cache wiped
 
 
+def test_seed_budget_default_set_and_clamp(tmp_path):
+    rc = Cache(tmp_path)
+    assert service.get_seed_budget(result_cache=rc) == service.SEED_CHUNK_BUDGET  # default
+    assert service.set_seed_budget(120, result_cache=rc) == 120
+    assert service.get_seed_budget(result_cache=rc) == 120
+    assert service.set_seed_budget(9999, result_cache=rc) == 500   # clamped to max
+    assert service.set_seed_budget(0, result_cache=rc) == 1        # clamped to min
+
+
 def test_cache_lock_acquire_release(tmp_path):
     c = Cache(tmp_path)
     assert c.acquire_lock("seed:lock", 300) is True
