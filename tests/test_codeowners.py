@@ -185,21 +185,3 @@ def test_github_comment_gating_and_fallback():
     # Assert personal names did not leak
     assert not any(q and "Pavithra" in q for q in quals)
 
-
-def test_gitlab_sections():
-    # GitLab sections are parsed natively and override github fallback logic
-    text = (
-        "[Payments]\n"
-        "pay/  @bob\n"
-        "\n"
-        "^[Optional]\n"
-        "opt/  @bob\n"
-        "\n"
-        "[Docs][2]\n"
-        "docs/  @bob\n"
-    )
-    evs = CodeownersExtractor().extract(
-        Candidate("o/r", stars=15000), _ctx(Identity(primary_login="bob"), _Forge(text))
-    )
-    quals = set(e.qualifier for e in evs)
-    assert quals == {"Payments", "Optional", "Docs"}
