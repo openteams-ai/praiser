@@ -499,7 +499,11 @@ _SEED_CATALOG_CAP = 500
 def record_seed(result: dict, *, forge: str, kind: str, target: str,
                 result_cache=None) -> None:
     """Record one seed run in the seed catalog (best-effort). Keyed by
-    forge:kind:target so re-seeding the same target updates its row."""
+    forge:kind:target, and **cumulative**: counts ADD to the target's existing
+    row. A re-seed skips repos already indexed (their 30-day markers are still
+    valid) and so returns ``seeded=0`` — accumulating means that no-op re-run adds
+    0 and the count holds, instead of clobbering a productive run's total to 0.
+    Tracks first-seen (``created``) and last-run (``updated``) timestamps."""
     rcache = result_cache if result_cache is not None else make_result_cache()
     if rcache is None:
         return
@@ -507,14 +511,21 @@ def record_seed(result: dict, *, forge: str, kind: str, target: str,
         cat = rcache.get(_SEED_CATALOG_KEY) or {}
         if not isinstance(cat, dict):
             cat = {}
-        cat[f"{forge}:{kind}:{target}".lower()] = {
+        ckey = f"{forge}:{kind}:{target}".lower()
+        prev = cat.get(ckey)
+        prev = prev if isinstance(prev, dict) else {}
+        now = time.time()
+        cat[ckey] = {
             "forge": forge, "kind": kind, "target": target,
-            "seeded": result.get("seeded", 0),
-            "contributors": result.get("contributors_indexed", 0),
-            "created": time.time(),
+            "seeded": int(prev.get("seeded", 0) or 0) + int(result.get("seeded", 0) or 0),
+            "contributors": (int(prev.get("contributors", 0) or 0)
+                             + int(result.get("contributors_indexed", 0) or 0)),
+            "created": prev.get("created", now),   # first seen
+            "updated": now,                        # last run
         }
-        if len(cat) > _SEED_CATALOG_CAP:      # evict oldest by created
-            keep = sorted(cat.items(), key=lambda kv: kv[1].get("created", 0),
+        if len(cat) > _SEED_CATALOG_CAP:      # evict oldest by last-run
+            keep = sorted(cat.items(),
+                          key=lambda kv: kv[1].get("updated", kv[1].get("created", 0)),
                           reverse=True)[:_SEED_CATALOG_CAP]
             cat = dict(keep)
         rcache.set(_SEED_CATALOG_KEY, cat)
@@ -523,8 +534,9 @@ def record_seed(result: dict, *, forge: str, kind: str, target: str,
 
 
 def seed_catalog(result_cache=None) -> list[dict]:
-    """Recorded seed runs, most-recent-first:
-    ``[{"forge", "kind", "target", "seeded", "contributors", "created"}]``."""
+    """Recorded seed runs, most-recently-run first: ``[{"forge", "kind", "target",
+    "seeded", "contributors", "created", "updated"}]``. Counts are cumulative
+    across runs (see ``record_seed``)."""
     rcache = result_cache if result_cache is not None else make_result_cache()
     if rcache is None:
         return []
@@ -537,9 +549,10 @@ def seed_catalog(result_cache=None) -> list[dict]:
     rows = [{"forge": r.get("forge"), "kind": r.get("kind"),
              "target": r.get("target"), "seeded": r.get("seeded", 0),
              "contributors": r.get("contributors", 0),
-             "created": r.get("created", 0)}
+             "created": r.get("created", 0),
+             "updated": r.get("updated", r.get("created", 0))}
             for r in cat.values() if isinstance(r, dict)]
-    rows.sort(key=lambda r: r["created"], reverse=True)
+    rows.sort(key=lambda r: r["updated"], reverse=True)
     return rows
 
 

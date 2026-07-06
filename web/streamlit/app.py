@@ -559,12 +559,15 @@ def _render_admin_seed():
     if seeded:
         now = time.time()
         with st.expander(f"Seeded targets ({len(seeded)})"):
+            st.caption("Counts are cumulative across runs. A re-run showing "
+                       "0 new means those repos are already indexed (not lost).")
             for r in seeded:
-                age = humanize_wait(int(now - r["created"])) if r.get("created") else "?"
+                ts = r.get("updated") or r.get("created")
+                age = humanize_wait(int(now - ts)) if ts else "?"
                 st.caption(
                     f"{r['forge']} · **{r['target']}** ({r['kind']}) — "
                     f"{r['seeded']} repo(s), {r['contributors']} contributor "
-                    f"entries · {age} ago")
+                    f"entries · last run {age} ago")
     # The form lives in a placeholder so it can be CLEARED while seeding runs —
     # otherwise Streamlit greys it out for the whole (long) operation.
     seed_form = st.empty()

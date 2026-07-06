@@ -234,7 +234,7 @@ def test_clear_tracked_scans_removes_tracked_entries_and_catalog(monkeypatch, tm
     assert service.cache_catalog(result_cache=rc) == []
 
 
-def test_seed_catalog_records_runs_and_dedupes_by_target(monkeypatch, tmp_path):
+def test_seed_catalog_records_runs_and_accumulates_by_target(monkeypatch, tmp_path):
     _clock(monkeypatch)
     rc = Cache(tmp_path)
     service.record_seed({"seeded": 3, "contributors_indexed": 120},
@@ -245,13 +245,28 @@ def test_seed_catalog_records_runs_and_dedupes_by_target(monkeypatch, tmp_path):
     rows = service.seed_catalog(result_cache=rc)
     assert {(r["target"], r["kind"], r["seeded"], r["contributors"]) for r in rows} == {
         ("numpy", "org", 3, 120), ("pytorch/pytorch", "repo", 1, 40)}
-    # Re-seeding numpy updates its row (same forge:kind:target key), not a dup.
+    # Re-seeding numpy ACCUMULATES onto its row (same key), not a dup or overwrite.
     service.record_seed({"seeded": 5, "contributors_indexed": 200},
                         forge="github", kind="org", target="numpy", result_cache=rc)
     rows = service.seed_catalog(result_cache=rc)
     assert len(rows) == 2
     numpy = next(r for r in rows if r["target"] == "numpy")
-    assert numpy["seeded"] == 5 and numpy["contributors"] == 200
+    assert numpy["seeded"] == 8 and numpy["contributors"] == 320
+    assert numpy["updated"] >= numpy["created"]     # created kept, updated advanced
+
+
+def test_seed_catalog_noop_rerun_preserves_count(monkeypatch, tmp_path):
+    # The reported bug: a re-seed skips already-indexed repos (seeded=0), which
+    # must NOT clobber the earlier productive count to 0 — data isn't lost.
+    _clock(monkeypatch)
+    rc = Cache(tmp_path)
+    service.record_seed({"seeded": 30, "contributors_indexed": 804},
+                        forge="github", kind="org", target="scipy", result_cache=rc)
+    service.record_seed({"seeded": 0, "contributors_indexed": 0},
+                        forge="github", kind="org", target="scipy", result_cache=rc)
+    scipy = next(r for r in service.seed_catalog(result_cache=rc)
+                 if r["target"] == "scipy")
+    assert scipy["seeded"] == 30 and scipy["contributors"] == 804
 
 
 def test_seed_catalog_empty_when_none(tmp_path):
