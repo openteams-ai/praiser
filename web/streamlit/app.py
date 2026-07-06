@@ -169,8 +169,11 @@ def _render_public_stats(slot):
     until there's something to show."""
     ps = _public_stats()
     if ps.get("people"):
-        slot.caption(f"👤 {ps['people']:,} people scanned · "
-                     f"📦 {ps['repos']:,} elevated-role projects covered")
+        line = (f"👤 {ps['people']:,} people scanned · "
+                f"📦 {ps['repos']:,} elevated-role projects")
+        line += (f" across 🏢 {ps['orgs']:,} organizations"
+                 if ps.get("orgs") else " covered")
+        slot.caption(line)
     else:
         slot.empty()
 
