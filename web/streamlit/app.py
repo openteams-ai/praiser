@@ -155,6 +155,14 @@ def _rate_budget(token):
     return st.session_state["rate_budget"]
 
 
+def _public_stats():
+    """Non-identifying usage totals for the public footer, read once per session
+    (a couple of Redis reads), refreshed after a scan (see the scan-complete path)."""
+    if "pub_stats" not in st.session_state:
+        st.session_state["pub_stats"] = service.public_stats()
+    return st.session_state["pub_stats"]
+
+
 def _ratio(rem, lim):
     return rem / lim if lim else 1.0
 
@@ -200,6 +208,11 @@ st.set_page_config(page_title="praiser", page_icon="🌟")
 st.title("🌟 praiser")
 st.caption("Find the open-source projects where someone holds an elevated role — "
            "with evidence for every claim.")
+# Discreet usage line (approximate, monotonic; hidden until there's something to show).
+_ps = _public_stats()
+if _ps.get("people"):
+    st.caption(f"👤 {_ps['people']:,} people scanned · "
+               f"📦 {_ps['repos']:,} elevated-role projects covered")
 # One "About praiser" dropdown at the top holds both the intro and the role
 # glossary — so the meaning of every role is one obvious place to look (the result
 # cards point here). Kept out of the main flow so the landing screen stays lean.
@@ -844,8 +857,10 @@ if scan_target is not None:
         result, elapsed, label = _run_scan(
             uname, data_opts, token_options, exhausted, status_box, hint)
         # The scan consumed quota — drop the cached budget so the sidebar note
-        # re-fetches the now-lower figure on the next render.
+        # re-fetches the now-lower figure on the next render. Also refresh the
+        # public usage line so it reflects this scan.
         st.session_state.pop("rate_budget", None)
+        st.session_state.pop("pub_stats", None)
         if result.partial_reset_in is not None:
             # Every token hit its limit mid-scan → incomplete. Don't cache it;
             # show what we have with a clear warning + wait time.

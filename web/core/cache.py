@@ -80,10 +80,12 @@ class RedisCache:
         """Remove a cached entry (best-effort; no-op if absent)."""
         self._command(["DEL", _PREFIX + key])
 
-    def clear_all(self) -> int:
+    def clear_all(self, protect_prefix: str | None = None) -> int:
         """Delete EVERY praiser-namespaced key (SCAN + DEL). Returns the count
-        deleted. Best-effort; the keys are enumerable even though not reversible
-        to usernames. Used by the admin 'wipe all cache' action."""
+        deleted. Keys whose name (after the ``praiser:`` prefix) starts with
+        ``protect_prefix`` are kept — e.g. ``"stats:"`` so usage metrics survive a
+        wipe. Best-effort; keys are enumerable though not reversible to usernames."""
+        skip = (_PREFIX + protect_prefix) if protect_prefix else None
         deleted = 0
         cursor = "0"
         while True:
@@ -92,6 +94,8 @@ class RedisCache:
             if not isinstance(res, list) or len(res) != 2:
                 break
             cursor, keys = res[0], res[1]
+            if skip:
+                keys = [k for k in keys if not str(k).startswith(skip)]
             if keys:
                 self._command(["DEL", *keys])   # keys already include the prefix
                 deleted += len(keys)
@@ -114,6 +118,18 @@ class RedisCache:
         whole DB; on a praiser-dedicated Upstash DB that equals the namespace."""
         n = self._command(["DBSIZE"])
         return n if isinstance(n, int) else None
+
+    def pfadd(self, key: str, *items) -> None:
+        """Add elements to a HyperLogLog (approx-distinct counter). One command,
+        idempotent — re-adding a value doesn't change the estimate. Best-effort."""
+        if not items:
+            return
+        self._command(["PFADD", _PREFIX + key, *[str(i) for i in items]])
+
+    def pfcount(self, key: str) -> int:
+        """Estimated distinct count of a HyperLogLog (~0.8% error). 0 on miss."""
+        n = self._command(["PFCOUNT", _PREFIX + key])
+        return n if isinstance(n, int) else 0
 
     def close(self) -> None:
         try:

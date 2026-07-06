@@ -234,6 +234,47 @@ def test_clear_tracked_scans_removes_tracked_entries_and_catalog(monkeypatch, tm
     assert service.cache_catalog(result_cache=rc) == []
 
 
+def _stats_run(config, cache=None, progress_cb=None, index_cache=None, populate_index=True):
+    return RunResult(records=[_rec("a/b", 100), _rec("c/d", 200)], secondary=[])
+
+
+def test_public_stats_distinct_people_and_repos_deduped(monkeypatch, tmp_path):
+    _clock(monkeypatch)
+    monkeypatch.setattr(service, "run", _stats_run)
+    rc, hc = Cache(tmp_path), Cache(tmp_path / "h")
+    service.collect("alice", forge="github", result_cache=rc, http_cache=hc)
+    service.collect("bob", forge="github", result_cache=rc, http_cache=hc)
+    service.collect("alice", forge="github", result_cache=rc, http_cache=hc)  # HIT
+    ps = service.public_stats(result_cache=rc)
+    assert ps["scans"] == 2      # two actual scans (the hit doesn't count)
+    assert ps["people"] == 2     # alice, bob (distinct)
+    assert ps["repos"] == 2      # a/b, c/d — same repos both scans, counted once
+
+
+def test_cache_pfadd_pfcount_and_clear_protects_stats(tmp_path):
+    c = Cache(tmp_path)
+    c.pfadd("stats:users", "a", "b", "a")   # dup 'a' -> distinct 2
+    c.pfadd("stats:users", "c")
+    assert c.pfcount("stats:users") == 3
+    c.set("result-x", "v")
+    n = c.clear(protect_prefix="stats:")
+    assert n == 1                           # only the non-stats entry removed
+    assert c.get("result-x") is None
+    assert c.pfcount("stats:users") == 3    # stats survived the wipe
+
+
+def test_wipe_all_cache_preserves_usage_stats(monkeypatch, tmp_path):
+    _clock(monkeypatch)
+    monkeypatch.setattr(service, "run", _stats_run)
+    rc, hc = Cache(tmp_path), Cache(tmp_path / "h")
+    service.collect("alice", forge="github", result_cache=rc, http_cache=hc)
+    before = service.public_stats(result_cache=rc)
+    assert before["scans"] == 1 and before["people"] == 1 and before["repos"] == 2
+    service.wipe_all_cache(result_cache=rc)
+    after = service.public_stats(result_cache=rc)
+    assert after == before                  # usage stats survive a full cache wipe
+
+
 def test_seed_catalog_records_authoritative_distinct(monkeypatch, tmp_path):
     _clock(monkeypatch)
     rc = Cache(tmp_path)
