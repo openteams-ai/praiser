@@ -129,13 +129,14 @@ class Cache:
                 pass
         return n
 
-    def acquire_lock(self, key: str, ttl: int | None = None) -> bool:
+    def acquire_lock(self, key: str, ttl: int | None = None, value=None) -> bool:
         """Best-effort lease for the single-process local cache: True unless the
         key is already set. ``ttl`` is ignored (Redis provides the real TTL lease);
-        the caller releases via ``release_lock``."""
+        ``value`` (who holds it) is stored and readable via ``get``. Release via
+        ``release_lock``."""
         if self.get(key) is not None:
             return False
-        self.set(key, True)
+        self.set(key, value if value is not None else True)
         return True
 
     def release_lock(self, key: str) -> None:
