@@ -8,9 +8,10 @@ project it stores:
   Extractors consult these so they can parse directly instead of re-detecting,
   and so curated knowledge (e.g. "python/peps uses RST author headers") is
   reusable.
-* **popularity** — cached/curated metrics (stars, forks, downloads) plus an
-  ``min_stars_override`` flag so high-signal but small standards projects
-  survive the popularity filter.
+* **popularity** — cached/curated standing metrics across two axes: **adoption**
+  (stars, downloads) and **developer engagement** (forks) — plus a
+  ``min_stars_override`` flag so high-signal but small standards projects survive
+  the adoption bar.
 * **importance** — a human label ("critical"/"high"/...).
 * **aliases** — alternative ``owner/repo`` spellings (renames, mirrors).
 

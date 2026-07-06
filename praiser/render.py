@@ -176,8 +176,8 @@ def render_markdown(
         lines += [
             f"## Less-popular but widely-used & maintained ({len(secondary)})",
             "",
-            "Below the popularity threshold, but actively maintained with real "
-            "use (forks); the user holds an elevated role.",
+            "Below the adoption bar (stars), but actively maintained with real "
+            "developer engagement (forks); the user holds an elevated role.",
             "",
             "| Project | Role | Stars | Forks | Confidence |",
             "|---|---|---:|---:|---:|",

@@ -153,11 +153,13 @@ class ExtractContext:
         """Whether a repo is notable enough for external role discovery
         (Wikidata / Wikipedia founders, LLM, web team pages, releases).
 
-        Uses ANY reliable popularity signal, not stars alone: ``candidate.stars``
-        is set at discovery and can be 0 at attribution time for some discovery
-        paths (star enrichment lags), so gating solely on it silently skips
-        known-notable repos (#108). Notable if popular by stars OR forks, or
-        curated in the registry.
+        Uses either standing axis, not stars alone — **adoption**
+        (``candidate.stars``: how widely used/valued) OR **developer engagement**
+        (``candidate.forks``: how much others build on it) — or registry-curated.
+        The two aren't interchangeable, and stars alone is unreliable here: it's
+        set at discovery and can be 0 at attribution time for some paths
+        (enrichment lags), silently skipping known-notable repos (#108); forks
+        give an independent signal.
         """
         return (
             candidate.stars >= self.role_discovery_floor
