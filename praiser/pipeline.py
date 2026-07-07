@@ -92,6 +92,8 @@ def _build_forge(forge_name: str, config: Config, cache: Cache, *, is_anchor: bo
     secondary forges (cross-forge) run public/best-effort with no token."""
     cls = FORGES.get(forge_name, GitHubForge)
     kwargs: dict = {"verbose": config.verbose}
+    if forge_name == "github" and config.rest_reserve:   # REST-reserve is GitHub-only
+        kwargs["rest_reserve"] = config.rest_reserve
     token = config.token if is_anchor else None
     if is_anchor and config.forge_url and forge_name in INSTANCE_FORGES:
         kwargs["base_url"] = config.forge_url

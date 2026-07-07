@@ -121,6 +121,22 @@ def _bare_client():
     return GitHubClient.__new__(GitHubClient)  # no network/cache needed
 
 
+def test_rest_reserve_hit_logic():
+    from praiser.github_client import GRAPHQL_URL
+    c = _bare_client()
+    c.rest_reserve = 200
+    c.rate = {"core": (150, 5000, 0)}                 # below reserve, ample bucket
+    assert c._rest_reserve_hit("https://api.github.com/x") is True
+    assert c._rest_reserve_hit(GRAPHQL_URL) is False  # GraphQL exempt (own bucket)
+    c.rate = {"core": (300, 5000, 0)}                 # above reserve
+    assert c._rest_reserve_hit("https://api.github.com/x") is False
+    c.rate = {"core": (50, 60, 0)}                    # anon 60/hr — guard skips it
+    assert c._rest_reserve_hit("https://api.github.com/x") is False
+    c.rest_reserve = 0                                # disabled
+    c.rate = {"core": (10, 5000, 0)}
+    assert c._rest_reserve_hit("https://api.github.com/x") is False
+
+
 def test_track_rate_and_summary_per_bucket():
     c = _bare_client()
     c.rate = {}
