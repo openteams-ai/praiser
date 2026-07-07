@@ -80,6 +80,15 @@ def test_seed_populates_reverse_index(tmp_path):
     assert idx.repos_for("alice") == ["acme/big"]
 
 
+def test_seed_org_calls_heartbeat_per_repo(tmp_path):
+    cache = Cache(tmp_path)
+    f = FakeForge()
+    beats = []
+    seed_org("acme", forge=f, index=ContributorIndex(cache), cache=cache,
+             budget=50, heartbeat=lambda: beats.append(1))
+    assert len(beats) == 3        # once per repo iterated (keepalive for the lease)
+
+
 def test_seed_budget_limits_repos(tmp_path):
     cache = Cache(tmp_path)
     f = FakeForge()

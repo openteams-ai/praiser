@@ -93,12 +93,14 @@ def seed_one(name_with_owner, *, forge, index, cache, log=lambda m: None) -> dic
 
 
 def seed_org(org, *, forge, index, cache, budget=50, min_rest=MIN_REST,
-             log=lambda m: None) -> dict:
+             heartbeat=None, log=lambda m: None) -> dict:
     """Seed the reverse-index from ``org``'s repos. Returns a small summary.
 
     Skips repos seeded within SEED_TTL (resumable across periodic runs); stops at
     ``budget`` newly-seeded repos or when REST quota drops below ``min_rest``
-    (the background seeder passes a high floor so it backs off early)."""
+    (the background seeder passes a high floor so it backs off early). ``heartbeat``
+    is a keepalive hook called each repo (the web seeder renews its lease with it,
+    so a long run keeps the lease fresh but a dead one lets it expire)."""
     cov_repos, cov_logins = _load_coverage(cache, org)
     try:
         repos = forge.organization_repositories(org, limit=SEED_ORG_LIST)
@@ -109,6 +111,8 @@ def seed_org(org, *, forge, index, cache, budget=50, min_rest=MIN_REST,
     seeded = entries = 0
     stopped = None
     for meta in repos:
+        if heartbeat:
+            heartbeat()
         if seeded >= budget:
             stopped = f"budget ({budget} repos)"
             break
