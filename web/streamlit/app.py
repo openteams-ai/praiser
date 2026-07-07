@@ -662,14 +662,12 @@ def _render_admin_seed():
             key="seed_budget_bg",
             help="How many repos to seed for an org each chunk. Orgs with more "
                  "repos fill in over repeated chunks (re-seeded oldest-first).")
-        q1, q2 = st.columns(2)
-        q1.button("Save list", on_click=_save_seed_targets, use_container_width=True)
-        seed_now = q2.button(
+        seed_now = st.button(
             "Save & seed now", use_container_width=True,
-            help="Save, then kick off background seeding immediately (don't wait "
-                 "for visitor traffic). It chains through the pending orgs while "
-                 "GitHub quota is healthy, then backs off. (To seed one specific "
-                 "target synchronously, use “Seed a target” below.)")
+            help="Save the list/budget and start background seeding now. It chains "
+                 "through the pending orgs while GitHub quota is healthy, then backs "
+                 "off (and the opportunistic background seeder keeps it going on "
+                 "traffic). For a specific one-off, use “Seed a target” below.")
         status = service.seed_targets_status()
         if status:
             now = time.time()
