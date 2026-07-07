@@ -637,9 +637,9 @@ def seed_catalog(result_cache=None) -> list[dict]:
 
 # --- Background-seeder state (admin-managed org list) --------------------------
 # Config, not cache: readable ``seed:`` keys, kept out of "Wipe ALL cache" (see
-# wipe_all_cache's protect list). The GitHub seeder is opportunistic — the app
-# seeds a chunk on its own runs when quota is healthy (no external cron needed, so
-# a fork's deployment gets it for free).
+# wipe_all_cache's protect list). Seeding runs in-app (no external cron, so a
+# fork's deployment gets it for free), triggered explicitly by the admin
+# "Save & seed now" button, and chains through the list while quota is healthy.
 _SEED_PREFIX = "seed:"
 _SEED_TARGETS_KEY = "seed:targets"       # the admin's org list (JSON list)
 _SEED_BUDGET_KEY = "seed:budget"         # repos per org per chunk (admin-tunable)
