@@ -744,6 +744,20 @@ def next_seed_target(result_cache=None) -> str | None:
     return min(targets, key=lambda o: cat[o].get("updated", 0))
 
 
+def seeder_status(result_cache=None) -> dict | None:
+    """The background seeder's current lease holder ``{"source", "started"}`` if a
+    run is in progress, else None. Lets the UI say "a seeder is already running"
+    instead of a misleading unconditional "started"."""
+    rcache = result_cache if result_cache is not None else make_result_cache()
+    if rcache is None:
+        return None
+    try:
+        held = rcache.get(_SEED_LOCK_KEY)
+        return held if isinstance(held, dict) else None
+    except Exception:
+        return None
+
+
 # The options that affect DATA COLLECTION (a change here needs a re-scan). The
 # display options — ``view``, ``highlights`` N, and ``min_stars`` — are excluded:
 # a frontend re-renders them from a cached result without re-scanning. (min_stars

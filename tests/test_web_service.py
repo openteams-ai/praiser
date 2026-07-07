@@ -344,6 +344,16 @@ def test_seed_budget_default_set_and_clamp(tmp_path):
     assert service.set_seed_budget(0, result_cache=rc) == 1        # clamped to min
 
 
+def test_seeder_status_reflects_the_lease(tmp_path):
+    rc = Cache(tmp_path)
+    assert service.seeder_status(result_cache=rc) is None       # idle
+    rc.acquire_lock(service._SEED_LOCK_KEY, 300, value={"source": "background", "started": 1000.0})
+    st = service.seeder_status(result_cache=rc)
+    assert st and st["source"] == "background"                  # running
+    rc.release_lock(service._SEED_LOCK_KEY)
+    assert service.seeder_status(result_cache=rc) is None       # idle again
+
+
 def test_cache_lock_acquire_release(tmp_path):
     c = Cache(tmp_path)
     assert c.acquire_lock("seed:lock", 300, value={"source": "manual"}) is True

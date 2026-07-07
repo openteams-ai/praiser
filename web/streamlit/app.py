@@ -668,6 +668,10 @@ def _render_admin_seed():
                  "through the pending orgs while GitHub quota is healthy, then backs "
                  "off (and the opportunistic background seeder keeps it going on "
                  "traffic). For a specific one-off, use “Seed a target” below.")
+        active = service.seeder_status()
+        if active and active.get("started"):
+            st.caption(f"🔄 A seeder is running now (started "
+                       f"{humanize_wait(int(time.time() - active['started']))} ago).")
         status = service.seed_targets_status()
         if status:
             now = time.time()
@@ -682,12 +686,20 @@ def _render_admin_seed():
                     st.caption(f"⏳ **{s['org']}** — pending")
     if seed_now:
         _save_seed_targets()                          # persist current list + budget
-        st.session_state.pop("_seed_tick_at", None)   # bypass the per-session cooldown
-        threading.Thread(target=_bg_seed_once, daemon=True).start()   # chained run
-        st.session_state["seed_msg"] = ("ok",
-            "Saved — background seeding started. It chains through the pending orgs "
-            "while GitHub quota stays healthy, then backs off. Refresh to watch the "
-            "status below. (If a seeder was already running, this just rides it.)")
+        active = service.seeder_status()              # is a run already in progress?
+        if active and active.get("started"):
+            ago = humanize_wait(int(time.time() - active["started"]))
+            st.session_state["seed_msg"] = ("ok",
+                f"Saved. A seeder is already running (started {ago} ago) — it reads "
+                "the list fresh each org, so it'll pick up your changes. Watch the "
+                "status below.")
+        else:
+            st.session_state.pop("_seed_tick_at", None)   # bypass the cooldown
+            threading.Thread(target=_bg_seed_once, daemon=True).start()
+            st.session_state["seed_msg"] = ("ok",
+                "Saved — background seeding started. It chains through the pending "
+                "orgs while GitHub quota stays healthy, then backs off. Refresh to "
+                "watch the status below.")
         st.rerun()
     seeded = service.seed_catalog()
     if seeded:
