@@ -179,29 +179,13 @@ def _render_public_stats(slot):
 
 
 def _bg_seed_once():
-    """Run one opportunistic background seed chunk (own thread; touches only Redis
-    + GitHub, never st.*). Self-limits via a Redis lease + REST watermark."""
+    """Run the background seeder in its own thread (touches only Redis + GitHub,
+    never st.*): chains through the pending orgs while quota is healthy. Triggered
+    explicitly by the admin "Save & seed now" button — not on visitor traffic —
+    and still self-limited by the Redis lease + REST watermark."""
     try:
         from web import seed as webseed
         webseed.run_queue()
-    except Exception:
-        pass
-
-
-def _tick_background_seeder():
-    """On an app run, nudge the background seeder if the admin configured a target
-    list. Session-cached target check + a per-session cooldown keep it cheap; the
-    global Redis lease keeps actual seeding to ~one chunk at a time across sessions."""
-    if "has_seed_targets" not in st.session_state:
-        st.session_state["has_seed_targets"] = bool(service.get_seed_targets())
-    if not st.session_state["has_seed_targets"]:
-        return
-    now = time.time()
-    if now - st.session_state.get("_seed_tick_at", 0) < 60:
-        return
-    st.session_state["_seed_tick_at"] = now
-    try:
-        threading.Thread(target=_bg_seed_once, daemon=True).start()
     except Exception:
         pass
 
@@ -572,10 +556,9 @@ def _wipe_all_cache():
 def _save_seed_targets():
     saved = service.set_seed_targets(st.session_state.get("seed_targets_text", ""))
     service.set_seed_budget(st.session_state.get("seed_budget_bg", service.SEED_CHUNK_BUDGET))
-    st.session_state["has_seed_targets"] = bool(saved)   # start ticking this session
     st.session_state["seed_msg"] = ("ok",
-        f"Saved {len(saved)} org(s) to background-seed. The app will work through "
-        "them on its own runs while GitHub quota is healthy.")
+        f"Saved {len(saved)} org(s). Click “Save & seed now” to start seeding "
+        "them (it chains through while GitHub quota is healthy).")
 
 
 def _reset_usage_stats():
@@ -645,15 +628,15 @@ def _render_admin_seed():
                 "contributors so the app can discover them.")
     if (m := st.session_state.pop("seed_msg", None)):
         (st.success if m[0] == "ok" else st.error)(m[1])
-    # Background seeding: an admin-managed org list the app works through on its
-    # own runs (opportunistic — no cron; a fork's deployment gets it for free).
+    # Background seeding: an admin-managed org list, seeded on demand via
+    # "Save & seed now" (a background thread; no cron, no traffic-triggering).
     with st.expander("🌱 Background seeding (org list)"):
         st.caption(
-            "One org per line. The app seeds them in the background on its own "
-            f"runs — one org at a time, only while GitHub REST quota is above "
-            f"{service.SEED_REST_START:,}, backing off below "
-            f"{service.SEED_REST_FLOOR:,}. Resumes across runs; re-seeds after 30 "
-            "days. Spends the deployment's bot quota.")
+            "One org per line. Click “Save & seed now” to seed them: it chains "
+            f"through the list in the background, one org at a time, while GitHub "
+            f"REST quota is above {service.SEED_REST_START:,}, backing off below "
+            f"{service.SEED_REST_FLOOR:,} (click again after quota recovers to "
+            "resume). Re-seeds after 30 days. Spends the deployment's bot quota.")
         st.text_area("Orgs to seed (one per line)", key="seed_targets_text",
                      value="\n".join(service.get_seed_targets()), height=140,
                      placeholder="numpy\nscipy\npandas-dev\npytorch")
@@ -666,8 +649,8 @@ def _render_admin_seed():
             "Save & seed now", use_container_width=True,
             help="Save the list/budget and start background seeding now. It chains "
                  "through the pending orgs while GitHub quota is healthy, then backs "
-                 "off (and the opportunistic background seeder keeps it going on "
-                 "traffic). For a specific one-off, use “Seed a target” below.")
+                 "off — click again once quota recovers to resume. For a specific "
+                 "one-off, use “Seed a target” below.")
         active = service.seeder_status()
         status = service.seed_targets_status()
         now = time.time()
@@ -690,8 +673,8 @@ def _render_admin_seed():
                                f"list ({done}/{total} seeded) {fin} ago; no seeder running.")
                 elif reason.startswith("REST"):
                     st.caption(f"⏸️ **Idle — paused (rate limit).** Last run stopped at "
-                               f"{reason} {fin} ago; {done}/{total} seeded. Resumes when "
-                               "quota recovers (on traffic) or via “Save & seed now”.")
+                               f"{reason} {fin} ago; {done}/{total} seeded. Click “Save "
+                               "& seed now” once quota recovers to resume.")
                 else:
                     st.caption(f"⏹️ **Idle.** Last run: {reason} {fin} ago; "
                                f"{done}/{total} seeded.")
@@ -716,7 +699,6 @@ def _render_admin_seed():
                 "reads the list fresh each org, so it'll pick up your changes. Watch "
                 "the status below.")
         else:
-            st.session_state.pop("_seed_tick_at", None)   # bypass the cooldown
             threading.Thread(target=_bg_seed_once, daemon=True).start()
             st.session_state["seed_msg"] = ("ok",
                 "Saved — background seeding started. It chains through the pending "
@@ -1082,8 +1064,3 @@ else:
 # and the cache danger zone. No ?diag / ?seed / ?debug URL gates any more.
 if IS_ADMIN:
     _render_admin_frame()
-
-# Opportunistic background seeding — progresses the admin's org list on ordinary
-# app runs when GitHub quota is healthy (self-limited by a Redis lease + REST
-# watermark). Runs for any visitor's activity, not just admins.
-_tick_background_seeder()
