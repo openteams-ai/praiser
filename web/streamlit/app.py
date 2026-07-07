@@ -684,11 +684,12 @@ def _render_admin_seed():
         with st.spinner("Seeding the next pending org…"):
             res = webseed.run_queue(
                 budget=int(st.session_state.get("seed_budget_bg", service.SEED_CHUNK_BUDGET)),
-                source="manual")
-        if res.get("ran"):
+                source="manual", max_orgs=1)
+        if res.get("ran") and res.get("results"):
+            r = res["results"][-1]
             st.session_state["seed_msg"] = ("ok",
-                f"Seeded **{res['org']}**: {res.get('seeded', 0)} new repo(s), "
-                f"{res.get('contributors', 0)} distinct contributors — {res.get('stopped')}.")
+                f"Seeded **{r['org']}**: {r.get('seeded', 0)} new repo(s), "
+                f"{r.get('contributors', 0)} distinct contributors — {r.get('stopped')}.")
         else:
             st.session_state["seed_msg"] = ("err", f"Didn't seed: {res.get('reason', '?')}.")
         st.rerun()

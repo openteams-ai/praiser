@@ -93,22 +93,32 @@ def run_seed(name: str, forge: str = "github", budget: int = 30,
     return res
 
 
+def _rest_now(token) -> int | None:
+    """Bot-token REST remaining via the free /rate_limit endpoint (no quota cost)."""
+    from web.core import service
+    info = service.rate_budget(token) or {}
+    return (info.get("core") or (None,))[0]
+
+
 def run_queue(budget: int | None = None, source: str = "background",
-              log=lambda m: None) -> dict:
-    """Opportunistic background chunk: seed the next org from the admin's list, if
-    GitHub REST quota is healthy. Bounded to ONE org (``budget`` repos), guarded by
-    a Redis lease so concurrent app sessions don't run it at once. ``source``
-    ("background"/"manual") is recorded in the lease so a blocked caller can say
-    who's holding it. Safe to call on every app run. Never raises (best-effort)."""
+              max_orgs: int | None = None, log=lambda m: None) -> dict:
+    """Seed orgs from the admin's list while GitHub REST quota stays healthy.
+
+    Chains through the list — starts only when REST > SEED_REST_START, keeps
+    seeding one org at a time while REST > SEED_REST_FLOOR, and stops when quota
+    drops, the whole due-list is covered, or ``max_orgs`` is reached (``max_orgs=1``
+    = the manual "Seed one now": exactly one org). Guarded by a Redis lease
+    (renewed each iteration so a long run can't lapse and spawn a duplicate);
+    ``source`` is recorded in the lease so a blocked caller can name the holder.
+    Never raises. Returns ``{"ran", "count", "orgs", "results", "reason"}``."""
     from web.core import service
     shared = make_result_cache()
     if shared is None:
-        return {"ran": False, "reason": "no shared cache"}
+        return {"ran": False, "count": 0, "reason": "no shared cache"}
     now = time.time()
-    # Lease: only one seeder at a time; TTL auto-releases if this process dies.
+    lock_val = {"source": source, "started": now}
     if hasattr(shared, "acquire_lock") and not shared.acquire_lock(
-            service._SEED_LOCK_KEY, SEED_LOCK_TTL,
-            value={"source": source, "started": now}):
+            service._SEED_LOCK_KEY, SEED_LOCK_TTL, value=lock_val):
         held = {}
         try:
             held = shared.get(service._SEED_LOCK_KEY) or {}
@@ -117,39 +127,54 @@ def run_queue(budget: int | None = None, source: str = "background",
         if isinstance(held, dict) and held.get("started"):
             ago = max(0, int(now - held["started"]))
             who = held.get("source", "another")
-            return {"ran": False,
+            return {"ran": False, "count": 0,
                     "reason": f"a {who} seeder is already running (started {ago}s ago)"}
-        return {"ran": False, "reason": "another seeder is running"}
+        return {"ran": False, "count": 0, "reason": "another seeder is running"}
+    results: list[dict] = []
+    reason = "done"
+    token = _token("github")
     try:
-        org = service.next_seed_target(shared)
-        if not org:
-            return {"ran": False, "reason": "no targets"}
         if budget is None:
             budget = service.get_seed_budget(shared)
-        # Start watermark: only begin a chunk when REST is comfortably high (free
-        # /rate_limit read). The per-repo FLOOR (SEED_REST_FLOOR) is enforced
-        # inside seed_org, so it backs off mid-chunk if quota drops.
-        budget_info = service.rate_budget(_token("github")) or {}
-        rest = (budget_info.get("core") or (None,))[0]
-        if rest is not None and rest < service.SEED_REST_START:
-            return {"ran": False, "reason": f"rest low ({rest})", "org": org}
-        f = FORGES["github"](_token("github"), local_cache())
+        f = FORGES["github"](token, local_cache())
         try:
-            res = seed_org(org, forge=f, index=ContributorIndex(shared), cache=shared,
-                           budget=budget, min_rest=service.SEED_REST_FLOOR, log=log)
+            seen: list[str] = []
+            while max_orgs is None or len(results) < max_orgs:
+                # Hysteresis: require the high watermark to START, the low one to
+                # CONTINUE — so one healthy window seeds as much as it can, then
+                # backs off, and re-starts only once quota recovers well above it.
+                threshold = service.SEED_REST_START if not results else service.SEED_REST_FLOOR
+                rest = _rest_now(token)
+                if rest is not None and rest < threshold:
+                    reason = f"REST {rest} < {threshold}"
+                    break
+                org = service.next_seed_target(shared)
+                if not org:
+                    reason = "no targets"
+                    break
+                if org in seen:               # cycled the whole due-list
+                    reason = "all due targets seeded"
+                    break
+                if hasattr(shared, "renew_lock"):     # keep the lease alive
+                    shared.renew_lock(service._SEED_LOCK_KEY, SEED_LOCK_TTL, value=lock_val)
+                res = seed_org(org, forge=f, index=ContributorIndex(shared), cache=shared,
+                               budget=budget, min_rest=service.SEED_REST_FLOOR, log=log)
+                res["forge"] = "github"
+                service.record_seed(res, forge="github", kind="org", target=org,
+                                    result_cache=shared)
+                seen.append(org)
+                results.append({"org": org, "seeded": res.get("seeded"),
+                                "contributors": res.get("contributors_distinct"),
+                                "stopped": res.get("stopped")})
         finally:
             f.close()
-        res["forge"] = "github"
-        service.record_seed(res, forge="github", kind="org", target=org,
-                            result_cache=shared)
-        return {"ran": True, "org": org, "seeded": res.get("seeded"),
-                "stopped": res.get("stopped"),
-                "contributors": res.get("contributors_distinct")}
     except Exception as exc:      # background: never surface
-        return {"ran": False, "reason": f"error: {exc}"}
+        reason = f"error: {exc}"
     finally:
         if hasattr(shared, "release_lock"):
             shared.release_lock(service._SEED_LOCK_KEY)
+    return {"ran": bool(results), "count": len(results),
+            "orgs": [r["org"] for r in results], "results": results, "reason": reason}
 
 
 def main(argv=None) -> int:

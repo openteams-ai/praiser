@@ -106,6 +106,12 @@ class RedisCache:
         return self._command(
             ["SET", _PREFIX + key, payload, "NX", "EX", str(int(ttl))]) == "OK"
 
+    def renew_lock(self, key: str, ttl: int, value=None) -> None:
+        """Extend a held lease's TTL (SET without NX). Call periodically during a
+        long run so the lease doesn't lapse and let a second seeder start."""
+        payload = json.dumps(value) if value is not None else "1"
+        self._command(["SET", _PREFIX + key, payload, "EX", str(int(ttl))])
+
     def release_lock(self, key: str) -> None:
         self._command(["DEL", _PREFIX + key])
 
