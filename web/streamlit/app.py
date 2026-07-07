@@ -968,9 +968,10 @@ if scan_target is not None:
     # Cache key excludes the display options (view/highlights) on purpose.
     key = (uname, *(data_opts[k] for k in service.DATA_OPTIONS))
     if not refresh and cache.get(key) is not None:
+        # Refresh is a signed-in-only control (own-quota), so only mention it then.
+        _force = " (or tick Refresh to force one)" if USER_TOKEN else ""
         status_box.success("✅ Showing cached results — change the username, forge, "
-                           "or a scan option to re-scan (or tick Refresh to force "
-                           "one).")
+                           f"or a scan option to re-scan{_force}.")
     else:
         results_box.empty()   # clear stale results while the new scan runs
         budget_slot.empty()   # the sidebar budget snapshot is stale during a scan;
