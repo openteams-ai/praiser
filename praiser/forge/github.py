@@ -128,9 +128,11 @@ class GitHubForge(Forge):
         *,
         max_retries: int = 3,
         verbose: bool = False,
+        rest_reserve: int = 0,
     ) -> None:
         self._client = GitHubClient(
-            token, cache, max_retries=max_retries, verbose=verbose
+            token, cache, max_retries=max_retries, verbose=verbose,
+            rest_reserve=rest_reserve,
         )
         # DISCOVERY_QUERY answers three methods; memoise so they share one call
         # (the client also caches, but this avoids re-parsing per login).

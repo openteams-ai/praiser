@@ -277,6 +277,12 @@ def search_people(name: str, *, forge: str = "github", token: str | None = None,
 # pearu's Author) for 30 days — the real cause of #108.
 CACHE_VERSION = 6
 
+# Web scans leave this many REST requests unused on the GitHub token, so a scan on
+# a signed-in user's own token doesn't eat the quota they need for their own work.
+# Below the reserve praiser stops (falls back to the shared bot token, else returns
+# a partial result). Only applies to buckets that can hold it (not the anon 60/hr).
+REST_RESERVE = 200
+
 # Cache catalog: a durable index of the result-cache entries we've written, so the
 # admin UI can list and individually invalidate them (the cache keys are hashed and
 # otherwise un-enumerable). One shared value keyed by cache_id — works on both
@@ -797,6 +803,7 @@ def collect(
     cross_forge: bool = False,
     refresh: bool = False,          # re-scan: bypass caches for person-anchored fetches
     token: str | None = None,       # explicit token (e.g. a signed-in user's) — overrides env
+    rest_reserve: int = REST_RESERVE,  # leave this much of the token's REST quota unused
     http_cache=None,
     result_cache=None,
     progress=None,
@@ -846,6 +853,7 @@ def collect(
         use_package_registries=package_registries,
         cross_forge=cross_forge,
         refresh=effective_refresh,       # scoped in the pipeline: anchored repos only
+        rest_reserve=rest_reserve,       # keep the (signed-in) token owner's headroom
         quiet=True,
         save_registry=False,             # a shared service shouldn't mutate the registry
     )

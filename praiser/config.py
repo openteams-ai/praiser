@@ -57,6 +57,11 @@ class Config:
     cross_forge: bool = False       # follow verified profile links to other forges
     also_forge: list[str] = field(default_factory=list)  # extra "forge:login" ids
     token: str | None = None
+    # Leave this many REST requests unused on the (GitHub) token, so a scan on a
+    # signed-in user's own token doesn't drain the quota they need for their own
+    # work. 0 = off (the CLI default); the web app sets a floor. GraphQL is a
+    # separate bucket and unaffected.
+    rest_reserve: int = 0
     min_stars: int = 50
     fmt: str = "md"                 # "md" | "json"
     highlights: int | None = None   # if set, print only the top-N highlights

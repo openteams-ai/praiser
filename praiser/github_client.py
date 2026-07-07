@@ -65,14 +65,28 @@ class GitHubClient:
         *,
         max_retries: int = 3,
         verbose: bool = False,
+        rest_reserve: int = 0,
     ) -> None:
         self.token = token
         self.cache = cache
         self.max_retries = max_retries
         self.verbose = verbose
+        # Stop REST calls once fewer than this many remain, leaving the token's
+        # owner headroom for their own work (0 = off). GraphQL has its own bucket.
+        self.rest_reserve = int(rest_reserve)
         self._client = httpx.Client(timeout=30.0) if httpx is not None else None
         # Latest rate-limit state per bucket: resource -> (remaining, limit, reset).
         self.rate: dict[str, tuple[int, int, int]] = {}
+
+    def _rest_reserve_hit(self, url: str) -> bool:
+        """True if honouring ``rest_reserve`` should block this (REST) request now,
+        based on the last-seen core-bucket remaining. GraphQL is exempt (own
+        bucket), and the guard only applies to buckets that can hold the reserve
+        (so the tiny unauthenticated 60/hr bucket isn't permanently blocked)."""
+        if not self.rest_reserve or url == GRAPHQL_URL:
+            return False
+        core = self.rate.get("core")
+        return bool(core and core[1] > self.rest_reserve and core[0] < self.rest_reserve)
 
     # -- low-level HTTP -----------------------------------------------------
     def _headers(self, accept: str, auth: bool = True) -> dict[str, str]:
@@ -91,6 +105,17 @@ class GitHubClient:
         auth: bool = True,
     ) -> tuple[int, dict[str, str], bytes]:
         """Return (status, headers, raw body). Retries transient failures."""
+        # Proactively stop before draining the REST quota below the reserve, so the
+        # token's owner keeps headroom. Surfaces as a rate-limit (partial result +
+        # token fallback), using the real reset time.
+        if self._rest_reserve_hit(url):
+            core = self.rate["core"]
+            reset_in = max(0, core[2] - int(time.time()))
+            raise RateLimitError(
+                f"stopping to leave a {self.rest_reserve}-request REST reserve "
+                f"(quota for the token owner's own work); resets in {reset_in}s.",
+                reset_in=reset_in,
+            )
         headers = self._headers(accept, auth=auth)
         if body is not None:
             headers["Content-Type"] = "application/json"
