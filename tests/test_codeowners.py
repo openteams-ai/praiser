@@ -47,6 +47,8 @@ def test_classify_owner():
 # --- extract-level: code-ownership is path-scoped (#127) --------------------
 
 class _Forge:
+    name = "github"
+    
     def __init__(self, text, teams=None):
         self.text, self.teams = text, teams or {}
 
@@ -177,11 +179,53 @@ def test_github_comment_gating_and_fallback():
     )
     quals = set(e.qualifier for e in evs)
     expected = {
-        "blog/", "src/", None,  # fallbacks
+        "blog/", "src/", "web/", "docs2/", None,  # fallbacks
         "Build related files", "Dev CLI", "Testing infrastructure", "Meson",
-        "Frontend & Backend", "Build and Release", "Docs and Tutorials", "Docs as code"
+        "Build and Release", "Docs and Tutorials"
     }
     assert quals == expected
     # Assert personal names did not leak
     assert not any(q and "Pavithra" in q for q in quals)
 
+
+def test_github_bracket_glob_not_parsed_as_section():
+    # "[Mm]akefile @user" on GitHub should be a path rule, not a section.
+    text = "[Mm]akefile @user\n"
+    rules = parse_codeowners(text, forge="github")
+    assert len(rules) == 1
+    assert rules[0].pattern == "[Mm]akefile"
+    assert rules[0].owners == ["@user"]
+    assert rules[0].gitlab_section is None
+
+
+def test_gitlab_sections():
+    # GitLab sections are parsed natively and override github fallback logic
+    text = (
+        "[Frontend]\n"
+        "ui/  @bob\n"
+        "\n"
+        "^[Docs]\n"
+        "docs/  @bob\n"
+        "\n"
+        "[Docs][2]\n"
+        "docs2/  @bob\n"
+        "\n"
+        "[Database] @team\n"
+        "db/  @bob\n"
+    )
+    
+    class _GitlabForge(_Forge):
+        name = "gitlab"
+        
+    evs = CodeownersExtractor().extract(
+        Candidate("o/r", stars=15000), _ctx(Identity(primary_login="bob"), _GitlabForge(text))
+    )
+    quals = set(e.qualifier for e in evs)
+    assert quals == {"Frontend", "Docs", "Database"}
+
+
+def test_gitlab_mixed_case_forge():
+    text = "[Frontend]\nui/ @bob\n"
+    rules = parse_codeowners(text, forge="GitLab")
+    assert len(rules) == 1
+    assert rules[0].gitlab_section == "Frontend"

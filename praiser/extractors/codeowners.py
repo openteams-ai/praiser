@@ -19,6 +19,8 @@ _TEAM_RE = re.compile(r"^@([A-Za-z0-9-]+)/([A-Za-z0-9._-]+)$")
 _USER_RE = re.compile(r"^@([A-Za-z0-9-]+)$")
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
+_GITLAB_SECTION_RE = re.compile(r"^\^?\[([^\]]+)\](?:\[\d+\])?(.*?)$")
+
 _NAME_TOKEN_RE = r"[A-Z][a-z]+"
 _SEP_RE = r"(?:\s*,\s*|\s+&\s+|\s+and\s+)"
 _NAME_LIST_RE = rf"^{_NAME_TOKEN_RE}(?:{_SEP_RE}{_NAME_TOKEN_RE})+"
@@ -29,14 +31,25 @@ def _looks_like_label(comment: str) -> bool:
     if "@" in comment or "*" in comment or "/" in comment or "\\" in comment:
         return False
     words = comment.split()
-    if len(words) > 6:
+    if len(words) > 4:
         return False
     if comment.rstrip().endswith((".", ":", "!", "?")):
         return False
     if comment.strip().lower().startswith(("todo", "note", "fixme")):
         return False
+    
+    lower_words = set(w.lower() for w in words)
+    if "as" in lower_words or "for" in lower_words or "&" in comment:
+        return False
+        
     if _ATTRIBUTION_RE.match(comment):
         return False
+        
+    # Catch multiple capitalized names like "Tania, Ralf"
+    caps = sum(1 for w in words if w.istitle())
+    if caps > 1 and "," in comment:
+        return False
+        
     return True
 
 
@@ -45,9 +58,10 @@ class CodeownerRule:
     pattern: str
     owners: list[str]
     section: str | None = None  # nearest preceding comment header, e.g. "Sparse Tensors"
+    gitlab_section: str | None = None
 
 
-def parse_codeowners(text: str) -> list[CodeownerRule]:
+def parse_codeowners(text: str, forge: str = "github") -> list[CodeownerRule]:
     """Pure parser: text -> list of (pattern, owners, section).
 
     Large CODEOWNERS files group entries under comment headers (e.g. a
@@ -59,11 +73,20 @@ def parse_codeowners(text: str) -> list[CodeownerRule]:
     """
     rules: list[CodeownerRule] = []
     section: str | None = None
+    gitlab_section: str | None = None
     for raw in text.splitlines():
         stripped = raw.strip()
         if not stripped:
             section = None                       # blank line separates sections
             continue
+        if forge.lower() == "gitlab":
+            m = _GITLAB_SECTION_RE.match(stripped)
+            if m:
+                rest = m.group(2).strip()
+                if not rest or all(token.startswith("@") or "@" in token for token in rest.split()):
+                    gitlab_section = m.group(1).strip()
+                    section = None
+                    continue
         if stripped.startswith("#"):
             section = stripped.lstrip("#").strip() or None   # header for what follows
             continue
@@ -74,7 +97,9 @@ def parse_codeowners(text: str) -> list[CodeownerRule]:
         if len(parts) < 2:
             continue  # a pattern with no owners assigns nobody
         pattern, owners = parts[0], parts[1:]
-        rules.append(CodeownerRule(pattern=pattern, owners=owners, section=section))
+        rules.append(CodeownerRule(
+            pattern=pattern, owners=owners, section=section, gitlab_section=gitlab_section
+        ))
     return rules
 
 
@@ -99,6 +124,8 @@ def _rule_scope(rule: "CodeownerRule") -> str | None:
     """The concise scope label for a rule's Code-owner evidence: the section
     header if the file provides one (e.g. "Sparse Tensors"), else the raw path
     pattern. A whole-repo catch-all ("*") is project-wide → None (shown bare)."""
+    if rule.gitlab_section:
+        return rule.gitlab_section
     if rule.section and _looks_like_label(rule.section):
         return rule.section
     return None if rule.pattern == "*" else rule.pattern
@@ -131,7 +158,7 @@ class CodeownersExtractor(Extractor):
         return []
 
     def _evidence_from(self, candidate, ctx, path, text) -> list[Evidence]:
-        rules = parse_codeowners(text)
+        rules = parse_codeowners(text, forge=type(ctx.forge).name)
         url = f"{candidate.url}/blob/HEAD/{path}"
         found: list[Evidence] = []
         seen_quals: set[str] = set()
