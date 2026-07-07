@@ -670,8 +670,13 @@ def _render_admin_seed():
                  "traffic). For a specific one-off, use “Seed a target” below.")
         active = service.seeder_status()
         if active and active.get("started"):
-            st.caption(f"🔄 A seeder is running now (started "
-                       f"{humanize_wait(int(time.time() - active['started']))} ago).")
+            ago = humanize_wait(int(time.time() - active["started"]))
+            if active.get("org"):
+                st.caption(f"🔄 Seeding **{active['org']}** now — {active.get('done', 0)} "
+                           f"org(s) done this run · started {ago} ago. (Re-open/refresh "
+                           "to update.)")
+            else:
+                st.caption(f"🔄 A seeder is running now (started {ago} ago).")
         status = service.seed_targets_status()
         if status:
             now = time.time()
@@ -689,10 +694,11 @@ def _render_admin_seed():
         active = service.seeder_status()              # is a run already in progress?
         if active and active.get("started"):
             ago = humanize_wait(int(time.time() - active["started"]))
+            where = f" (on {active['org']} now)" if active.get("org") else ""
             st.session_state["seed_msg"] = ("ok",
-                f"Saved. A seeder is already running (started {ago} ago) — it reads "
-                "the list fresh each org, so it'll pick up your changes. Watch the "
-                "status below.")
+                f"Saved. A seeder is already running{where}, started {ago} ago — it "
+                "reads the list fresh each org, so it'll pick up your changes. Watch "
+                "the status below.")
         else:
             st.session_state.pop("_seed_tick_at", None)   # bypass the cooldown
             threading.Thread(target=_bg_seed_once, daemon=True).start()

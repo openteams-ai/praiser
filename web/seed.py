@@ -169,7 +169,13 @@ def run_queue(budget: int | None = None, source: str = "background",
                 if org in seen:               # cycled the whole due-list
                     reason = "all due targets seeded"
                     break
-                _beat()
+                # Stamp the current org into the lease so the admin sees live
+                # progress ("seeding numpy · N done"), renewing immediately.
+                lock_val["org"] = org
+                lock_val["done"] = len(results)
+                if hasattr(shared, "renew_lock"):
+                    shared.renew_lock(service._SEED_LOCK_KEY, SEED_LOCK_TTL, value=lock_val)
+                    beat_at[0] = time.time()
                 res = seed_org(org, forge=f, index=ContributorIndex(shared), cache=shared,
                                budget=budget, min_rest=service.SEED_REST_FLOOR,
                                heartbeat=_beat, log=log)
