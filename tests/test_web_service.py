@@ -344,6 +344,15 @@ def test_seed_budget_default_set_and_clamp(tmp_path):
     assert service.set_seed_budget(0, result_cache=rc) == 1        # clamped to min
 
 
+def test_last_seed_run_roundtrips(tmp_path):
+    rc = Cache(tmp_path)
+    assert service.last_seed_run(result_cache=rc) is None
+    rc.set(service._SEED_LASTRUN_KEY,
+           {"finished": 1000.0, "reason": "all due targets seeded", "count": 5})
+    lr = service.last_seed_run(result_cache=rc)
+    assert lr["reason"] == "all due targets seeded" and lr["count"] == 5
+
+
 def test_seeder_status_reflects_the_lease(tmp_path):
     rc = Cache(tmp_path)
     assert service.seeder_status(result_cache=rc) is None       # idle

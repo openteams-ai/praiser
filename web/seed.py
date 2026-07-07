@@ -191,6 +191,11 @@ def run_queue(budget: int | None = None, source: str = "background",
     except Exception as exc:      # background: never surface
         reason = f"error: {exc}"
     finally:
+        try:      # persist the outcome so the idle UI can say completed-vs-paused
+            shared.set(service._SEED_LASTRUN_KEY,
+                       {"finished": time.time(), "reason": reason, "count": len(results)})
+        except Exception:
+            pass
         if hasattr(shared, "release_lock"):
             shared.release_lock(service._SEED_LOCK_KEY)
     return {"ran": bool(results), "count": len(results),
