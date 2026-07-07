@@ -745,15 +745,32 @@ def next_seed_target(result_cache=None) -> str | None:
 
 
 def seeder_status(result_cache=None) -> dict | None:
-    """The background seeder's current lease holder ``{"source", "started"}`` if a
-    run is in progress, else None. Lets the UI say "a seeder is already running"
-    instead of a misleading unconditional "started"."""
+    """The background seeder's current lease holder ``{"source", "started", "org",
+    "done"}`` if a run is in progress, else None. Lets the UI say "a seeder is
+    already running" instead of a misleading unconditional "started"."""
     rcache = result_cache if result_cache is not None else make_result_cache()
     if rcache is None:
         return None
     try:
         held = rcache.get(_SEED_LOCK_KEY)
         return held if isinstance(held, dict) else None
+    except Exception:
+        return None
+
+
+_SEED_LASTRUN_KEY = "seed:last-run"      # last completed run's outcome (idle view)
+
+
+def last_seed_run(result_cache=None) -> dict | None:
+    """The last finished run's outcome ``{"finished", "reason", "count"}`` (or None).
+    ``reason`` distinguishes a clean finish ("all due targets seeded") from a
+    rate-limit pause ("REST N < M") so the idle UI can tell completed vs paused."""
+    rcache = result_cache if result_cache is not None else make_result_cache()
+    if rcache is None:
+        return None
+    try:
+        v = rcache.get(_SEED_LASTRUN_KEY)
+        return v if isinstance(v, dict) else None
     except Exception:
         return None
 

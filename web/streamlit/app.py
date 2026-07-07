@@ -669,19 +669,35 @@ def _render_admin_seed():
                  "off (and the opportunistic background seeder keeps it going on "
                  "traffic). For a specific one-off, use “Seed a target” below.")
         active = service.seeder_status()
-        if active and active.get("started"):
-            ago = humanize_wait(int(time.time() - active["started"]))
-            if active.get("org"):
-                st.caption(f"🔄 Seeding **{active['org']}** now — {active.get('done', 0)} "
-                           f"org(s) done this run · started {ago} ago. (Re-open/refresh "
-                           "to update.)")
-            else:
-                st.caption(f"🔄 A seeder is running now (started {ago} ago).")
         status = service.seed_targets_status()
+        now = time.time()
+        done = sum(1 for s in status if s["seeded"])
+        total = len(status)
+        if active and active.get("started"):
+            ago = humanize_wait(int(now - active["started"]))
+            if active.get("org"):
+                st.caption(f"🔄 **Running** — seeding **{active['org']}** ({active.get('done', 0)} "
+                           f"org(s) done this run) · started {ago} ago. (Refresh to update.)")
+            else:
+                st.caption(f"🔄 **Running** — a seeder is active (started {ago} ago).")
+        elif total:
+            last = service.last_seed_run()
+            if last and last.get("finished"):
+                fin = humanize_wait(int(now - last["finished"]))
+                reason = last.get("reason", "")
+                if reason == "all due targets seeded":
+                    st.caption(f"✅ **Idle — up to date.** Last run covered the whole "
+                               f"list ({done}/{total} seeded) {fin} ago; no seeder running.")
+                elif reason.startswith("REST"):
+                    st.caption(f"⏸️ **Idle — paused (rate limit).** Last run stopped at "
+                               f"{reason} {fin} ago; {done}/{total} seeded. Resumes when "
+                               "quota recovers (on traffic) or via “Save & seed now”.")
+                else:
+                    st.caption(f"⏹️ **Idle.** Last run: {reason} {fin} ago; "
+                               f"{done}/{total} seeded.")
+            else:
+                st.caption(f"⏹️ **Idle** — {done}/{total} seeded; no run recorded yet.")
         if status:
-            now = time.time()
-            done = sum(1 for s in status if s["seeded"])
-            st.caption(f"{done}/{len(status)} seeded at least once:")
             for s in status:
                 if s["seeded"]:
                     age = humanize_wait(int(now - s["updated"])) if s["updated"] else "?"
