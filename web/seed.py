@@ -24,10 +24,12 @@ from praiser.pipeline import FORGES  # noqa: E402
 from praiser.seed import seed_one, seed_org  # noqa: E402
 from web.core.cache import local_cache, make_result_cache  # noqa: E402
 
-# Background seeder tuning. A "chunk" is one org, budget-capped, so a single
-# opportunistic tick stays bounded. The lease TTL must exceed one chunk's runtime.
+# Background seeder tuning. The lease is renewed by a per-repo heartbeat, so the
+# TTL just bounds how long a *dead* run's lease lingers after a crash/reboot (a
+# false "already running") — short is better; a live run heartbeats well inside it.
 SEED_CHUNK_BUDGET = 30
-SEED_LOCK_TTL = 300
+SEED_LOCK_TTL = 90
+SEED_HEARTBEAT_EVERY = 30       # renew the lease at most this often (< TTL)
 
 # Forge-aware interface so URLs like ?seed=github/numpy never need to change, but
 # functional seeding is GitHub-only today: most forges don't implement
@@ -136,6 +138,18 @@ def run_queue(budget: int | None = None, source: str = "background",
     try:
         if budget is None:
             budget = service.get_seed_budget(shared)
+        # Throttled lease heartbeat: renews at most every SEED_HEARTBEAT_EVERY,
+        # called per-org and (via seed_org) per-repo — so a live run keeps the
+        # lease fresh regardless of org size, while a dead run stops heartbeating
+        # and the lease expires within TTL (bounding a stale "already running").
+        beat_at = [now]
+
+        def _beat():
+            t = time.time()
+            if t - beat_at[0] >= SEED_HEARTBEAT_EVERY and hasattr(shared, "renew_lock"):
+                beat_at[0] = t
+                shared.renew_lock(service._SEED_LOCK_KEY, SEED_LOCK_TTL, value=lock_val)
+
         f = FORGES["github"](token, local_cache())
         try:
             seen: list[str] = []
@@ -155,10 +169,10 @@ def run_queue(budget: int | None = None, source: str = "background",
                 if org in seen:               # cycled the whole due-list
                     reason = "all due targets seeded"
                     break
-                if hasattr(shared, "renew_lock"):     # keep the lease alive
-                    shared.renew_lock(service._SEED_LOCK_KEY, SEED_LOCK_TTL, value=lock_val)
+                _beat()
                 res = seed_org(org, forge=f, index=ContributorIndex(shared), cache=shared,
-                               budget=budget, min_rest=service.SEED_REST_FLOOR, log=log)
+                               budget=budget, min_rest=service.SEED_REST_FLOOR,
+                               heartbeat=_beat, log=log)
                 res["forge"] = "github"
                 service.record_seed(res, forge="github", kind="org", target=org,
                                     result_cache=shared)
