@@ -349,6 +349,9 @@ def test_cache_lock_acquire_release(tmp_path):
     assert c.acquire_lock("seed:lock", 300, value={"source": "manual"}) is True
     assert c.acquire_lock("seed:lock", 300) is False    # held
     assert c.get("seed:lock") == {"source": "manual"}   # holder identity readable
+    c.renew_lock("seed:lock", 300, value={"source": "background"})
+    assert c.acquire_lock("seed:lock", 300) is False    # renew keeps it held
+    assert c.get("seed:lock") == {"source": "background"}
     c.release_lock("seed:lock")
     assert c.acquire_lock("seed:lock", 300) is True      # released
 

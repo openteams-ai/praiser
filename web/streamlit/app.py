@@ -662,12 +662,12 @@ def _render_admin_seed():
             key="seed_budget_bg",
             help="How many repos to seed for an org each chunk. Orgs with more "
                  "repos fill in over repeated chunks (re-seeded oldest-first).")
-        q1, q2 = st.columns(2)
-        q1.button("Save list", on_click=_save_seed_targets, use_container_width=True)
-        seed_now = q2.button(
-            "Seed one now", use_container_width=True,
-            help="Seed the next pending org immediately (this run), using the "
-                 "budget above — for a quick start or to diagnose.")
+        seed_now = st.button(
+            "Save & seed now", use_container_width=True,
+            help="Save the list/budget and start background seeding now. It chains "
+                 "through the pending orgs while GitHub quota is healthy, then backs "
+                 "off (and the opportunistic background seeder keeps it going on "
+                 "traffic). For a specific one-off, use “Seed a target” below.")
         status = service.seed_targets_status()
         if status:
             now = time.time()
@@ -681,16 +681,13 @@ def _render_admin_seed():
                 else:
                     st.caption(f"⏳ **{s['org']}** — pending")
     if seed_now:
-        with st.spinner("Seeding the next pending org…"):
-            res = webseed.run_queue(
-                budget=int(st.session_state.get("seed_budget_bg", service.SEED_CHUNK_BUDGET)),
-                source="manual")
-        if res.get("ran"):
-            st.session_state["seed_msg"] = ("ok",
-                f"Seeded **{res['org']}**: {res.get('seeded', 0)} new repo(s), "
-                f"{res.get('contributors', 0)} distinct contributors — {res.get('stopped')}.")
-        else:
-            st.session_state["seed_msg"] = ("err", f"Didn't seed: {res.get('reason', '?')}.")
+        _save_seed_targets()                          # persist current list + budget
+        st.session_state.pop("_seed_tick_at", None)   # bypass the per-session cooldown
+        threading.Thread(target=_bg_seed_once, daemon=True).start()   # chained run
+        st.session_state["seed_msg"] = ("ok",
+            "Saved — background seeding started. It chains through the pending orgs "
+            "while GitHub quota stays healthy, then backs off. Refresh to watch the "
+            "status below. (If a seeder was already running, this just rides it.)")
         st.rerun()
     seeded = service.seed_catalog()
     if seeded:

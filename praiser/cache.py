@@ -139,6 +139,10 @@ class Cache:
         self.set(key, value if value is not None else True)
         return True
 
+    def renew_lock(self, key: str, ttl: int | None = None, value=None) -> None:
+        """Refresh a held lease (local: just re-store the value)."""
+        self.set(key, value if value is not None else True)
+
     def release_lock(self, key: str) -> None:
         self.delete(key)
 
