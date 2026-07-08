@@ -132,13 +132,27 @@ def github_account():
     # discovery + affiliation). Public repo reads need no scope; without
     # read:org the scan still works but org features degrade gracefully.
     # Full-width + a GitHub mark so it reads as a proper option, not a raw button.
-    result = oauth.authorize_button(
-        "Sign in with GitHub", redirect, scope="read:org", key="gh_oauth",
-        icon=_GH_ICON, use_container_width=True)
+    #
+    # Wrapped defensively: streamlit-oauth raises "STATE DOES NOT MATCH OR OUT OF
+    # DATE" when the callback's ?code&state is stale (a refreshed callback URL, or
+    # the app restarting between the redirect and the callback loses the stored
+    # state). This runs at the top of the script for EVERY visitor, so an
+    # unhandled raise crashes the whole app — instead, clear the stale params and
+    # let the user retry, staying anonymous meanwhile.
+    try:
+        result = oauth.authorize_button(
+            "Sign in with GitHub", redirect, scope="read:org", key="gh_oauth",
+            icon=_GH_ICON, use_container_width=True)
+    except Exception:
+        st.query_params.clear()      # drop stale ?code&state so a rerun is clean
+        st.caption("_Sign-in didn't complete (the link expired). Please click "
+                   "**Sign in with GitHub** again._")
+        return None, None
     if result and "token" in result:
         t = result["token"]["access_token"]
         st.session_state["gh_user_token"] = t
         st.session_state["gh_user_login"] = _fetch_login(t)
+        st.query_params.clear()      # consume the callback so a refresh can't re-auth
         st.rerun()
     return None, None
 
