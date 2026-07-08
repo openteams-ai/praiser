@@ -134,3 +134,36 @@ meta-file), `llm.py` (optional, gated), `models.py` (roles + dataclasses).
   registry/dispatch, add one cheap test that exercises it via the **public entry
   point**. Cheap is the operative word — assert it appears in `all_extractors()`,
   don't spin up the whole app.
+
+## Heuristics & AI-assisted changes
+
+Most changes here are AI-assisted, and the characteristic failure is a "fix" that
+satisfies the one example in front of it while silently degrading other real cases
+(it optimises toward the stated constraint instead of stepping back to ask whether
+the problem is even solvable that way). For any change that classifies or filters
+free-form input (comment/label gates, name/role heuristics, popularity cutoffs):
+
+- **A heuristic is only as good as the data that can *reject* it.** Tests you wrote
+  yourself prove little — they encode what you already believed. Before calling a
+  heuristic done, run it over a **rejecting fixture**: real data in *both*
+  directions — cases it must **keep** and cases it must **drop** — so a change that
+  over-tightens **fails a test** instead of shipping. (#179's `len(words) > 4` cap
+  silently dropped real labels like `Backend - RAG` under green CI; a two-class
+  fixture would have caught it.)
+- **Triage feasibility first.** Ask whether the problem is cleanly rule-shaped at
+  the quality you need. If there's an irreducible natural-language middle, say so —
+  the acceptable designs are then *cheap heuristic for the clear ends + safe
+  fallback for the middle*, an *LLM*, or *don't support it*. Don't tune a regex
+  endlessly against a single example; that's a band-aid, not a fix.
+- **Name the error asymmetry and choose the safe side deliberately.** State which
+  failure direction is harmful and which is cheap (#177: a false positive *leaks a
+  person's name*; a false negative just falls back to the path). Bias to the cheap
+  side on purpose — not by accident via an arbitrary threshold.
+- **Accountability is for the reasoning, not the keystrokes.** Whoever submits
+  AI-generated code owns being able to show the aggregate effect on real data,
+  name the asymmetry, and defend the residual failures. Green CI on self-authored
+  tests is not that evidence.
+- **Reviewers:** reject the *approach* early when the problem isn't (simply)
+  solvable; accept an honest, bounded solution (label the obvious, fall back
+  otherwise) — but don't over-reject, since a humble scoped fix is still a general
+  solution, as long as it doesn't pretend to close the middle.
